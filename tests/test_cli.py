@@ -595,3 +595,142 @@ def test_check_deps_ffmpeg_missing():
     assert "ffmpeg" in output.lower()
     # Should include install instruction
     assert "brew install ffmpeg" in output or "ffmpeg.org" in output
+
+
+# ---------------------------------------------------------------------------
+# PCK-02 + CLI-03: install command tests (TDD RED phase)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(strict=False)
+def test_install_local_success(tmp_path):
+    """install <local-path> copies pack.yaml to ~/.brainpacks/<name>/pack.yaml and exits 0."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    # Create a real pack.yaml
+    yaml_file = tmp_path / "pack.yaml"
+    yaml_file.write_text(
+        "name: test-pack\n"
+        "description: test\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+    )
+    packs_root = tmp_path / "brainpacks"
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.shutil") as mock_shutil:
+        mock_shutil.copy2 = MagicMock()
+        result = runner.invoke(app, ["install", str(yaml_file)])
+
+    assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
+    assert "test-pack" in result.output
+
+
+@pytest.mark.xfail(strict=False)
+def test_install_already_exists(tmp_path):
+    """install exits 1 with 'already installed' and 'brainpack update' suggestion when dest exists."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    yaml_file = tmp_path / "pack.yaml"
+    yaml_file.write_text(
+        "name: test-pack\n"
+        "description: test\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+    )
+    # Make the dest dir already exist
+    packs_root = tmp_path / "brainpacks"
+    dest_dir = packs_root / "test-pack"
+    dest_dir.mkdir(parents=True)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["install", str(yaml_file)])
+
+    assert result.exit_code == 1
+    assert "already installed" in result.output
+    assert "brainpack update" in result.output
+
+
+@pytest.mark.xfail(strict=False)
+def test_install_remote_url(tmp_path):
+    """install https://example.com/pack.yaml downloads, validates, and exits 0."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    valid_yaml = (
+        "name: remote-pack\n"
+        "description: remote\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+    )
+
+    def fake_urlretrieve(url, tmp_file):
+        Path(tmp_file).write_text(valid_yaml)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.urllib.request.urlretrieve", side_effect=fake_urlretrieve), \
+         patch("brainpack.cli.shutil") as mock_shutil:
+        mock_shutil.copy2 = MagicMock()
+        result = runner.invoke(app, ["install", "https://example.com/pack.yaml"])
+
+    assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
+
+
+@pytest.mark.xfail(strict=False)
+def test_install_file_not_found(tmp_path):
+    """install exits 1 with 'not found' for a nonexistent local path."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["install", "/nonexistent/path/pack.yaml"])
+
+    assert result.exit_code == 1
+    assert "not found" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# PCK-03 + CLI-04: update command tests (TDD RED phase)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(strict=False)
+def test_update_existing_pack(tmp_path):
+    """update <pack> delegates to build and exits 0 when pack dir exists."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "mypack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: mypack\ndescription: x\nllm: ollama\nsources:\n  - https://example.com\n"
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.build") as mock_build:
+        mock_build.return_value = None
+        result = runner.invoke(app, ["update", "mypack"])
+
+    assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
+    mock_build.assert_called_once()
+
+
+@pytest.mark.xfail(strict=False)
+def test_update_pack_not_found(tmp_path):
+    """update exits 1 with 'not found' and 'brainpack install' when pack dir missing."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    # Do NOT create the pack dir
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["update", "nonexistent"])
+
+    assert result.exit_code == 1
+    assert "not found" in result.output.lower()
+    assert "brainpack install" in result.output
