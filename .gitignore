@@ -1,0 +1,23 @@
+.planning/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# Brainpack data
+chroma/
+
+# Project planning docs
+brainpack.md
+brainpack-techstack.md
+
+# Env
+.env
