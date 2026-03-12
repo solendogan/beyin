@@ -734,3 +734,189 @@ def test_update_pack_not_found(tmp_path):
     assert result.exit_code == 1
     assert "not found" in result.output.lower()
     assert "brainpack install" in result.output
+
+
+# ---------------------------------------------------------------------------
+# CLI-06: Progress reporting tests (TDD RED phase)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(strict=False)
+def test_build_transcribe_counter(tmp_path):
+    """build shows '[transcribe] Episode N/Total: title' for each episode."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "testpack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: testpack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://youtube.com/watch?v=abc\n"
+    )
+
+    # Create a dummy audio file large enough to pass the size check
+    audio_file = tmp_path / "audio.mp3"
+    audio_file.write_bytes(b"x" * 11_000)
+
+    episodes = [
+        {"url": "https://youtube.com/watch?v=1", "title": "Ep 1", "id": "1"},
+        {"url": "https://youtube.com/watch?v=2", "title": "Ep 2", "id": "2"},
+        {"url": "https://youtube.com/watch?v=3", "title": "Ep 3", "id": "3"},
+    ]
+    mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
+         patch("brainpack.cli.check_deno_available", return_value=True), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=episodes), \
+         patch("brainpack.cli.is_audio_step_done", return_value=False), \
+         patch("brainpack.cli.get_audio_step", return_value={}), \
+         patch("brainpack.cli.download_audio", return_value=audio_file), \
+         patch("brainpack.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
+         patch("brainpack.cli.embed_and_store", return_value=5), \
+         patch("brainpack.cli.mark_audio_step"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.check_model_provenance"):
+        result = runner.invoke(app, ["build", "testpack"])
+
+    assert "[transcribe] Episode 1/3:" in result.output
+    assert "[transcribe] Episode 2/3:" in result.output
+    assert "[transcribe] Episode 3/3:" in result.output
+
+
+@pytest.mark.xfail(strict=False)
+def test_build_embed_label(tmp_path):
+    """build shows '[embed] title — N chunks' after embed_and_store call."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "testpack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: testpack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://youtube.com/watch?v=abc\n"
+    )
+
+    audio_file = tmp_path / "audio.mp3"
+    audio_file.write_bytes(b"x" * 11_000)
+
+    episodes = [
+        {"url": "https://youtube.com/watch?v=1", "title": "Ep 1", "id": "1"},
+    ]
+    mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
+         patch("brainpack.cli.check_deno_available", return_value=True), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=episodes), \
+         patch("brainpack.cli.is_audio_step_done", return_value=False), \
+         patch("brainpack.cli.get_audio_step", return_value={}), \
+         patch("brainpack.cli.download_audio", return_value=audio_file), \
+         patch("brainpack.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
+         patch("brainpack.cli.embed_and_store", return_value=5), \
+         patch("brainpack.cli.mark_audio_step"), \
+         patch("brainpack.cli.check_model_provenance"):
+        result = runner.invoke(app, ["build", "testpack"])
+
+    assert "[embed]" in result.output
+    assert "5 chunks" in result.output
+
+
+@pytest.mark.xfail(strict=False)
+def test_build_final_summary_table(tmp_path):
+    """build prints a summary table with Source/Status/Chunks columns when new chunks processed."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "testpack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: testpack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://youtube.com/watch?v=abc\n"
+    )
+
+    audio_file = tmp_path / "audio.mp3"
+    audio_file.write_bytes(b"x" * 11_000)
+
+    episodes = [
+        {"url": "https://youtube.com/watch?v=1", "title": "Ep 1", "id": "1"},
+    ]
+    mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
+         patch("brainpack.cli.check_deno_available", return_value=True), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=episodes), \
+         patch("brainpack.cli.is_audio_step_done", return_value=False), \
+         patch("brainpack.cli.get_audio_step", return_value={}), \
+         patch("brainpack.cli.download_audio", return_value=audio_file), \
+         patch("brainpack.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
+         patch("brainpack.cli.embed_and_store", return_value=3), \
+         patch("brainpack.cli.mark_audio_step"), \
+         patch("brainpack.cli.check_model_provenance"):
+        result = runner.invoke(app, ["build", "testpack"])
+
+    output = result.output
+    # Check for table header columns
+    assert "Source" in output or "Status" in output or "Chunks" in output or "New" in output
+
+
+@pytest.mark.xfail(strict=False)
+def test_build_all_up_to_date(tmp_path):
+    """build prints '0 new chunks — all sources up to date' when all episodes already embedded."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "testpack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: testpack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://youtube.com/watch?v=abc\n"
+    )
+
+    episodes = [
+        {"url": "https://youtube.com/watch?v=1", "title": "Ep 1", "id": "1"},
+        {"url": "https://youtube.com/watch?v=2", "title": "Ep 2", "id": "2"},
+    ]
+    mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
+         patch("brainpack.cli.check_deno_available", return_value=True), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=episodes), \
+         patch("brainpack.cli.is_audio_step_done", return_value=True), \
+         patch("brainpack.cli.get_audio_step", return_value={}), \
+         patch("brainpack.cli.embed_and_store", return_value=0), \
+         patch("brainpack.cli.mark_audio_step"), \
+         patch("brainpack.cli.check_model_provenance"):
+        result = runner.invoke(app, ["build", "testpack"])
+
+    assert "0 new chunks" in result.output
+    assert "up to date" in result.output
