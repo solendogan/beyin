@@ -290,7 +290,7 @@ class TestAudioBuild:
             result = runner.invoke(app, ["build", "test-pack"])
 
         assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
-        assert "[done]" in result.output
+        assert "[embed]" in result.output
         mock_download.assert_called_once()
         mock_transcribe.assert_called_once()
         mock_embed.assert_called_once()

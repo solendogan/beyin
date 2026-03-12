@@ -113,6 +113,7 @@ def build(
     transcripts_dir.mkdir(exist_ok=True)
 
     total_new = 0
+    source_results: list[dict] = []
     for source in config.sources:
         source_url = source.url
         effective_limit = source.limit if source.limit is not None else config.episode_limit
@@ -122,6 +123,7 @@ def build(
             # Phase 1 path — unchanged
             if is_processed(state, source_url):
                 typer.echo(f"  [skip] {source_url}")
+                source_results.append({"title": source_url[:40], "status": "skipped", "new": 0, "skipped": 0})
                 continue
 
             typer.echo(f"  [fetch] {source_url}")
@@ -133,17 +135,18 @@ def build(
                 )
                 mark_failed(state, source_url, reason="trafilatura extraction returned None")
                 save_state(pack_dir, state)
+                source_results.append({"title": source_url[:40], "status": "failed", "new": 0, "skipped": 0})
                 continue
 
             text, title = result
-            typer.echo(f"  [chunk] {title}")
             chunks = chunk_text(text)
             metadatas = [{"url": source_url, "title": title} for _ in chunks]
             new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_url)
             total_new += new_count
             mark_processed(state, source_url, title)
             save_state(pack_dir, state)
-            typer.echo(f"  [done]  {title} — {new_count} new chunks")
+            typer.echo(f"  [embed] {title} — {new_count} chunks")
+            source_results.append({"title": title, "status": "done", "new": new_count, "skipped": 0})
 
         else:  # youtube or podcast
             if source_type == "youtube":
@@ -161,13 +164,15 @@ def build(
                 typer.echo(f"  [warn] No episodes found for {source_url}", err=True)
                 continue
 
-            for episode in episodes:
+            total = len(episodes)
+            for idx, episode in enumerate(episodes, start=1):
                 episode_url = episode["url"]
                 episode_title = episode.get("title", "Unknown")
 
                 # Skip if fully embedded already
                 if is_audio_step_done(state, episode_url, "embedded"):
                     typer.echo(f"  [skip] {episode_title}")
+                    source_results.append({"title": episode_title, "status": "skipped", "new": 0, "skipped": 1})
                     continue
 
                 # Step 1: download
@@ -204,6 +209,7 @@ def build(
                         )
                         mark_failed(state, episode_url, "download failed after retry")
                         save_state(pack_dir, state)
+                        source_results.append({"title": episode_title, "status": "failed", "new": 0, "skipped": 0})
                         continue
 
                     mark_audio_step(state, episode_url, "downloaded", episode_title)
@@ -221,7 +227,7 @@ def build(
                     text = transcript_path.read_text()
                     segments = [{"start": 0.0, "end": 0.0, "text": text}]
                 else:
-                    typer.echo(f"  [transcribe] {episode_title}")
+                    typer.echo(f"  [transcribe] Episode {idx}/{total}: {episode_title}")
                     segments = transcribe_audio(audio_path, model_size=model_size, language=language)
                     if not segments:
                         typer.echo(
@@ -230,13 +236,13 @@ def build(
                         )
                         mark_failed(state, episode_url, "transcription returned empty")
                         save_state(pack_dir, state)
+                        source_results.append({"title": episode_title, "status": "failed", "new": 0, "skipped": 0})
                         continue
                     transcript_path.write_text("\n".join(s["text"] for s in segments))
                     mark_audio_step(state, episode_url, "transcribed")
                     save_state(pack_dir, state)
 
                 # Step 3: chunk + embed
-                typer.echo(f"  [chunk] {episode_title}")
                 full_text = "\n".join(s["text"] for s in segments)
                 chunks = chunk_text(full_text)
                 metadatas = [{"url": episode_url, "title": episode_title} for _ in chunks]
@@ -244,9 +250,19 @@ def build(
                 total_new += new_count
                 mark_audio_step(state, episode_url, "embedded")
                 save_state(pack_dir, state)
-                typer.echo(f"  [done]  {episode_title} — {new_count} new chunks")
+                typer.echo(f"  [embed] {episode_title} — {new_count} chunks")
+                source_results.append({"title": episode_title, "status": "done", "new": new_count, "skipped": 0})
 
-    typer.echo(f"\nBuild complete. {total_new} new chunks indexed.")
+    if total_new == 0:
+        typer.echo("\nBuild complete. 0 new chunks — all sources up to date.")
+    else:
+        typer.echo("\nBuild complete.")
+        typer.echo(f"{'Source':<40} {'Status':<10} {'New':>6} {'Skipped':>8}")
+        typer.echo(f"{'-'*40} {'-'*10} {'-'*6} {'-'*8}")
+        for r in source_results:
+            title_col = r["title"][:40]
+            typer.echo(f"{title_col:<40} {r['status']:<10} {r['new']:>6} {r['skipped']:>8}")
+        typer.echo(f"\nTotal: {total_new} new chunks indexed.")
 
 
 @app.command()
