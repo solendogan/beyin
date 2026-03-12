@@ -35,6 +35,29 @@ def mark_failed(state: Dict[str, Any], url: str, reason: str) -> None:
     state.setdefault("processed", {})[url] = {"status": "failed", "reason": reason}
 
 
+def get_audio_step(state: Dict[str, Any], url: str) -> Dict[str, Any]:
+    """Return step tracking dict for an episode URL. Returns {} if not tracked yet."""
+    return state.get("audio_steps", {}).get(url, {})
+
+
+def mark_audio_step(
+    state: Dict[str, Any], url: str, step: str, title: str = ""
+) -> None:
+    """
+    Mark a specific step as complete for an episode URL.
+    Steps: 'downloaded', 'transcribed', 'embedded'.
+    Mutates state in-place — caller must call save_state().
+    """
+    audio_steps = state.setdefault("audio_steps", {})
+    episode = audio_steps.setdefault(url, {"title": title})
+    episode[step] = True
+
+
+def is_audio_step_done(state: Dict[str, Any], url: str, step: str) -> bool:
+    """Return True if the given step is marked complete for the episode URL."""
+    return state.get("audio_steps", {}).get(url, {}).get(step, False)
+
+
 def check_model_provenance(
     state: Dict[str, Any], current_model: str, pack_name: str
 ) -> None:

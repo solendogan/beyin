@@ -1,4 +1,4 @@
-"""Tests for pack_state.py — covers ING-05, PIP-06, SAF-01."""
+"""Tests for pack_state.py — covers ING-05, PIP-06, SAF-01, ING-04."""
 import pytest
 
 
@@ -77,3 +77,69 @@ def test_mark_processed_sets_correct_structure(tmp_pack_dir):
     entry = state["processed"][url]
     assert entry["title"] == "Example Article"
     assert entry["status"] == "done"
+
+
+class TestAudioSteps:
+    """Tests for audio step tracking functions — covers ING-04."""
+
+    def test_get_audio_step_returns_empty_dict_for_unknown_url(self, tmp_pack_dir):
+        """get_audio_step returns {} for unknown URL (no KeyError)."""
+        from brainpack.pack_state import load_state, get_audio_step
+        state = load_state(tmp_pack_dir)
+        result = get_audio_step(state, "https://example.com/ep1")
+        assert result == {}
+
+    def test_mark_audio_step_downloaded(self, tmp_pack_dir):
+        """mark_audio_step sets downloaded=True for episode URL."""
+        from brainpack.pack_state import load_state, mark_audio_step
+        state = load_state(tmp_pack_dir)
+        url = "https://example.com/ep1"
+        mark_audio_step(state, url, "downloaded", title="Ep 1")
+        assert state["audio_steps"][url]["downloaded"] is True
+
+    def test_mark_audio_step_accumulates(self, tmp_pack_dir):
+        """mark_audio_step for transcribed keeps downloaded still True."""
+        from brainpack.pack_state import load_state, mark_audio_step
+        state = load_state(tmp_pack_dir)
+        url = "https://example.com/ep2"
+        mark_audio_step(state, url, "downloaded", title="Ep 2")
+        mark_audio_step(state, url, "transcribed")
+        assert state["audio_steps"][url]["transcribed"] is True
+        assert state["audio_steps"][url]["downloaded"] is True
+
+    def test_is_audio_step_done_true_after_marking(self, tmp_pack_dir):
+        """is_audio_step_done returns True after step is marked."""
+        from brainpack.pack_state import load_state, mark_audio_step, is_audio_step_done
+        state = load_state(tmp_pack_dir)
+        url = "https://example.com/ep3"
+        mark_audio_step(state, url, "downloaded", title="Ep 3")
+        assert is_audio_step_done(state, url, "downloaded") is True
+
+    def test_is_audio_step_done_false_for_unmarked_step(self, tmp_pack_dir):
+        """is_audio_step_done returns False when only downloaded is marked, not transcribed."""
+        from brainpack.pack_state import load_state, mark_audio_step, is_audio_step_done
+        state = load_state(tmp_pack_dir)
+        url = "https://example.com/ep4"
+        mark_audio_step(state, url, "downloaded", title="Ep 4")
+        assert is_audio_step_done(state, url, "transcribed") is False
+
+    def test_is_audio_step_done_false_for_unknown_url(self, tmp_pack_dir):
+        """is_audio_step_done returns False for unknown URL (no KeyError)."""
+        from brainpack.pack_state import load_state, is_audio_step_done
+        state = load_state(tmp_pack_dir)
+        assert is_audio_step_done(state, "https://example.com/unknown", "downloaded") is False
+
+    def test_load_state_without_audio_steps_works_with_get_audio_step(self, tmp_pack_dir):
+        """load_state on meta.json without 'audio_steps' key works with get_audio_step."""
+        import json
+        from brainpack.pack_state import load_state, get_audio_step
+        # Write a meta.json that lacks audio_steps
+        (tmp_pack_dir / "meta.json").write_text(json.dumps({
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+        }))
+        state = load_state(tmp_pack_dir)
+        assert "audio_steps" not in state
+        # get_audio_step must not raise
+        result = get_audio_step(state, "https://example.com/ep")
+        assert result == {}
