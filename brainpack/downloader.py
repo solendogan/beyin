@@ -11,7 +11,11 @@ _RSS_HINTS_RE = re.compile(r"\.(rss|xml)$|/feed/?|/rss/?", re.IGNORECASE)
 
 def detect_source_type(url: str) -> str:
     """Return 'youtube', 'podcast', or 'article'. Never raises."""
-    raise NotImplementedError
+    if _YOUTUBE_RE.search(url):
+        return "youtube"
+    if _RSS_HINTS_RE.search(url):
+        return "podcast"
+    return "article"
 
 
 def list_youtube_episodes(url: str, limit: Optional[int]) -> list[dict]:

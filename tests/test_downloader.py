@@ -8,29 +8,38 @@ from brainpack.downloader import detect_source_type, list_youtube_episodes, down
 
 # ING-04: URL type detection
 class TestDetectSourceType:
-    @pytest.mark.xfail(strict=False, reason="stub — implement in plan 02-03")
     def test_youtube_channel_url(self):
         assert detect_source_type("https://www.youtube.com/@ArmaganAmcalar") == "youtube"
 
-    @pytest.mark.xfail(strict=False, reason="stub — implement in plan 02-03")
     def test_youtube_playlist_url(self):
         assert detect_source_type("https://www.youtube.com/playlist?list=PLxyz") == "youtube"
 
-    @pytest.mark.xfail(strict=False, reason="stub — implement in plan 02-03")
     def test_youtube_watch_url(self):
         assert detect_source_type("https://www.youtube.com/watch?v=abc123") == "youtube"
 
-    @pytest.mark.xfail(strict=False, reason="stub — implement in plan 02-03")
+    def test_youtube_short_url(self):
+        assert detect_source_type("https://youtu.be/abc123") == "youtube"
+
+    def test_youtube_channel_path(self):
+        assert detect_source_type("https://www.youtube.com/channel/UCxyz") == "youtube"
+
     def test_rss_feed_url(self):
         assert detect_source_type("https://example.com/podcast.rss") == "podcast"
 
-    @pytest.mark.xfail(strict=False, reason="stub — implement in plan 02-03")
     def test_feed_path_url(self):
         assert detect_source_type("https://example.com/feed/") == "podcast"
 
-    @pytest.mark.xfail(strict=False, reason="stub — implement in plan 02-03")
+    def test_rss_path_url(self):
+        assert detect_source_type("https://example.com/rss/") == "podcast"
+
+    def test_feed_xml_url(self):
+        assert detect_source_type("https://example.com/feed.xml") == "podcast"
+
     def test_article_url(self):
         assert detect_source_type("https://substack.com/some-article") == "article"
+
+    def test_medium_article_url(self):
+        assert detect_source_type("https://medium.com/@author/post") == "article"
 
 
 # ING-01: YouTube episode listing
