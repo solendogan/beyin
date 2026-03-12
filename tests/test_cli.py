@@ -209,6 +209,7 @@ def test_query_prints_sources_section(tmp_pack_root):
     }
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
          patch("brainpack.cli.load_model", return_value=MagicMock()), \
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.run_query", return_value=mock_result):
