@@ -1,12 +1,15 @@
 """Brainpack CLI — build and query commands."""
+import re
 import shutil
+import tempfile
+import urllib.request
 from pathlib import Path
 from typing import Optional
 
 import typer
 
 from brainpack.chunker import chunk_text
-from brainpack.config import load_config, SourceEntry
+from brainpack.config import load_config, _load_config_from_file, SourceEntry
 from brainpack.downloader import (
     check_deno_available,
     detect_source_type,
@@ -327,6 +330,99 @@ def check_deps() -> None:
 
     if failures:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def install(
+    source: str = typer.Argument(..., help="Local path or URL to a pack.yaml file"),
+):
+    """Install a pack from a local or remote pack.yaml."""
+    is_url = source.startswith("http://") or source.startswith("https://")
+    tmp_file = None
+
+    try:
+        if is_url:
+            # Download to a temp file first
+            fd, tmp_file = tempfile.mkstemp(suffix=".yaml")
+            import os
+            os.close(fd)
+            try:
+                urllib.request.urlretrieve(source, tmp_file)
+            except Exception as e:
+                typer.echo(f"Error: Failed to download {source}: {e}", err=True)
+                raise typer.Exit(code=1)
+            yaml_path = Path(tmp_file)
+        else:
+            yaml_path = Path(source).expanduser().resolve()
+            if not yaml_path.exists():
+                typer.echo(f"Error: '{source}' not found.", err=True)
+                raise typer.Exit(code=1)
+
+        # Validate the pack.yaml
+        try:
+            config = _load_config_from_file(yaml_path)
+        except Exception as e:
+            typer.echo(f"Error: Invalid pack.yaml: {e}", err=True)
+            raise typer.Exit(code=1)
+
+        # Validate pack name
+        if not re.match(r'^[\w.-]+$', config.name):
+            typer.echo(
+                f"Error: Pack name '{config.name}' contains invalid characters. "
+                "Only alphanumerics, hyphens, underscores, and dots are allowed.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+        # Check if already installed
+        dest_dir = _PACKS_DIR / config.name
+        if dest_dir.exists():
+            typer.echo(
+                f"Error: Pack '{config.name}' is already installed.\n"
+                f"Use `brainpack update {config.name}` to update.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+        # Install
+        dest_dir.mkdir(parents=True)
+        shutil.copy2(yaml_path, dest_dir / "pack.yaml")
+        typer.echo(
+            f"Pack '{config.name}' installed to {dest_dir}/\n"
+            f"Run `brainpack build {config.name}` to ingest sources."
+        )
+
+    finally:
+        if tmp_file is not None:
+            try:
+                Path(tmp_file).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+@app.command()
+def update(
+    pack: str = typer.Argument(..., help="Pack name to update"),
+    model: str = typer.Option(
+        "small",
+        "--model",
+        "-m",
+        help="Whisper model size: tiny/base/small/medium/large",
+    ),
+    language: Optional[str] = typer.Option(
+        None,
+        "--language",
+        "-l",
+        help="Whisper language code (e.g. 'tr' for Turkish). Default: auto-detect",
+    ),
+):
+    """Fetch new sources and rebuild a pack incrementally."""
+    pack_dir = _PACKS_DIR / pack
+    if not pack_dir.exists():
+        typer.echo(f"Error: Pack '{pack}' not found.", err=True)
+        typer.echo(f"Install it first: brainpack install <path-or-url>", err=True)
+        raise typer.Exit(code=1)
+    build(pack=pack, model=model, language=language)
 
 
 if __name__ == "__main__":

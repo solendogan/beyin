@@ -24,14 +24,8 @@ class PackConfig:
     episode_limit: Optional[int] = 20
 
 
-def load_config(pack_dir: Path) -> PackConfig:
-    """Load and validate pack.yaml from pack_dir. Raises FileNotFoundError if missing."""
-    config_path = pack_dir / "pack.yaml"
-    if not config_path.exists():
-        raise FileNotFoundError(f"pack.yaml not found in {pack_dir}")
-    with open(config_path) as f:
-        raw = yaml.safe_load(f)
-
+def _parse_config_from_raw(raw: dict) -> PackConfig:
+    """Parse a raw YAML dict into a PackConfig. Shared by load_config and _load_config_from_file."""
     raw_sources = raw.get("sources", [])
     sources = []
     for s in raw_sources:
@@ -51,3 +45,26 @@ def load_config(pack_dir: Path) -> PackConfig:
         whisper_model=raw.get("whisper_model", "small"),
         episode_limit=episode_limit_raw,
     )
+
+
+def load_config(pack_dir: Path) -> PackConfig:
+    """Load and validate pack.yaml from pack_dir. Raises FileNotFoundError if missing."""
+    config_path = pack_dir / "pack.yaml"
+    if not config_path.exists():
+        raise FileNotFoundError(f"pack.yaml not found in {pack_dir}")
+    with open(config_path) as f:
+        raw = yaml.safe_load(f)
+    return _parse_config_from_raw(raw)
+
+
+def _load_config_from_file(path: Path) -> PackConfig:
+    """Load and validate pack.yaml from an arbitrary file path (not a pack directory).
+
+    Used by the install command to validate a pack.yaml before copying it.
+    Raises FileNotFoundError if path does not exist.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"pack.yaml not found at {path}")
+    with open(path) as f:
+        raw = yaml.safe_load(f)
+    return _parse_config_from_raw(raw)
