@@ -4,6 +4,14 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+_MLX_MODEL_MAP = {
+    "tiny":   "mlx-community/whisper-tiny-mlx",
+    "base":   "mlx-community/whisper-base-mlx",
+    "small":  "mlx-community/whisper-small-mlx",
+    "medium": "mlx-community/whisper-medium-mlx",
+    "large":  "mlx-community/whisper-large-v3-mlx",
+}
+
 
 def _is_apple_silicon() -> bool:
     """Return True on Apple Silicon (arm64 + darwin)."""
@@ -35,7 +43,24 @@ def _transcribe_faster(
     model_size: str,
     language: Optional[str],
 ) -> list[dict]:
-    raise NotImplementedError
+    """faster-whisper backend — Linux / non-Apple-Silicon."""
+    from faster_whisper import WhisperModel  # lazy import
+    import typer
+    model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    segments, _info = model.transcribe(
+        str(audio_path),
+        language=language,                    # None = auto-detect
+        vad_filter=True,                      # TRN-02: Silero VAD prevents hallucination loops
+        vad_parameters={"min_silence_duration_ms": 500},
+        condition_on_previous_text=False,     # additional hallucination guard
+        beam_size=5,
+        word_timestamps=False,               # segment timestamps sufficient (TRN-04)
+    )
+    result = []
+    for seg in segments:
+        typer.echo(f"  [transcribe] [{seg.start:.1f}s] {seg.text.strip()}")
+        result.append({"start": seg.start, "end": seg.end, "text": seg.text.strip()})
+    return result
 
 
 def _transcribe_mlx(
@@ -43,4 +68,18 @@ def _transcribe_mlx(
     model_size: str,
     language: Optional[str],
 ) -> list[dict]:
-    raise NotImplementedError
+    """mlx-whisper backend — Apple Silicon only. Must only be called after _is_apple_silicon() check."""
+    import mlx_whisper  # lazy import — NOT available on Linux
+    hf_repo = _MLX_MODEL_MAP.get(model_size, "mlx-community/whisper-small-mlx")
+    output = mlx_whisper.transcribe(
+        str(audio_path),
+        path_or_hf_repo=hf_repo,
+        language=language,                    # None = auto-detect
+        condition_on_previous_text=False,     # TRN-02 mitigation: no native VAD in mlx-whisper
+        word_timestamps=False,               # segment-level sufficient (TRN-04)
+        verbose=True,                        # per-segment output to stdout
+    )
+    return [
+        {"start": seg["start"], "end": seg["end"], "text": seg["text"].strip()}
+        for seg in output.get("segments", [])
+    ]
