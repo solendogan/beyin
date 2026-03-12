@@ -485,7 +485,6 @@ class TestAudioBuild:
 # SAF-02: Ollama guard tests (Task 1 — RED phase)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=False)
 def test_query_ollama_not_running():
     """query exits 1 with 'Ollama is not running' and 'ollama serve' when port closed but binary present."""
     from brainpack.cli import app
@@ -502,7 +501,6 @@ def test_query_ollama_not_running():
     assert "ollama serve" in output
 
 
-@pytest.mark.xfail(strict=False)
 def test_query_ollama_not_installed():
     """query exits 1 with install guide when ollama binary absent."""
     from brainpack.cli import app
@@ -521,10 +519,9 @@ def test_query_ollama_not_installed():
 
 
 # ---------------------------------------------------------------------------
-# CLI-05 + SAF-03: check-deps tests (Task 1 — RED phase)
+# CLI-05 + SAF-03: check-deps tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=False)
 def test_check_deps_all_pass():
     """check-deps exits 0 when ffmpeg, deno, and yt-dlp all pass."""
     from brainpack.cli import app
@@ -541,7 +538,6 @@ def test_check_deps_all_pass():
     assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
 
 
-@pytest.mark.xfail(strict=False)
 def test_check_deps_deno_missing():
     """check-deps exits 1 with Deno install instruction when deno not found."""
     from brainpack.cli import app
@@ -562,7 +558,6 @@ def test_check_deps_deno_missing():
     assert "curl" in output or "brew install deno" in output
 
 
-@pytest.mark.xfail(strict=False)
 def test_check_deps_ytdlp_outdated():
     """check-deps exits 1 with OUTDATED + upgrade command when yt-dlp is below min version."""
     from brainpack.cli import app
@@ -582,7 +577,6 @@ def test_check_deps_ytdlp_outdated():
     assert "pip install --upgrade yt-dlp" in output
 
 
-@pytest.mark.xfail(strict=False)
 def test_check_deps_ffmpeg_missing():
     """check-deps exits 1 with ffmpeg install instruction when ffmpeg not found."""
     from brainpack.cli import app

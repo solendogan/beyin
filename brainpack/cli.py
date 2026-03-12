@@ -1,4 +1,5 @@
 """Brainpack CLI — build and query commands."""
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -34,6 +35,30 @@ from brainpack.transcriber import transcribe_audio
 app = typer.Typer(help="Brainpack — turn creator content into queryable expert memory")
 
 _PACKS_DIR = Path.home() / ".brainpacks"
+_YTDLP_MIN_VERSION = "2025.11.12"
+
+
+def _check_ollama_reachable() -> bool:
+    """Return True if Ollama is listening on localhost:11434, False otherwise."""
+    import socket as _socket
+    try:
+        sock = _socket.create_connection(("localhost", 11434), timeout=2)
+        sock.close()
+        return True
+    except (ConnectionRefusedError, OSError):
+        return False
+
+
+def _ytdlp_version_ok() -> tuple:
+    """Return (True, version_str) if yt-dlp >= _YTDLP_MIN_VERSION, else (False, version_str)."""
+    try:
+        import yt_dlp.version as _v
+        current = _v.__version__
+        current_tuple = tuple(int(x) for x in current.split("."))
+        min_tuple = tuple(int(x) for x in _YTDLP_MIN_VERSION.split("."))
+        return (current_tuple >= min_tuple, current)
+    except Exception:
+        return (False, "unknown")
 
 
 def _resolve_pack_dir(pack: str) -> Path:
@@ -227,6 +252,15 @@ def query(
     question: str = typer.Argument(..., help="Question to answer"),
 ):
     """Query a pack and receive a cited LLM answer."""
+    if not _check_ollama_reachable():
+        if shutil.which("ollama"):
+            typer.echo("Error: Ollama is not running.", err=True)
+            typer.echo("Start it with: ollama serve", err=True)
+        else:
+            typer.echo("Error: Ollama is not installed.", err=True)
+            typer.echo("Install: brew install ollama", err=True)
+            typer.echo("Or: curl -fsSL https://ollama.com/install.sh | sh", err=True)
+        raise typer.Exit(code=1)
     pack_dir = _resolve_pack_dir(pack)
     config = load_config(pack_dir)
     model = load_model(config.embedding_model)
@@ -245,6 +279,54 @@ def query(
         title = source.get("title", "Unknown")
         url = source.get("url", "")
         typer.echo(f"  [{i}] {title} — {url}")
+
+
+@app.command(name="check-deps")
+def check_deps() -> None:
+    """Check non-pip dependencies: ffmpeg, deno, yt-dlp."""
+    failures = []
+
+    # Check ffmpeg
+    if shutil.which("ffmpeg"):
+        typer.echo("ffmpeg: found")
+    else:
+        typer.echo(
+            "ffmpeg: NOT FOUND\n"
+            "  Install: brew install ffmpeg\n"
+            "  Or: https://ffmpeg.org/download.html"
+        )
+        failures.append("ffmpeg")
+
+    # Check deno
+    if shutil.which("deno"):
+        typer.echo("Deno: found")
+    else:
+        typer.echo(
+            "Deno: NOT FOUND\n"
+            "  Install: curl -fsSL https://deno.land/install.sh | sh\n"
+            "  Or: brew install deno"
+        )
+        failures.append("deno")
+
+    # Check yt-dlp version
+    ok, version = _ytdlp_version_ok()
+    if ok:
+        typer.echo(f"yt-dlp: found ({version})")
+    else:
+        if version == "unknown":
+            typer.echo(
+                "yt-dlp: NOT FOUND or version unknown\n"
+                "  Install/upgrade: pip install --upgrade yt-dlp"
+            )
+        else:
+            typer.echo(
+                f"yt-dlp: OUTDATED ({version} < {_YTDLP_MIN_VERSION})\n"
+                "  Upgrade: pip install --upgrade yt-dlp"
+            )
+        failures.append("yt-dlp")
+
+    if failures:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
