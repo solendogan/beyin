@@ -479,3 +479,125 @@ class TestAudioBuild:
         assert result.exit_code == 0
         assert "--model" in result.output
         assert "--language" in result.output
+
+
+# ---------------------------------------------------------------------------
+# SAF-02: Ollama guard tests (Task 1 — RED phase)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(strict=False)
+def test_query_ollama_not_running():
+    """query exits 1 with 'Ollama is not running' and 'ollama serve' when port closed but binary present."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    with patch("brainpack.cli._check_ollama_reachable", return_value=False), \
+         patch("brainpack.cli.shutil") as mock_shutil:
+        mock_shutil.which.return_value = "/usr/local/bin/ollama"
+        result = runner.invoke(app, ["query", "mypack", "test"])
+
+    assert result.exit_code == 1
+    output = result.output
+    assert "Ollama is not running" in output
+    assert "ollama serve" in output
+
+
+@pytest.mark.xfail(strict=False)
+def test_query_ollama_not_installed():
+    """query exits 1 with install guide when ollama binary absent."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    with patch("brainpack.cli._check_ollama_reachable", return_value=False), \
+         patch("brainpack.cli.shutil") as mock_shutil:
+        mock_shutil.which.return_value = None
+        result = runner.invoke(app, ["query", "mypack", "test"])
+
+    assert result.exit_code == 1
+    output = result.output
+    assert "not installed" in output.lower() or "Ollama is not installed" in output
+    # Should contain an install guide (brew or curl)
+    assert "brew install ollama" in output or "curl" in output
+
+
+# ---------------------------------------------------------------------------
+# CLI-05 + SAF-03: check-deps tests (Task 1 — RED phase)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(strict=False)
+def test_check_deps_all_pass():
+    """check-deps exits 0 when ffmpeg, deno, and yt-dlp all pass."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    with patch("brainpack.cli.shutil") as mock_shutil, \
+         patch("brainpack.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
+        mock_shutil.which.side_effect = lambda name: {
+            "ffmpeg": "/usr/bin/ffmpeg",
+            "deno": "/usr/bin/deno",
+        }.get(name)
+        result = runner.invoke(app, ["check-deps"])
+
+    assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
+
+
+@pytest.mark.xfail(strict=False)
+def test_check_deps_deno_missing():
+    """check-deps exits 1 with Deno install instruction when deno not found."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    with patch("brainpack.cli.shutil") as mock_shutil, \
+         patch("brainpack.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
+        mock_shutil.which.side_effect = lambda name: {
+            "ffmpeg": "/usr/bin/ffmpeg",
+            "deno": None,
+        }.get(name)
+        result = runner.invoke(app, ["check-deps"])
+
+    assert result.exit_code == 1
+    output = result.output
+    assert "Deno" in output or "deno" in output
+    # Should include install instruction
+    assert "curl" in output or "brew install deno" in output
+
+
+@pytest.mark.xfail(strict=False)
+def test_check_deps_ytdlp_outdated():
+    """check-deps exits 1 with OUTDATED + upgrade command when yt-dlp is below min version."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    with patch("brainpack.cli.shutil") as mock_shutil, \
+         patch("brainpack.cli._ytdlp_version_ok", return_value=(False, "2025.10.01")):
+        mock_shutil.which.side_effect = lambda name: {
+            "ffmpeg": "/usr/bin/ffmpeg",
+            "deno": "/usr/bin/deno",
+        }.get(name)
+        result = runner.invoke(app, ["check-deps"])
+
+    assert result.exit_code == 1
+    output = result.output
+    assert "outdated" in output.lower() or "OUTDATED" in output
+    assert "pip install --upgrade yt-dlp" in output
+
+
+@pytest.mark.xfail(strict=False)
+def test_check_deps_ffmpeg_missing():
+    """check-deps exits 1 with ffmpeg install instruction when ffmpeg not found."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    with patch("brainpack.cli.shutil") as mock_shutil, \
+         patch("brainpack.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
+        mock_shutil.which.side_effect = lambda name: {
+            "ffmpeg": None,
+            "deno": "/usr/bin/deno",
+        }.get(name)
+        result = runner.invoke(app, ["check-deps"])
+
+    assert result.exit_code == 1
+    output = result.output
+    assert "ffmpeg" in output.lower()
+    # Should include install instruction
+    assert "brew install ffmpeg" in output or "ffmpeg.org" in output
