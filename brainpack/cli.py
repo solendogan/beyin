@@ -51,6 +51,7 @@ from brainpack.pack_state import (
     mark_processed,
     save_state,
 )
+from brainpack.machine_output import MachineExit
 from brainpack.query import _source_label, run_query
 from brainpack.source_ids import artifact_stem, canonical_source_id
 from brainpack.store import embed_and_store, get_collection
@@ -268,10 +269,21 @@ def _resolve_pack_dir(
     *,
     missing_next_step: str = "brainpack add <path-or-url-or-id>",
     missing_note: Optional[str] = None,
+    machine_command: Optional[str] = None,
 ) -> Path:
     """Resolve pack name to directory under ~/.brainpacks/."""
     pack_dir = _PACKS_DIR / pack
     if not pack_dir.exists():
+        if machine_command:
+            details = {"next_action": missing_next_step}
+            if missing_note:
+                details["note"] = missing_note
+            raise MachineExit.precondition(
+                "pack_not_found",
+                f"Pack '{pack}' is not installed.",
+                pack=pack,
+                details=details,
+            )
         typer.echo(f"Error: Pack '{pack}' is not installed.", err=True)
         typer.echo(f"Next step: {missing_next_step}", err=True)
         if missing_note:
@@ -310,12 +322,40 @@ def _pack_readiness_details(config) -> dict[str, list[str]]:
     return {"blockers": blockers, "warnings": warnings}
 
 
-def _load_query_runtime(pack: str) -> tuple[Path, PackConfig, object, object]:
+def _render_next_step(command: str, reason: str, *, err: bool = False) -> None:
+    """Print one explicit next command and why it matters."""
+    typer.echo(f"Next step: {command}", err=err)
+    typer.echo(reason, err=err)
+
+
+def _split_machine_message(message: str) -> tuple[str, dict[str, str]]:
+    """Split a multi-line human error into a machine message plus details."""
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    if not lines:
+        return message, {}
+    if len(lines) == 1:
+        return lines[0], {}
+    return lines[0], {"hint": " ".join(lines[1:])}
+
+
+def _load_query_runtime(
+    pack: str,
+    *,
+    machine_command: Optional[str] = None,
+) -> tuple[Path, PackConfig, object, object]:
     """Load pack config and retrieval runtime for query/chat surfaces."""
-    pack_dir = _resolve_pack_dir(pack)
+    pack_dir = _resolve_pack_dir(pack, machine_command=machine_command)
     config = load_config(pack_dir)
     provider_error = _query_provider_error(config.llm)
     if provider_error is not None:
+        if machine_command:
+            message, details = _split_machine_message(provider_error)
+            raise MachineExit.precondition(
+                "runtime_blocked",
+                message,
+                pack=pack,
+                details=details,
+            )
         typer.echo(provider_error, err=True)
         raise typer.Exit(code=1)
     model = load_model(config.embedding_model)
@@ -323,23 +363,50 @@ def _load_query_runtime(pack: str) -> tuple[Path, PackConfig, object, object]:
     return pack_dir, config, model, collection
 
 
-def _render_next_step(command: str, reason: str, *, err: bool = False) -> None:
-    """Print one explicit next command and why it matters."""
-    typer.echo(f"Next step: {command}", err=err)
-    typer.echo(reason, err=err)
+def _chat_machine_error(
+    pack: str,
+    code: str,
+    message: str,
+    summary: dict,
+) -> None:
+    """Raise a structured machine error for chat readiness failures."""
+    details = {
+        "next_action": summary["next_action"],
+        "reason": next_action_reason(summary),
+    }
+    if summary.get("blockers"):
+        details["blocker"] = summary["blockers"][0]
+    raise MachineExit.precondition(
+        code,
+        message,
+        pack=pack,
+        details=details,
+    )
 
 
-def _load_chat_runtime(pack: str) -> tuple[Path, PackConfig, object, object]:
+def _load_chat_runtime(
+    pack: str,
+    *,
+    machine_command: Optional[str] = None,
+) -> tuple[Path, PackConfig, object, object]:
     """Load chat runtime only when the pack exists and is ready for chat."""
     pack_dir = _resolve_pack_dir(
         pack,
         missing_next_step="brainpack create",
         missing_note="Use `brainpack add <path-or-url-or-id>` if you already have a pack.yaml to import.",
+        machine_command=machine_command,
     )
     summary = inspect_pack(pack_dir, _pack_readiness_details)
     status = summary["status"]
 
     if status == "blocked":
+        if machine_command:
+            _chat_machine_error(
+                pack,
+                "pack_blocked",
+                f"Pack '{pack}' is blocked before chat can start.",
+                summary,
+            )
         typer.echo(f"Pack '{pack}' is blocked before chat can start.", err=True)
         if summary.get("blockers"):
             typer.echo(f"Why: {summary['blockers'][0]}", err=True)
@@ -347,11 +414,25 @@ def _load_chat_runtime(pack: str) -> tuple[Path, PackConfig, object, object]:
         raise typer.Exit(code=1)
 
     if status == "new":
+        if machine_command:
+            _chat_machine_error(
+                pack,
+                "pack_not_built",
+                f"Pack '{pack}' is not built yet.",
+                summary,
+            )
         typer.echo(f"Pack '{pack}' is not built yet.", err=True)
         _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
         raise typer.Exit(code=1)
 
     if status == "needs-build":
+        if machine_command:
+            _chat_machine_error(
+                pack,
+                "pack_needs_build",
+                f"Pack '{pack}' changed after its last build and needs a rebuild before chat can continue.",
+                summary,
+            )
         typer.echo(
             f"Pack '{pack}' changed after its last build and needs a rebuild before chat can continue.",
             err=True,
@@ -360,6 +441,13 @@ def _load_chat_runtime(pack: str) -> tuple[Path, PackConfig, object, object]:
         raise typer.Exit(code=1)
 
     if status == "error":
+        if machine_command:
+            _chat_machine_error(
+                pack,
+                "pack_build_failed",
+                f"Pack '{pack}' needs a successful build before chat can continue.",
+                summary,
+            )
         typer.echo(f"Pack '{pack}' needs a successful build before chat can continue.", err=True)
         _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
         raise typer.Exit(code=1)
@@ -376,6 +464,69 @@ def _render_query_output(result: dict) -> None:
     typer.echo("\nSources:")
     for i, source in enumerate(result["sources"], start=1):
         typer.echo(f"  {_source_label(source, index=i)}")
+
+
+def _query_payload(
+    pack: str,
+    question: str,
+    *,
+    machine: bool = False,
+) -> dict:
+    """Build a reusable result payload for query."""
+    _, config, model, collection = _load_query_runtime(
+        pack,
+        machine_command="query" if machine else None,
+    )
+    result = run_query(
+        question=question,
+        collection=collection,
+        model=model,
+        llm_provider=config.llm,
+    )
+    return {
+        "question": question,
+        "answer": result["answer"],
+        "sources": result["sources"],
+    }
+
+
+def _chat_one_shot_payload(
+    pack: str,
+    question: str,
+    *,
+    machine: bool = False,
+) -> dict:
+    """Build a reusable result payload for one-shot chat."""
+    _, config, model, collection = _load_chat_runtime(
+        pack,
+        machine_command="chat" if machine else None,
+    )
+    result = run_query(
+        question=question,
+        collection=collection,
+        model=model,
+        llm_provider=config.llm,
+    )
+    return {
+        "question": question,
+        "answer": result["answer"],
+        "sources": result["sources"],
+    }
+
+
+def _list_payload() -> dict:
+    """Build a reusable inventory payload for machine-safe list output."""
+    return {"packs": list_packs(_PACKS_DIR, _pack_readiness_details)}
+
+
+def _status_payload(
+    pack: str,
+    *,
+    machine: bool = False,
+) -> dict:
+    """Build a reusable inventory payload for machine-safe status output."""
+    pack_dir = _resolve_pack_dir(pack, machine_command="status" if machine else None)
+    return {"pack": inspect_pack(pack_dir, _pack_readiness_details)}
 
 
 def _origin_display(origin: dict) -> str:
@@ -719,16 +870,7 @@ def query(
     question: str = typer.Argument(..., help="Question to answer"),
 ):
     """Query a pack and receive a cited LLM answer."""
-    _, config, model, collection = _load_query_runtime(pack)
-
-    result = run_query(
-        question=question,
-        collection=collection,
-        model=model,
-        llm_provider=config.llm,
-    )
-
-    _render_query_output(result)
+    _render_query_output(_query_payload(pack, question))
 
 
 @app.command()
@@ -740,6 +882,10 @@ def chat(
     ),
 ):
     """Chat with a pack in one-shot or interactive mode."""
+    if question is not None:
+        _render_query_output(_chat_one_shot_payload(pack, question))
+        return
+
     _, config, model, collection = _load_chat_runtime(pack)
 
     def _ask(prompt_text: str, history: list[dict[str, str]] | None = None) -> dict:
@@ -750,10 +896,6 @@ def chat(
             llm_provider=config.llm,
             history=list(history) if history else None,
         )
-
-    if question is not None:
-        _render_query_output(_ask(question))
-        return
 
     typer.echo(f"Chatting with '{pack}'. Type exit or quit to leave.")
     session_history: list[dict[str, str]] = []
@@ -866,7 +1008,7 @@ def doctor(
 @app.command(name="list")
 def list_command() -> None:
     """List installed packs in a compact inventory view."""
-    summaries = list_packs(_PACKS_DIR, _pack_readiness_details)
+    summaries = _list_payload()["packs"]
     if not summaries:
         typer.echo("No packs installed.")
         return
@@ -888,8 +1030,7 @@ def status_command(
     pack: str = typer.Argument(..., help="Pack name to inspect"),
 ) -> None:
     """Inspect one installed pack in detail."""
-    pack_dir = _resolve_pack_dir(pack)
-    summary = inspect_pack(pack_dir, _pack_readiness_details)
+    summary = _status_payload(pack)["pack"]
 
     typer.echo(f"Pack: {summary['name']}")
     typer.echo(f"Status: {summary['status']}")
