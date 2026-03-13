@@ -37,6 +37,8 @@ from brainpack.inventory import (
     pack_config_hash,
     resolve_pack_origin,
     save_pack_origin,
+    serialize_pack_detail,
+    serialize_pack_summary,
     summarize_pack_changes,
     utc_now_iso,
 )
@@ -51,7 +53,7 @@ from brainpack.pack_state import (
     mark_processed,
     save_state,
 )
-from brainpack.machine_output import MachineExit
+from brainpack.machine_output import MachineExit, run_machine_command
 from brainpack.query import _source_label, run_query
 from brainpack.source_ids import artifact_stem, canonical_source_id
 from brainpack.store import embed_and_store, get_collection
@@ -514,9 +516,15 @@ def _chat_one_shot_payload(
     }
 
 
-def _list_payload() -> dict:
+def _list_payload(
+    *,
+    machine: bool = False,
+) -> dict:
     """Build a reusable inventory payload for machine-safe list output."""
-    return {"packs": list_packs(_PACKS_DIR, _pack_readiness_details)}
+    packs = list_packs(_PACKS_DIR, _pack_readiness_details)
+    if machine:
+        return {"packs": [serialize_pack_summary(summary) for summary in packs]}
+    return {"packs": packs}
 
 
 def _status_payload(
@@ -526,7 +534,10 @@ def _status_payload(
 ) -> dict:
     """Build a reusable inventory payload for machine-safe status output."""
     pack_dir = _resolve_pack_dir(pack, machine_command="status" if machine else None)
-    return {"pack": inspect_pack(pack_dir, _pack_readiness_details)}
+    summary = inspect_pack(pack_dir, _pack_readiness_details)
+    if machine:
+        return {"pack": serialize_pack_detail(summary)}
+    return {"pack": summary}
 
 
 def _origin_display(origin: dict) -> str:
@@ -1006,8 +1017,22 @@ def doctor(
 
 
 @app.command(name="list")
-def list_command() -> None:
+def list_command(
+    json_mode: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit machine-safe JSON output.",
+    ),
+) -> None:
     """List installed packs in a compact inventory view."""
+    if json_mode:
+        raise typer.Exit(
+            code=run_machine_command(
+                command="list",
+                action=lambda: _list_payload(machine=True),
+            )
+        )
+
     summaries = _list_payload()["packs"]
     if not summaries:
         typer.echo("No packs installed.")
@@ -1028,8 +1053,22 @@ def list_command() -> None:
 @app.command(name="status")
 def status_command(
     pack: str = typer.Argument(..., help="Pack name to inspect"),
+    json_mode: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit machine-safe JSON output.",
+    ),
 ) -> None:
     """Inspect one installed pack in detail."""
+    if json_mode:
+        raise typer.Exit(
+            code=run_machine_command(
+                command="status",
+                pack=pack,
+                action=lambda: _status_payload(pack, machine=True),
+            )
+        )
+
     summary = _status_payload(pack)["pack"]
 
     typer.echo(f"Pack: {summary['name']}")

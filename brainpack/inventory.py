@@ -124,6 +124,25 @@ def _format_when(value: Optional[str]) -> Optional[str]:
         return value
 
 
+def _public_origin(origin: Dict[str, Any]) -> Dict[str, str]:
+    """Return the stable public origin shape for machine-safe payloads."""
+    return {
+        "type": str(origin.get("type", "none")),
+        "source": str(origin.get("source", "")),
+    }
+
+
+def _public_messages(values: Any) -> list[str]:
+    """Normalize human-oriented multi-line messages into stable public strings."""
+    messages: list[str] = []
+    for value in values or []:
+        text = str(value).strip()
+        if not text:
+            continue
+        messages.append(text.splitlines()[0].strip())
+    return messages
+
+
 def summarize_pack(
     pack_dir: Path,
     readiness_fn: Callable[[PackConfig], Dict[str, list[str]]],
@@ -211,6 +230,36 @@ def inspect_pack(
     summary["last_update_at"] = origin.get("last_updated_at") or origin.get("added_at")
     summary["last_update_summary"] = origin.get("last_update_summary", [])
     return summary
+
+
+def serialize_pack_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the stable public machine payload for one pack summary."""
+    return {
+        "name": summary["name"],
+        "status": summary["status"],
+        "provider": summary["provider"],
+        "source_count": summary["source_count"],
+        "recent_summary": summary["recent_summary"],
+        "next_action": summary["next_action"],
+        "blockers": _public_messages(summary.get("blockers")),
+        "warnings": _public_messages(summary.get("warnings")),
+        "origin": _public_origin(summary.get("origin", {})),
+    }
+
+
+def serialize_pack_detail(summary: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the stable public machine payload for one pack detail record."""
+    payload = serialize_pack_summary(summary)
+    payload.update(
+        {
+            "last_build_at": summary.get("last_build_at"),
+            "last_update_at": summary.get("last_update_at"),
+            "last_update_summary": [
+                str(item) for item in summary.get("last_update_summary", [])
+            ],
+        }
+    )
+    return payload
 
 
 def next_action_reason(summary: Dict[str, Any]) -> str:
