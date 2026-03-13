@@ -11,7 +11,13 @@ from typing import Optional
 import typer
 
 from brainpack.chunker import chunk_text, count_tokens
-from brainpack.config import load_config, _load_config_from_file, SourceEntry
+from brainpack.config import (
+    PackConfig,
+    SourceEntry,
+    _load_config_from_file,
+    load_config,
+    write_config,
+)
 from brainpack.downloader import (
     check_deno_available,
     detect_source_type,
@@ -306,6 +312,45 @@ def _origin_display(origin: dict) -> str:
     return f"{origin_type}: {origin_source}"
 
 
+def _create_source_prompt(source_type: str) -> str:
+    """Return a source-type-specific wizard prompt."""
+    if source_type == "article":
+        return "Article URL"
+    if source_type == "youtube":
+        return "YouTube channel or playlist URL"
+    return "Podcast feed URL"
+
+
+def _prompt_create_config() -> tuple[str, PackConfig]:
+    """Collect the narrow first-pass guided creation inputs."""
+    source_type = typer.prompt("Source type (article/youtube/podcast)").strip().lower()
+    if source_type not in {"article", "youtube", "podcast"}:
+        typer.echo(
+            "Error: Source type must be one of: article, youtube, podcast.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    name = typer.prompt("Pack name").strip()
+    if not re.match(r"^[\w.-]+$", name):
+        typer.echo(
+            f"Error: Pack name '{name}' contains invalid characters. "
+            "Only alphanumerics, hyphens, underscores, and dots are allowed.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    description = typer.prompt("Short description").strip()
+    source_url = typer.prompt(_create_source_prompt(source_type)).strip()
+    config = PackConfig(
+        name=name,
+        description=description,
+        llm="ollama",
+        sources=[SourceEntry(url=source_url)],
+    )
+    return source_type, config
+
+
 def _write_pack_yaml_from_source(
     resolved: dict[str, str],
     destination: Path,
@@ -352,6 +397,30 @@ def _write_pack_yaml_from_source(
     finally:
         if tmp_file is not None:
             Path(tmp_file).unlink(missing_ok=True)
+
+
+@app.command()
+def create() -> None:
+    """Guide the user through creating a new pack without hand-editing YAML."""
+    source_type, config = _prompt_create_config()
+    pack_dir = _PACKS_DIR / config.name
+    if pack_dir.exists():
+        typer.echo(
+            f"Error: Pack '{config.name}' already exists.\n"
+            f"Choose a new name or run `brainpack update {config.name}`.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    write_config(config, pack_dir / "pack.yaml")
+
+    typer.echo(f"Created pack '{config.name}'.")
+    typer.echo(f"Source family: {source_type}")
+    typer.echo("One source family per pack keeps the first run simple.")
+    typer.echo(f"Source saved: {config.sources[0].url}")
+    typer.echo("")
+    typer.echo(f"Next step: brainpack build {config.name}")
+    typer.echo("Build indexes the source into local expert memory.")
 
 
 @app.command()

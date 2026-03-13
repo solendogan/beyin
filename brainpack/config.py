@@ -24,6 +24,28 @@ class PackConfig:
     episode_limit: Optional[int] = 20
 
 
+def config_to_raw(config: PackConfig) -> dict:
+    """Serialize PackConfig into the canonical pack.yaml structure."""
+    return {
+        "name": config.name,
+        "description": config.description,
+        "llm": config.llm,
+        "embedding_model": config.embedding_model,
+        "whisper_model": config.whisper_model,
+        "episode_limit": config.episode_limit,
+        "sources": [{"url": source.url} for source in config.sources],
+    }
+
+
+def write_config(config: PackConfig, destination: Path) -> Path:
+    """Write PackConfig to destination using the canonical pack.yaml schema."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    raw = config_to_raw(config)
+    with open(destination, "w", encoding="utf-8") as f:
+        yaml.safe_dump(raw, f, sort_keys=False)
+    return destination
+
+
 def _parse_config_from_raw(raw: dict) -> PackConfig:
     """Parse a raw YAML dict into a PackConfig. Shared by load_config and _load_config_from_file."""
     raw_sources = raw.get("sources", [])
