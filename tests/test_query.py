@@ -132,3 +132,37 @@ def test_source_labels_fall_back_cleanly_without_timestamps():
     assert "00:" not in label
     assert "Article" in label
     assert "https://example.com/article" in label
+
+
+def test_run_query_includes_chat_history_in_prompt(tmp_pack_dir, mock_model):
+    """run_query folds prior turns into the LLM prompt when chat history is provided."""
+    from brainpack.store import get_collection, embed_and_store
+    from brainpack.query import run_query
+
+    col = get_collection(tmp_pack_dir, "test-pack")
+    embed_and_store(
+        col,
+        mock_model,
+        ["Some content."],
+        [{"url": "https://example.com/a", "title": "My Article"}],
+        url="https://example.com/a",
+    )
+
+    with patch("brainpack.query.OpenAI") as MockOpenAI:
+        client = MockOpenAI.return_value
+        choice = MagicMock()
+        choice.message.content = "Answer with memory."
+        client.chat.completions.create.return_value = MagicMock(choices=[choice])
+
+        run_query(
+            "Second question",
+            col,
+            mock_model,
+            history=[{"question": "First question", "answer": "First answer"}],
+        )
+
+    user_message = client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+    assert "Conversation so far:" in user_message
+    assert "User: First question" in user_message
+    assert "Assistant: First answer" in user_message
+    assert "Question: Second question" in user_message

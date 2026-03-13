@@ -487,6 +487,88 @@ def test_query_prints_timestamp_ranges_in_sources(tmp_pack_root):
     assert "00:12-00:34" in result.output
 
 
+def test_chat_one_shot_uses_existing_query_path_and_shows_sources(tmp_pack_root):
+    """chat one-shot delegates through run_query and prints answer sources."""
+    from brainpack.cli import app
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+
+    mock_result = {
+        "answer": "One-shot answer",
+        "sources": [{"url": "https://example.com/chat", "title": "Chat Source"}],
+    }
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.run_query", return_value=mock_result) as mock_run_query:
+
+        result = runner.invoke(app, ["chat", "test-pack", "What is new?"])
+
+    assert result.exit_code == 0
+    mock_run_query.assert_called_once()
+    assert "One-shot answer" in result.output
+    assert "Sources:" in result.output
+    assert "Chat Source" in result.output
+    assert "https://example.com/chat" in result.output
+
+
+def test_chat_interactive_keeps_session_memory_only_for_current_process(tmp_pack_root):
+    """Interactive chat reuses in-memory history during one run and starts fresh next run."""
+    from brainpack.cli import app
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+
+    first_session_calls = []
+
+    def first_session_run_query(**kwargs):
+        first_session_calls.append(kwargs)
+        return {
+            "answer": f"Answer {len(first_session_calls)}",
+            "sources": [{"url": "https://example.com/chat", "title": "Chat Source"}],
+        }
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.run_query", side_effect=first_session_run_query):
+        first_result = runner.invoke(
+            app,
+            ["chat", "test-pack"],
+            input="First question?\nSecond question?\nexit\n",
+        )
+
+    assert first_result.exit_code == 0
+    assert len(first_session_calls) == 2
+    assert first_session_calls[0].get("history") in (None, [])
+    assert first_session_calls[1]["history"] == [
+        {"question": "First question?", "answer": "Answer 1"}
+    ]
+    assert first_result.output.count("Sources:") == 2
+
+    second_session_calls = []
+
+    def second_session_run_query(**kwargs):
+        second_session_calls.append(kwargs)
+        return {
+            "answer": "Fresh session answer",
+            "sources": [{"url": "https://example.com/chat", "title": "Chat Source"}],
+        }
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.run_query", side_effect=second_session_run_query):
+        second_result = runner.invoke(app, ["chat", "test-pack"], input="Fresh question?\nquit\n")
+
+    assert second_result.exit_code == 0
+    assert len(second_session_calls) == 1
+    assert second_session_calls[0].get("history") in (None, [])
+
+
 def test_build_persists_structured_transcripts_with_timestamps(tmp_path):
     """Fresh audio transcripts persist structured segments and chunk timestamp metadata."""
     from brainpack.cli import app
