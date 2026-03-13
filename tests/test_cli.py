@@ -51,6 +51,62 @@ def test_help_lists_build_and_query():
     assert "query" in result.output
 
 
+def test_no_arg_home_screen_guides_first_run(tmp_path):
+    """No-arg invocation on a fresh machine shows a guided home screen."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    assert "Brainpack" in result.output
+    assert "No packs installed yet." in result.output
+    assert "brainpack add <path-or-url-or-id>" in result.output
+    assert "brainpack build <pack>" in result.output
+
+
+def test_no_arg_home_screen_orients_around_existing_inventory(tmp_pack_root):
+    """No-arg invocation with installed packs shows inventory-oriented guidance."""
+    from brainpack.cli import app
+
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True):
+        result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    assert "Installed packs:" in result.output
+    assert "test-pack" in result.output
+    assert "new" in result.output
+    assert "brainpack build test-pack" in result.output
+    assert "brainpack status test-pack" in result.output
+
+
+def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
+    """No-arg invocation renders product copy instead of the default help screen."""
+    from brainpack.cli import app
+
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True):
+        home_result = runner.invoke(app, [])
+
+    help_result = runner.invoke(app, ["--help"])
+
+    assert home_result.exit_code == 0
+    assert help_result.exit_code == 0
+    assert "Usage:" not in home_result.output
+    assert "Commands:" not in home_result.output
+    assert "Turn creator content into local expert memory." in home_result.output
+    assert home_result.output != help_result.output
+
+
 def test_build_exits_0(tmp_pack_root):
     """build command with mocked pipeline exits 0."""
     from brainpack.cli import app
