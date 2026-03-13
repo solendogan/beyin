@@ -202,6 +202,7 @@ def test_create_wizard_handles_one_source_family_and_ends_with_build_guidance(tm
     assert [source.url for source in config.sources] == ["https://example.com/feed.xml"]
     assert "One source family per pack keeps the first run simple." in result.output
     assert "Next step: brainpack build pod-pack" in result.output
+    assert result.output.count("Next step:") == 1
     assert "pack.yaml" not in result.output
 
 
@@ -567,6 +568,68 @@ def test_chat_interactive_keeps_session_memory_only_for_current_process(tmp_pack
     assert second_result.exit_code == 0
     assert len(second_session_calls) == 1
     assert second_session_calls[0].get("history") in (None, [])
+
+
+def test_chat_missing_pack_redirects_to_create_or_add(tmp_path):
+    """Missing-pack chat should redirect to an actionable onboarding command."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["chat", "missing-pack", "Where do I start?"])
+
+    assert result.exit_code == 1
+    assert "missing-pack" in result.output
+    assert "Next step: brainpack create" in result.output
+    assert "brainpack add <path-or-url-or-id>" in result.output
+    assert "mkdir -p" not in result.output
+
+
+def test_chat_unbuilt_pack_redirects_to_build(tmp_pack_root):
+    """Unbuilt-pack chat should stop and point the user at build."""
+    from brainpack.cli import app
+
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli.load_model") as mock_load_model, \
+         patch("brainpack.cli.get_collection") as mock_get_collection, \
+         patch("brainpack.cli.run_query") as mock_run_query:
+        result = runner.invoke(app, ["chat", "test-pack", "Can I ask now?"])
+
+    assert result.exit_code == 1
+    assert "not built" in result.output.lower() or "build" in result.output.lower()
+    assert "Next step: brainpack build test-pack" in result.output
+    mock_load_model.assert_not_called()
+    mock_get_collection.assert_not_called()
+    mock_run_query.assert_not_called()
+
+
+def test_chat_blocked_pack_redirects_to_doctor(tmp_pack_root):
+    """Blocked-pack chat should redirect the user to doctor before querying."""
+    from brainpack.cli import app
+
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=False), \
+         patch("brainpack.cli.shutil.which", return_value="/usr/local/bin/ollama"), \
+         patch("brainpack.cli.load_model") as mock_load_model, \
+         patch("brainpack.cli.get_collection") as mock_get_collection, \
+         patch("brainpack.cli.run_query") as mock_run_query:
+        result = runner.invoke(app, ["chat", "test-pack", "Can I ask now?"])
+
+    assert result.exit_code == 1
+    assert "blocked" in result.output.lower()
+    assert "Next step: brainpack doctor test-pack" in result.output
+    mock_load_model.assert_not_called()
+    mock_get_collection.assert_not_called()
+    mock_run_query.assert_not_called()
 
 
 def test_build_persists_structured_transcripts_with_timestamps(tmp_path):
