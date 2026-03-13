@@ -10,6 +10,8 @@ Milestone `v1.1` turns Brainpack from a developer-shaped CLI into an onboarding-
 - [x] **Phase 5: Pack Inventory and Shared Pack Management** - Add list/status visibility, origin-aware shared pack installation, and pack lifecycle surfaces users can actually understand
 - [x] **Phase 6: Guided Creation and Chat UX** - Add default entry routing, guided pack creation, and a `chat`-first query experience
 - [x] **Phase 7: Machine-Safe CLI Surface** - Add stable JSON output and machine-oriented command primitives for future OpenClaw/MCP wrappers
+- [ ] **Phase 8: Readiness Contract Recovery** - Re-align scoped readiness truth across doctor, inventory, status, query, and chat so query-ready packs are not misreported as blocked
+- [ ] **Phase 9: Inventory and Entry Guidance Recovery** - Restore the promised human inventory summary and make the no-arg home screen follow the real next action for installed packs
 
 ## Phase Details
 
@@ -52,10 +54,32 @@ Milestone `v1.1` turns Brainpack from a developer-shaped CLI into an onboarding-
 2. Brainpack exposes a machine-safe command surface with deterministic JSON envelopes and non-ambiguous exit codes
 3. Machine-safe commands do not emit human prose or interactive prompts on standard output
 
+### Phase 8: Readiness Contract Recovery
+**Goal**: Re-align shared readiness and lifecycle state so build-only blockers do not incorrectly block query-ready packs across doctor, inventory, status, query, and chat
+**Depends on**: Phase 7
+**Requirements**: RUN-01, PCK-05, QUX-01
+**Gap Closure**: Closes v1.1 audit readiness integration and built-audio query-flow gaps
+**Success Criteria**:
+1. `brainpack doctor` remains the source of operation-scoped readiness truth and shared helpers preserve that distinction for downstream surfaces
+2. Inventory and `brainpack status <pack>` stop promoting build-only blockers into generic blocked state for already-built query-ready packs
+3. `brainpack chat <pack>` gates on the corrected readiness contract so query-ready packs no longer dead-end behind inventory misclassification
+4. The built audio-pack flow stays consistent across `doctor --operation query`, `status`, `query`, and `chat`
+
+### Phase 9: Inventory and Entry Guidance Recovery
+**Goal**: Restore the missing human inventory summary and make the default CLI entry surface use real pack next-action guidance instead of a fixed recommendation
+**Depends on**: Phase 8
+**Requirements**: PCK-04, ONB-01
+**Gap Closure**: Closes v1.1 audit inventory-scan and no-arg onboarding-flow gaps
+**Success Criteria**:
+1. `brainpack list` once again shows the recent build/update summary promised by `PCK-04` while staying compact and scannable
+2. The no-arg `brainpack` home screen uses inventory next-action truth for installed packs instead of always recommending `chat`
+3. Installed-but-unbuilt or blocked packs receive the correct first-step command from the entry screen
+4. Human inventory scan and onboarding flow remain aligned with the same shared inventory summaries
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 4 → 5 → 6 → 7
+Phases execute in numeric order: 4 → 5 → 6 → 7 → 8 → 9
 
 | Phase | Requirements | Status |
 |-------|--------------|--------|
@@ -63,3 +87,5 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 | 5. Pack Inventory and Shared Pack Management | ONB-03, PCK-04, PCK-05 | Completed |
 | 6. Guided Creation and Chat UX | ONB-01, ONB-02, QUX-01 | Completed |
 | 7. Machine-Safe CLI Surface | AUT-01, AUT-02 | Completed |
+| 8. Readiness Contract Recovery | RUN-01, PCK-05, QUX-01 | Pending |
+| 9. Inventory and Entry Guidance Recovery | PCK-04, ONB-01 | Pending |

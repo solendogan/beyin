@@ -7,25 +7,25 @@
 
 ### Onboarding
 
-- [x] **ONB-01**: User can run `brainpack` with no subcommand and receive a useful next-step flow based on local state
+- [ ] **ONB-01**: User can run `brainpack` with no subcommand and receive a useful next-step flow based on local state
 - [x] **ONB-02**: User can create a new pack through guided CLI input without manually authoring `pack.yaml`
 - [x] **ONB-03**: User can add a shared pack from a local path, URL, or marketplace-ready identifier and Brainpack stores its origin for later updates
 
 ### Pack Management
 
-- [x] **PCK-04**: User can list installed packs with status, provider, source count, and last build/update summary
-- [x] **PCK-05**: User can inspect one pack and see lifecycle state, readiness blockers, and recommended next action
+- [ ] **PCK-04**: User can list installed packs with status, provider, source count, and last build/update summary
+- [ ] **PCK-05**: User can inspect one pack and see lifecycle state, readiness blockers, and recommended next action
 - [x] **PCK-06**: Local pack state uses canonical source IDs and stable artifact paths so resumable builds do not collide across sources
 
 ### Query UX
 
-- [x] **QUX-01**: User can query a pack through `brainpack chat <pack>` in either interactive or one-shot form
+- [ ] **QUX-01**: User can query a pack through `brainpack chat <pack>` in either interactive or one-shot form
 - [x] **QUX-02**: Query readiness checks load pack config first and validate only the provider that pack actually uses
 - [x] **QUX-03**: Query/build integration preserves timestamp-capable citations where available and surfaces them in results
 
 ### Runtime & Automation
 
-- [x] **RUN-01**: `brainpack doctor` reports scoped dependency/runtime readiness using the same checks the real commands use
+- [ ] **RUN-01**: `brainpack doctor` reports scoped dependency/runtime readiness using the same checks the real commands use
 - [x] **RUN-02**: Build enforces `yt-dlp` minimum version at build time, scopes `ffmpeg` to audio work, and removes Deno from current user-facing readiness checks for now
 - [ ] **AUT-01**: Human-facing commands support stable `--json` output for list, status, and query/chat results
 - [ ] **AUT-02**: Brainpack exposes a machine-safe command surface with stable JSON envelopes and exit codes for future OpenClaw/MCP wrappers
@@ -62,16 +62,16 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ONB-01 | Phase 6 | Complete |
+| ONB-01 | Phase 9 | Pending |
 | ONB-02 | Phase 6 | Complete |
 | ONB-03 | Phase 5 | Completed |
-| PCK-04 | Phase 5 | Completed |
-| PCK-05 | Phase 5 | Completed |
+| PCK-04 | Phase 9 | Pending |
+| PCK-05 | Phase 8 | Pending |
 | PCK-06 | Phase 4 | Completed |
-| QUX-01 | Phase 6 | Complete |
+| QUX-01 | Phase 8 | Pending |
 | QUX-02 | Phase 4 | Completed |
 | QUX-03 | Phase 4 | Completed |
-| RUN-01 | Phase 4 | Completed |
+| RUN-01 | Phase 8 | Pending |
 | RUN-02 | Phase 4 | Completed |
 | AUT-01 | Phase 7 | Pending |
 | AUT-02 | Phase 7 | Pending |
@@ -83,4 +83,4 @@
 
 ---
 *Requirements defined: 2026-03-13*
-*Last updated: 2026-03-13 after starting milestone v1.1*
+*Last updated: 2026-03-14 after gap-closure phase creation for milestone v1.1*
