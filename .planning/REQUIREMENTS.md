@@ -8,7 +8,7 @@
 ### Onboarding
 
 - [x] **ONB-01**: User can run `brainpack` with no subcommand and receive a useful next-step flow based on local state
-- [ ] **ONB-02**: User can create a new pack through guided CLI input without manually authoring `pack.yaml`
+- [x] **ONB-02**: User can create a new pack through guided CLI input without manually authoring `pack.yaml`
 - [x] **ONB-03**: User can add a shared pack from a local path, URL, or marketplace-ready identifier and Brainpack stores its origin for later updates
 
 ### Pack Management
@@ -63,7 +63,7 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | ONB-01 | Phase 6 | Complete |
-| ONB-02 | Phase 6 | Pending |
+| ONB-02 | Phase 6 | Complete |
 | ONB-03 | Phase 5 | Completed |
 | PCK-04 | Phase 5 | Completed |
 | PCK-05 | Phase 5 | Completed |
