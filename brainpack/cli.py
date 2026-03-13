@@ -33,6 +33,7 @@ from brainpack.inventory import (
     list_packs,
     load_config_from_source_path,
     load_pack_origin,
+    next_action_reason,
     pack_config_hash,
     resolve_pack_origin,
     save_pack_origin,
@@ -96,6 +97,7 @@ def _render_home_screen() -> None:
     typer.echo("Recommended commands:")
     typer.echo(f"  brainpack status {primary}")
     typer.echo(f"  {summaries[0]['next_action']}")
+    typer.echo(f"  why: {next_action_reason(summaries[0])}")
     typer.echo("  brainpack list")
 
 
@@ -261,15 +263,19 @@ def _chunk_transcript_segments(
     return chunks, metadatas
 
 
-def _resolve_pack_dir(pack: str) -> Path:
+def _resolve_pack_dir(
+    pack: str,
+    *,
+    missing_next_step: str = "brainpack add <path-or-url-or-id>",
+    missing_note: Optional[str] = None,
+) -> Path:
     """Resolve pack name to directory under ~/.brainpacks/."""
     pack_dir = _PACKS_DIR / pack
     if not pack_dir.exists():
-        typer.echo(f"Error: Pack '{pack}' not found at {pack_dir}", err=True)
-        typer.echo(
-            f"Create the directory and add a pack.yaml, or run: mkdir -p {pack_dir}",
-            err=True,
-        )
+        typer.echo(f"Error: Pack '{pack}' is not installed.", err=True)
+        typer.echo(f"Next step: {missing_next_step}", err=True)
+        if missing_note:
+            typer.echo(missing_note, err=True)
         raise typer.Exit(code=1)
     return pack_dir
 
@@ -312,6 +318,53 @@ def _load_query_runtime(pack: str) -> tuple[Path, PackConfig, object, object]:
     if provider_error is not None:
         typer.echo(provider_error, err=True)
         raise typer.Exit(code=1)
+    model = load_model(config.embedding_model)
+    collection = get_collection(pack_dir, config.name)
+    return pack_dir, config, model, collection
+
+
+def _render_next_step(command: str, reason: str, *, err: bool = False) -> None:
+    """Print one explicit next command and why it matters."""
+    typer.echo(f"Next step: {command}", err=err)
+    typer.echo(reason, err=err)
+
+
+def _load_chat_runtime(pack: str) -> tuple[Path, PackConfig, object, object]:
+    """Load chat runtime only when the pack exists and is ready for chat."""
+    pack_dir = _resolve_pack_dir(
+        pack,
+        missing_next_step="brainpack create",
+        missing_note="Use `brainpack add <path-or-url-or-id>` if you already have a pack.yaml to import.",
+    )
+    summary = inspect_pack(pack_dir, _pack_readiness_details)
+    status = summary["status"]
+
+    if status == "blocked":
+        typer.echo(f"Pack '{pack}' is blocked before chat can start.", err=True)
+        if summary.get("blockers"):
+            typer.echo(f"Why: {summary['blockers'][0]}", err=True)
+        _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
+        raise typer.Exit(code=1)
+
+    if status == "new":
+        typer.echo(f"Pack '{pack}' is not built yet.", err=True)
+        _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
+        raise typer.Exit(code=1)
+
+    if status == "needs-build":
+        typer.echo(
+            f"Pack '{pack}' changed after its last build and needs a rebuild before chat can continue.",
+            err=True,
+        )
+        _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
+        raise typer.Exit(code=1)
+
+    if status == "error":
+        typer.echo(f"Pack '{pack}' needs a successful build before chat can continue.", err=True)
+        _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
+        raise typer.Exit(code=1)
+
+    config = summary["config"]
     model = load_model(config.embedding_model)
     collection = get_collection(pack_dir, config.name)
     return pack_dir, config, model, collection
@@ -440,8 +493,10 @@ def create() -> None:
     typer.echo("One source family per pack keeps the first run simple.")
     typer.echo(f"Source saved: {config.sources[0].url}")
     typer.echo("")
-    typer.echo(f"Next step: brainpack build {config.name}")
-    typer.echo("Build indexes the source into local expert memory.")
+    _render_next_step(
+        f"brainpack build {config.name}",
+        "Build indexes the source into local expert memory.",
+    )
 
 
 @app.command()
@@ -685,7 +740,7 @@ def chat(
     ),
 ):
     """Chat with a pack in one-shot or interactive mode."""
-    _, config, model, collection = _load_query_runtime(pack)
+    _, config, model, collection = _load_chat_runtime(pack)
 
     def _ask(prompt_text: str, history: list[dict[str, str]] | None = None) -> dict:
         return run_query(

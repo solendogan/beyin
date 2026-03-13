@@ -491,8 +491,21 @@ def test_query_prints_timestamp_ranges_in_sources(tmp_pack_root):
 def test_chat_one_shot_uses_existing_query_path_and_shows_sources(tmp_pack_root):
     """chat one-shot delegates through run_query and prints answer sources."""
     from brainpack.cli import app
-    packs_root, _ = tmp_pack_root
+    from brainpack.inventory import pack_config_hash
+    from brainpack.pack_state import save_state
+
+    packs_root, pack_dir = tmp_pack_root
     runner = CliRunner()
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+            "audio_steps": {},
+            "last_build_at": "2026-03-13T10:00:00+00:00",
+            "last_built_pack_hash": pack_config_hash(pack_dir),
+        },
+    )
 
     mock_result = {
         "answer": "One-shot answer",
@@ -518,8 +531,21 @@ def test_chat_one_shot_uses_existing_query_path_and_shows_sources(tmp_pack_root)
 def test_chat_interactive_keeps_session_memory_only_for_current_process(tmp_pack_root):
     """Interactive chat reuses in-memory history during one run and starts fresh next run."""
     from brainpack.cli import app
-    packs_root, _ = tmp_pack_root
+    from brainpack.inventory import pack_config_hash
+    from brainpack.pack_state import save_state
+
+    packs_root, pack_dir = tmp_pack_root
     runner = CliRunner()
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+            "audio_steps": {},
+            "last_build_at": "2026-03-13T10:00:00+00:00",
+            "last_built_pack_hash": pack_config_hash(pack_dir),
+        },
+    )
 
     first_session_calls = []
 

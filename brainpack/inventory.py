@@ -213,6 +213,22 @@ def inspect_pack(
     return summary
 
 
+def next_action_reason(summary: Dict[str, Any]) -> str:
+    """Explain why the recommended next command is the best next step."""
+    status = summary.get("status")
+    if status == "blocked":
+        return "Doctor explains the blocker before you try chat again."
+    if status == "new":
+        return "Build indexes this pack before Brainpack can answer questions."
+    if status == "needs-build":
+        return "Build refreshes the indexed memory so chat uses the latest pack changes."
+    if status == "error":
+        return "Build retries the pack after an earlier indexing failure."
+    if status == "ready":
+        return "Ask a question against the current indexed memory."
+    return "Re-add or repair the pack definition before continuing."
+
+
 def list_packs(
     packs_dir: Path,
     readiness_fn: Callable[[PackConfig], Dict[str, list[str]]],
