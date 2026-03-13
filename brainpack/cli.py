@@ -304,6 +304,27 @@ def _pack_readiness_details(config) -> dict[str, list[str]]:
     return {"blockers": blockers, "warnings": warnings}
 
 
+def _load_query_runtime(pack: str) -> tuple[Path, PackConfig, object, object]:
+    """Load pack config and retrieval runtime for query/chat surfaces."""
+    pack_dir = _resolve_pack_dir(pack)
+    config = load_config(pack_dir)
+    provider_error = _query_provider_error(config.llm)
+    if provider_error is not None:
+        typer.echo(provider_error, err=True)
+        raise typer.Exit(code=1)
+    model = load_model(config.embedding_model)
+    collection = get_collection(pack_dir, config.name)
+    return pack_dir, config, model, collection
+
+
+def _render_query_output(result: dict) -> None:
+    """Print the LLM answer followed by visible sources."""
+    typer.echo(result["answer"])
+    typer.echo("\nSources:")
+    for i, source in enumerate(result["sources"], start=1):
+        typer.echo(f"  {_source_label(source, index=i)}")
+
+
 def _origin_display(origin: dict) -> str:
     origin_type = origin.get("type")
     origin_source = origin.get("source")
@@ -643,14 +664,7 @@ def query(
     question: str = typer.Argument(..., help="Question to answer"),
 ):
     """Query a pack and receive a cited LLM answer."""
-    pack_dir = _resolve_pack_dir(pack)
-    config = load_config(pack_dir)
-    provider_error = _query_provider_error(config.llm)
-    if provider_error is not None:
-        typer.echo(provider_error, err=True)
-        raise typer.Exit(code=1)
-    model = load_model(config.embedding_model)
-    collection = get_collection(pack_dir, config.name)
+    _, config, model, collection = _load_query_runtime(pack)
 
     result = run_query(
         question=question,
@@ -659,10 +673,47 @@ def query(
         llm_provider=config.llm,
     )
 
-    typer.echo(result["answer"])
-    typer.echo("\nSources:")
-    for i, source in enumerate(result["sources"], start=1):
-        typer.echo(f"  {_source_label(source, index=i)}")
+    _render_query_output(result)
+
+
+@app.command()
+def chat(
+    pack: str = typer.Argument(..., help="Pack name to chat with"),
+    question: Optional[str] = typer.Argument(
+        None,
+        help="Optional one-shot question. Omit for interactive chat.",
+    ),
+):
+    """Chat with a pack in one-shot or interactive mode."""
+    _, config, model, collection = _load_query_runtime(pack)
+
+    def _ask(prompt_text: str, history: list[dict[str, str]] | None = None) -> dict:
+        return run_query(
+            question=prompt_text,
+            collection=collection,
+            model=model,
+            llm_provider=config.llm,
+            history=list(history) if history else None,
+        )
+
+    if question is not None:
+        _render_query_output(_ask(question))
+        return
+
+    typer.echo(f"Chatting with '{pack}'. Type exit or quit to leave.")
+    session_history: list[dict[str, str]] = []
+    while True:
+        prompt_text = typer.prompt("You").strip()
+        if prompt_text.lower() in {"exit", "quit"}:
+            typer.echo("Bye.")
+            return
+        if not prompt_text:
+            continue
+        result = _ask(prompt_text, history=session_history or None)
+        _render_query_output(result)
+        session_history.append(
+            {"question": prompt_text, "answer": result["answer"]}
+        )
 
 
 @app.command(name="check-deps")

@@ -63,12 +63,25 @@ def _source_label(meta: Dict[str, Any], index: int | None = None) -> str:
     return label
 
 
+def _conversation_history_block(history: List[Dict[str, str]] | None) -> str:
+    """Render prior chat turns for session-local conversational context."""
+    if not history:
+        return ""
+
+    lines = ["Conversation so far:"]
+    for turn in history:
+        lines.append(f"User: {turn['question']}")
+        lines.append(f"Assistant: {turn['answer']}")
+    return "\n".join(lines)
+
+
 def run_query(
     question: str,
     collection,
     model: SentenceTransformer,
     llm_provider: str = "ollama",
     llm_model: str = "llama3.2",
+    history: List[Dict[str, str]] | None = None,
 ) -> Dict[str, Any]:
     """
     Run a full RAG query against the collection.
@@ -116,7 +129,9 @@ def run_query(
         "citations matching the [N] labels in the context. If the context does not "
         "contain enough information to answer, say so clearly."
     )
-    user_message = f"Context:\n{context}\n\nQuestion: {question}"
+    history_block = _conversation_history_block(history)
+    history_prefix = f"{history_block}\n\n" if history_block else ""
+    user_message = f"{history_prefix}Context:\n{context}\n\nQuestion: {question}"
 
     # Step 5: Call LLM (QRY-03, QRY-04)
     base_url, api_key = _provider_settings(llm_provider)
