@@ -1,11 +1,12 @@
 """Tests for cli.py — covers CLI-01, CLI-02."""
 import json
 import pytest
+import yaml
 from pathlib import Path
 from typer.testing import CliRunner
 from unittest.mock import patch, MagicMock, call
 
-from brainpack.config import SourceEntry
+from brainpack.config import SourceEntry, load_config
 
 
 @pytest.fixture
@@ -106,6 +107,102 @@ def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
     assert "Commands:" not in home_result.output
     assert "Turn creator content into local expert memory." in home_result.output
     assert home_result.output != help_result.output
+
+
+def test_create_wizard_asks_source_type_first(tmp_path):
+    """create begins by asking the user which source family they want to use."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    prompts = []
+    answers = iter(
+        [
+            "article",
+            "guided-pack",
+            "Guided pack",
+            "https://example.com/article",
+        ]
+    )
+
+    def fake_prompt(text, **kwargs):
+        prompts.append(text)
+        return next(answers)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.typer.prompt", side_effect=fake_prompt):
+        result = runner.invoke(app, ["create"])
+
+    assert result.exit_code == 0
+    assert prompts
+    assert prompts[0] == "Source type (article/youtube/podcast)"
+
+
+def test_create_wizard_writes_canonical_pack_yaml(tmp_path):
+    """create writes canonical pack.yaml into the managed pack directory."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    answers = iter(
+        [
+            "youtube",
+            "creator-pack",
+            "Creator notes",
+            "https://youtube.com/@creator",
+        ]
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.typer.prompt", side_effect=lambda text, **kwargs: next(answers)):
+        result = runner.invoke(app, ["create"])
+
+    assert result.exit_code == 0
+
+    pack_dir = packs_root / "creator-pack"
+    raw = yaml.safe_load((pack_dir / "pack.yaml").read_text())
+    config = load_config(pack_dir)
+
+    assert raw == {
+        "name": "creator-pack",
+        "description": "Creator notes",
+        "llm": "ollama",
+        "embedding_model": "all-MiniLM-L6-v2",
+        "whisper_model": "small",
+        "episode_limit": 20,
+        "sources": [{"url": "https://youtube.com/@creator"}],
+    }
+    assert config.name == "creator-pack"
+    assert config.sources == [SourceEntry(url="https://youtube.com/@creator")]
+
+
+def test_create_wizard_handles_one_source_family_and_ends_with_build_guidance(tmp_path):
+    """create writes one source family per run and points the user to build next."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    answers = iter(
+        [
+            "podcast",
+            "pod-pack",
+            "Podcast notes",
+            "https://example.com/feed.xml",
+        ]
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.typer.prompt", side_effect=lambda text, **kwargs: next(answers)):
+        result = runner.invoke(app, ["create"])
+
+    assert result.exit_code == 0
+
+    config = load_config(packs_root / "pod-pack")
+
+    assert [source.url for source in config.sources] == ["https://example.com/feed.xml"]
+    assert "One source family per pack keeps the first run simple." in result.output
+    assert "Next step: brainpack build pod-pack" in result.output
+    assert "pack.yaml" not in result.output
 
 
 def test_build_exits_0(tmp_pack_root):
