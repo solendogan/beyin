@@ -42,6 +42,23 @@ def _make_config(
     return cfg
 
 
+def _mark_pack_ready(pack_dir: Path, *, last_build_at: str = "2026-03-13T10:00:00+00:00"):
+    """Persist the minimal ready state needed for query/chat command tests."""
+    from brainpack.inventory import pack_config_hash
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+            "audio_steps": {},
+            "last_build_at": last_build_at,
+            "last_built_pack_hash": pack_config_hash(pack_dir),
+        },
+    )
+
+
 def test_help_lists_build_and_query():
     """brainpack --help exits 0 and lists both commands."""
     from brainpack.cli import app
@@ -336,8 +353,9 @@ def test_build_warns_and_marks_failed_when_fetch_returns_none(tmp_pack_root):
 def test_query_exits_0_and_prints_answer(tmp_pack_root):
     """query command exits 0 and prints the answer."""
     from brainpack.cli import app
-    packs_root, _ = tmp_pack_root
+    packs_root, pack_dir = tmp_pack_root
     runner = CliRunner()
+    _mark_pack_ready(pack_dir)
 
     mock_result = {
         "answer": "Test answer here",
@@ -359,8 +377,9 @@ def test_query_exits_0_and_prints_answer(tmp_pack_root):
 def test_query_prints_sources_section(tmp_pack_root):
     """query prints a Sources: section with URL and title per citation."""
     from brainpack.cli import app
-    packs_root, _ = tmp_pack_root
+    packs_root, pack_dir = tmp_pack_root
     runner = CliRunner()
+    _mark_pack_ready(pack_dir)
 
     mock_result = {
         "answer": "An answer.",
@@ -388,8 +407,9 @@ def test_query_prints_sources_section(tmp_pack_root):
 def test_query_openai_pack_does_not_require_ollama(tmp_pack_root):
     """OpenAI packs load config first and skip Ollama-specific readiness checks."""
     from brainpack.cli import app
-    packs_root, _ = tmp_pack_root
+    packs_root, pack_dir = tmp_pack_root
     runner = CliRunner()
+    _mark_pack_ready(pack_dir)
 
     mock_result = {"answer": "OpenAI answer", "sources": []}
     mock_config = _make_config(
@@ -461,8 +481,9 @@ def test_query_anthropic_pack_fails_cleanly(tmp_pack_root):
 def test_query_prints_timestamp_ranges_in_sources(tmp_pack_root):
     """Query output surfaces timestamp ranges when the source metadata has them."""
     from brainpack.cli import app
-    packs_root, _ = tmp_pack_root
+    packs_root, pack_dir = tmp_pack_root
     runner = CliRunner()
+    _mark_pack_ready(pack_dir)
 
     mock_result = {
         "answer": "Timestamped answer",
@@ -653,6 +674,28 @@ def test_chat_blocked_pack_redirects_to_doctor(tmp_pack_root):
     assert result.exit_code == 1
     assert "blocked" in result.output.lower()
     assert "Next step: brainpack doctor test-pack" in result.output
+    mock_load_model.assert_not_called()
+    mock_get_collection.assert_not_called()
+    mock_run_query.assert_not_called()
+
+
+def test_query_unbuilt_pack_redirects_to_build(tmp_pack_root):
+    """Unbuilt-pack query should stop early and point the user at build."""
+    from brainpack.cli import app
+
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli.load_model") as mock_load_model, \
+         patch("brainpack.cli.get_collection") as mock_get_collection, \
+         patch("brainpack.cli.run_query") as mock_run_query:
+        result = runner.invoke(app, ["query", "test-pack", "Can I ask now?"])
+
+    assert result.exit_code == 1
+    assert "not built" in result.output.lower() or "build" in result.output.lower()
+    assert "Next step: brainpack build test-pack" in result.output
     mock_load_model.assert_not_called()
     mock_get_collection.assert_not_called()
     mock_run_query.assert_not_called()

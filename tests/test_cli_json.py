@@ -70,6 +70,19 @@ def _parse_output(result) -> dict:
     return json.loads(result.output)
 
 
+def _assert_single_machine_document(result, *, ok: bool) -> dict:
+    """Assert one parseable JSON document with the shared top-level contract."""
+    assert result.output.count("\n") == 1
+    assert result.output.startswith("{")
+    assert result.output.endswith("}\n")
+    payload = _parse_output(result)
+    expected_keys = {"ok", "meta", "warnings", "data" if ok else "error"}
+    assert set(payload.keys()) == expected_keys
+    assert payload["ok"] is ok
+    assert payload["meta"]["schema"] == CLI_SCHEMA_VERSION
+    return payload
+
+
 def test_success_envelope_uses_shared_schema_and_top_level_shape():
     """Success responses keep one stable top-level envelope."""
     envelope = build_success_envelope(
@@ -438,6 +451,7 @@ def test_query_json_returns_shared_answer_and_sources_payload(tmp_path):
     packs_root = tmp_path / "brainpacks"
     pack_dir = packs_root / "query-pack"
     _write_pack(pack_dir, name="query-pack")
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
 
     mock_result = {
         "answer": "Structured answer",
@@ -722,3 +736,96 @@ def test_chat_json_without_question_is_rejected_as_usage_error(tmp_path):
         },
         "warnings": [],
     }
+
+
+def test_machine_json_commands_emit_one_document_with_stable_top_level_keys(tmp_path):
+    """Covered --json commands emit one machine document with stable success/failure keys."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+
+    ready_pack = packs_root / "ready-pack"
+    _write_pack(ready_pack, name="ready-pack")
+    _mark_pack_built(ready_pack, last_build_at="2026-03-13T10:00:00+00:00")
+
+    status_pack = packs_root / "status-pack"
+    _write_pack(status_pack, name="status-pack", llm="openai")
+    _mark_pack_built(status_pack, last_build_at="2026-03-13T10:00:00+00:00")
+
+    mock_result = {
+        "answer": "Structured answer",
+        "sources": [{"url": "https://example.com/article", "title": "Example Article"}],
+    }
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.run_query",
+        return_value=mock_result,
+    ):
+        list_result = runner.invoke(app, ["list", "--json"])
+        status_result = runner.invoke(app, ["status", "status-pack", "--json"])
+        query_result = runner.invoke(app, ["query", "ready-pack", "What happened?", "--json"])
+        chat_result = runner.invoke(app, ["chat", "ready-pack", "What happened?", "--json"])
+
+    _assert_single_machine_document(list_result, ok=True)
+    _assert_single_machine_document(status_result, ok=True)
+    _assert_single_machine_document(query_result, ok=True)
+    _assert_single_machine_document(chat_result, ok=True)
+
+
+def test_query_json_unbuilt_pack_returns_structured_precondition_error(tmp_path):
+    """query --json rejects unbuilt packs with the shared precondition contract."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "new-pack"
+    _write_pack(pack_dir, name="new-pack", llm="ollama")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli._check_ollama_reachable",
+        return_value=True,
+    ), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ) as mock_load_model, patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ) as mock_get_collection, patch(
+        "brainpack.cli.run_query",
+    ) as mock_run_query:
+        result = runner.invoke(app, ["query", "new-pack", "What happened?", "--json"])
+
+    payload = _assert_single_machine_document(result, ok=False)
+
+    assert result.exit_code == 3
+    assert payload == {
+        "ok": False,
+        "meta": {
+            "schema": CLI_SCHEMA_VERSION,
+            "command": "query",
+            "pack": "new-pack",
+        },
+        "error": {
+            "code": "pack_not_built",
+            "message": "Pack 'new-pack' is not built yet.",
+            "details": {
+                "next_action": "brainpack build new-pack",
+                "reason": "Build indexes this pack before Brainpack can answer questions.",
+            },
+        },
+        "warnings": [],
+    }
+    mock_load_model.assert_not_called()
+    mock_get_collection.assert_not_called()
+    mock_run_query.assert_not_called()
