@@ -19,8 +19,8 @@ def _provider_settings(provider: str) -> Tuple[str, str]:
         return "https://api.openai.com/v1", api_key
     elif provider == "anthropic":
         raise NotImplementedError(
-            "Anthropic provider requires the 'anthropic' package and a different "
-            "API schema — it is not OpenAI-compatible. Defer to Phase 3."
+            "Anthropic is not supported in this phase. "
+            "Update pack.yaml to use llm: ollama or llm: openai."
         )
     raise ValueError(f"Unknown LLM provider: '{provider}'. Valid options: ollama, openai.")
 
@@ -40,6 +40,27 @@ def _cap_context(chunks: List[str], max_tokens: int = 3000) -> List[str]:
         kept.append(chunk)
         total += t
     return kept
+
+
+def _format_timestamp(seconds: float) -> str:
+    """Render a second count as MM:SS or HH:MM:SS."""
+    total = int(seconds)
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def _source_label(meta: Dict[str, Any], index: int | None = None) -> str:
+    """Format a human-readable source label, including timestamps when present."""
+    prefix = f"[{index}] " if index is not None else ""
+    label = f"{prefix}{meta.get('title', 'Unknown')} — {meta.get('url', '')}"
+    start = meta.get("timestamp_start")
+    end = meta.get("timestamp_end")
+    if start is not None and end is not None:
+        label = f"{label} ({_format_timestamp(start)}-{_format_timestamp(end)})"
+    return label
 
 
 def run_query(
@@ -85,9 +106,7 @@ def run_query(
     # Step 4: Build cited context with [N] labels (QRY-02)
     context_parts = []
     for i, (chunk, meta) in enumerate(zip(chunks, metadatas)):
-        source_label = (
-            f"[{i + 1}] {meta.get('title', 'Unknown')} — {meta.get('url', '')}"
-        )
+        source_label = _source_label(meta, index=i + 1)
         context_parts.append(f"{source_label}\n{chunk}")
     context = "\n\n---\n\n".join(context_parts)
 

@@ -5,57 +5,164 @@ from typing import Any, Dict
 
 import typer
 
+from brainpack.source_ids import canonical_source_id
+
+_STATE_SCHEMA_VERSION = 2
+
+
+def _default_state() -> Dict[str, Any]:
+    return {
+        "schema_version": _STATE_SCHEMA_VERSION,
+        "embedding_model": None,
+        "processed": {},
+        "audio_steps": {},
+    }
+
+
+def _extract_url(source: Any) -> str:
+    if isinstance(source, dict):
+        return str(source.get("url", ""))
+    return str(source)
+
+
+def _record_source_id(source: Any, source_id: str | None = None) -> str:
+    return source_id or canonical_source_id(source)
+
+
+def _upgrade_processed(processed: Dict[str, Any]) -> Dict[str, Any]:
+    upgraded: Dict[str, Any] = {}
+    for key, entry in processed.items():
+        record = dict(entry) if isinstance(entry, dict) else {"status": str(entry)}
+        url = record.get("url", key)
+        sid = record.get("source_id") or canonical_source_id(url)
+        record["source_id"] = sid
+        record.setdefault("url", url)
+        upgraded[sid] = record
+    return upgraded
+
+
+def _upgrade_audio_steps(audio_steps: Dict[str, Any]) -> Dict[str, Any]:
+    upgraded: Dict[str, Any] = {}
+    for key, entry in audio_steps.items():
+        record = dict(entry) if isinstance(entry, dict) else {}
+        url = record.get("url", key)
+        sid = record.get("source_id") or canonical_source_id(
+            {"url": url, "guid": record.get("guid"), "id": record.get("id")}
+        )
+        record["source_id"] = sid
+        record.setdefault("url", url)
+        stages = dict(record.get("stages", {}))
+        for step in ("downloaded", "transcribed", "embedded"):
+            if step in record:
+                stages[step] = bool(record.pop(step))
+        record["stages"] = stages
+        upgraded[sid] = record
+    return upgraded
+
+
+def _upgrade_state(state: Dict[str, Any]) -> Dict[str, Any]:
+    upgraded = _default_state()
+    upgraded.update(state)
+    upgraded["schema_version"] = _STATE_SCHEMA_VERSION
+    upgraded["processed"] = _upgrade_processed(upgraded.get("processed", {}))
+    upgraded["audio_steps"] = _upgrade_audio_steps(upgraded.get("audio_steps", {}))
+    return upgraded
+
 
 def load_state(pack_dir: Path) -> Dict[str, Any]:
     """Load meta.json from pack_dir. Returns default state if file does not exist."""
     state_path = pack_dir / "meta.json"
     if state_path.exists():
-        return json.loads(state_path.read_text())
-    return {"embedding_model": None, "processed": {}}
+        return _upgrade_state(json.loads(state_path.read_text()))
+    return _default_state()
 
 
 def save_state(pack_dir: Path, state: Dict[str, Any]) -> None:
     """Write state to meta.json with human-readable indentation."""
     state_path = pack_dir / "meta.json"
-    state_path.write_text(json.dumps(state, indent=2))
+    state_path.write_text(json.dumps(_upgrade_state(state), indent=2))
 
 
-def is_processed(state: Dict[str, Any], url: str) -> bool:
-    """Return True if url has already been successfully processed."""
-    return url in state.get("processed", {})
+def is_processed(state: Dict[str, Any], source: Any, source_id: str | None = None) -> bool:
+    """Return True if the source has already been successfully processed."""
+    sid = _record_source_id(source, source_id=source_id)
+    return sid in state.get("processed", {})
 
 
-def mark_processed(state: Dict[str, Any], url: str, title: str) -> None:
-    """Record url as successfully processed in state (mutates in-place)."""
-    state.setdefault("processed", {})[url] = {"title": title, "status": "done"}
+def mark_processed(
+    state: Dict[str, Any],
+    source: Any,
+    title: str,
+    source_id: str | None = None,
+) -> None:
+    """Record a source as successfully processed in state (mutates in-place)."""
+    sid = _record_source_id(source, source_id=source_id)
+    state.setdefault("processed", {})[sid] = {
+        "source_id": sid,
+        "url": _extract_url(source),
+        "title": title,
+        "status": "done",
+    }
 
 
-def mark_failed(state: Dict[str, Any], url: str, reason: str) -> None:
-    """Record url as failed so it is not retried on every build."""
-    state.setdefault("processed", {})[url] = {"status": "failed", "reason": reason}
+def mark_failed(
+    state: Dict[str, Any],
+    source: Any,
+    reason: str,
+    source_id: str | None = None,
+) -> None:
+    """Record a source as failed so it is not retried on every build."""
+    sid = _record_source_id(source, source_id=source_id)
+    state.setdefault("processed", {})[sid] = {
+        "source_id": sid,
+        "url": _extract_url(source),
+        "status": "failed",
+        "reason": reason,
+    }
 
 
-def get_audio_step(state: Dict[str, Any], url: str) -> Dict[str, Any]:
-    """Return step tracking dict for an episode URL. Returns {} if not tracked yet."""
-    return state.get("audio_steps", {}).get(url, {})
+def get_audio_step(
+    state: Dict[str, Any],
+    source: Any,
+    source_id: str | None = None,
+) -> Dict[str, Any]:
+    """Return step tracking dict for a source. Returns {} if not tracked yet."""
+    sid = _record_source_id(source, source_id=source_id)
+    return state.get("audio_steps", {}).get(sid, {})
 
 
 def mark_audio_step(
-    state: Dict[str, Any], url: str, step: str, title: str = ""
+    state: Dict[str, Any],
+    source: Any,
+    step: str,
+    title: str = "",
+    source_id: str | None = None,
 ) -> None:
     """
-    Mark a specific step as complete for an episode URL.
+    Mark a specific step as complete for a source.
     Steps: 'downloaded', 'transcribed', 'embedded'.
     Mutates state in-place — caller must call save_state().
     """
+    sid = _record_source_id(source, source_id=source_id)
     audio_steps = state.setdefault("audio_steps", {})
-    episode = audio_steps.setdefault(url, {"title": title})
-    episode[step] = True
+    episode = audio_steps.setdefault(
+        sid,
+        {"source_id": sid, "url": _extract_url(source), "stages": {}},
+    )
+    if title:
+        episode["title"] = title
+    episode.setdefault("stages", {})[step] = True
 
 
-def is_audio_step_done(state: Dict[str, Any], url: str, step: str) -> bool:
-    """Return True if the given step is marked complete for the episode URL."""
-    return state.get("audio_steps", {}).get(url, {}).get(step, False)
+def is_audio_step_done(
+    state: Dict[str, Any],
+    source: Any,
+    step: str,
+    source_id: str | None = None,
+) -> bool:
+    """Return True if the given step is marked complete for the source."""
+    sid = _record_source_id(source, source_id=source_id)
+    return state.get("audio_steps", {}).get(sid, {}).get("stages", {}).get(step, False)
 
 
 def check_model_provenance(

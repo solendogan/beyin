@@ -21,8 +21,11 @@ def test_provider_routing():
 
 def test_anthropic_raises():
     from brainpack.query import _provider_settings
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotImplementedError) as exc_info:
         _provider_settings("anthropic")
+    assert "not supported" in str(exc_info.value)
+    assert "ollama" in str(exc_info.value)
+    assert "openai" in str(exc_info.value)
 
 
 def test_context_cap():
@@ -100,3 +103,32 @@ def test_answer_is_nonempty(tmp_pack_dir, mock_model):
         result = run_query("test question", col, mock_model)
     assert isinstance(result["answer"], str)
     assert len(result["answer"]) > 0
+
+
+def test_timestamp_source_labels_include_ranges():
+    """Timestamp-capable source labels include a human-readable range."""
+    from brainpack.query import _source_label
+
+    label = _source_label(
+        {
+            "title": "Episode",
+            "url": "https://youtu.be/vid123",
+            "timestamp_start": 12.0,
+            "timestamp_end": 34.0,
+        }
+    )
+
+    assert "00:12-00:34" in label
+
+
+def test_source_labels_fall_back_cleanly_without_timestamps():
+    """Sources without timing data should not invent timestamp output."""
+    from brainpack.query import _source_label
+
+    label = _source_label(
+        {"title": "Article", "url": "https://example.com/article"}
+    )
+
+    assert "00:" not in label
+    assert "Article" in label
+    assert "https://example.com/article" in label

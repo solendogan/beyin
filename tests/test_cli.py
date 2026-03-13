@@ -1,4 +1,5 @@
 """Tests for cli.py — covers CLI-01, CLI-02."""
+import json
 import pytest
 from pathlib import Path
 from typer.testing import CliRunner
@@ -24,13 +25,19 @@ def tmp_pack_root(tmp_path):
     return packs_root, pack_dir
 
 
-def _make_config(sources, embedding_model="all-MiniLM-L6-v2", episode_limit=20):
+def _make_config(
+    sources,
+    embedding_model="all-MiniLM-L6-v2",
+    episode_limit=20,
+    llm="ollama",
+):
     """Helper to build a mock PackConfig with SourceEntry objects."""
     cfg = MagicMock()
     cfg.sources = sources
     cfg.embedding_model = embedding_model
     cfg.name = "test-pack"
     cfg.episode_limit = episode_limit
+    cfg.llm = llm
     return cfg
 
 
@@ -221,6 +228,250 @@ def test_query_prints_sources_section(tmp_pack_root):
     assert "https://example.com/a" in result.output
     assert "Article B" in result.output
     assert "https://example.com/b" in result.output
+
+
+def test_query_openai_pack_does_not_require_ollama(tmp_pack_root):
+    """OpenAI packs load config first and skip Ollama-specific readiness checks."""
+    from brainpack.cli import app
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+
+    mock_result = {"answer": "OpenAI answer", "sources": []}
+    mock_config = _make_config(
+        [SourceEntry(url="https://example.com/article")],
+        llm="openai",
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=False), \
+         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.run_query", return_value=mock_result) as mock_run_query:
+
+        result = runner.invoke(app, ["query", "test-pack", "What is this?"])
+
+    assert result.exit_code == 0, f"Exit code {result.exit_code}, output: {result.output}"
+    mock_run_query.assert_called_once()
+    assert "OpenAI answer" in result.output
+
+
+def test_query_openai_without_api_key_fails_cleanly(tmp_pack_root):
+    """OpenAI packs fail on OpenAI readiness, not on unrelated Ollama checks."""
+    from brainpack.cli import app
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+
+    mock_config = _make_config(
+        [SourceEntry(url="https://example.com/article")],
+        llm="openai",
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=False), \
+         patch.dict("os.environ", {}, clear=True):
+
+        result = runner.invoke(app, ["query", "test-pack", "What is this?"])
+
+    assert result.exit_code == 1
+    assert "OPENAI_API_KEY" in result.output
+    assert "Ollama" not in result.output
+
+
+def test_query_anthropic_pack_fails_cleanly(tmp_pack_root):
+    """Anthropic packs exit cleanly as unsupported in this phase."""
+    from brainpack.cli import app
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+
+    mock_config = _make_config(
+        [SourceEntry(url="https://example.com/article")],
+        llm="anthropic",
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.run_query") as mock_run_query:
+
+        result = runner.invoke(app, ["query", "test-pack", "What is this?"])
+
+    assert result.exit_code == 1
+    assert "Anthropic" in result.output
+    assert "not supported" in result.output
+    mock_run_query.assert_not_called()
+
+
+def test_query_prints_timestamp_ranges_in_sources(tmp_pack_root):
+    """Query output surfaces timestamp ranges when the source metadata has them."""
+    from brainpack.cli import app
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+
+    mock_result = {
+        "answer": "Timestamped answer",
+        "sources": [
+            {
+                "url": "https://youtu.be/vid123",
+                "title": "Episode 123",
+                "timestamp_start": 12.0,
+                "timestamp_end": 34.0,
+            }
+        ],
+    }
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.run_query", return_value=mock_result):
+
+        result = runner.invoke(app, ["query", "test-pack", "What happened?"])
+
+    assert result.exit_code == 0
+    assert "00:12-00:34" in result.output
+
+
+def test_build_persists_structured_transcripts_with_timestamps(tmp_path):
+    """Fresh audio transcripts persist structured segments and chunk timestamp metadata."""
+    from brainpack.cli import app
+    from brainpack.source_ids import artifact_stem, canonical_source_id
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\n"
+        "description: Test\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - https://www.youtube.com/@channel\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    runner = CliRunner()
+    audio_dir = pack_dir / "audio"
+    audio_dir.mkdir()
+    transcripts_dir = pack_dir / "transcripts"
+    transcripts_dir.mkdir()
+
+    episode = {"id": "vid123", "title": "Test Video", "url": "https://youtu.be/vid123"}
+    source_id = canonical_source_id(episode, source_type="youtube")
+    audio_path = audio_dir / f"{artifact_stem(source_id)}.m4a"
+    audio_path.write_bytes(b"x" * 20_000)
+    segments = [
+        {"start": 0.0, "end": 5.0, "text": "Hello world."},
+        {"start": 5.0, "end": 9.0, "text": "Second segment."},
+    ]
+    captured = {}
+    mock_config = _make_config([SourceEntry(url="https://www.youtube.com/@channel")])
+
+    def _capture_embed(_collection, _model, chunks, metadatas, url):
+        captured["chunks"] = chunks
+        captured["metadatas"] = metadatas
+        captured["url"] = url
+        return len(chunks)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=[episode]), \
+         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
+         patch("brainpack.cli._youtube_build_issue", return_value=None), \
+         patch("brainpack.cli.download_audio", return_value=audio_path), \
+         patch("brainpack.cli.transcribe_audio", return_value=segments), \
+         patch("brainpack.cli.embed_and_store", side_effect=_capture_embed):
+
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    transcript_path = transcripts_dir / f"{artifact_stem(source_id)}.json"
+    assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
+    assert transcript_path.exists()
+    assert json.loads(transcript_path.read_text()) == segments
+    assert captured["metadatas"][0]["timestamp_start"] == 0.0
+    assert captured["metadatas"][0]["timestamp_end"] == 9.0
+    assert captured["url"] == source_id
+
+
+def test_build_resume_reuses_structured_transcript_segments(tmp_path):
+    """Resumed audio builds reload structured transcripts instead of collapsing timestamps."""
+    from brainpack.cli import app
+    from brainpack.pack_state import save_state
+    from brainpack.source_ids import artifact_stem, canonical_source_id
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\n"
+        "description: Test\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - https://www.youtube.com/@channel\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    runner = CliRunner()
+    audio_dir = pack_dir / "audio"
+    audio_dir.mkdir()
+    transcripts_dir = pack_dir / "transcripts"
+    transcripts_dir.mkdir()
+
+    episode = {"id": "vid123", "title": "Test Video", "url": "https://youtu.be/vid123"}
+    source_id = canonical_source_id(episode, source_type="youtube")
+    audio_path = audio_dir / f"{artifact_stem(source_id)}.m4a"
+    audio_path.write_bytes(b"x" * 20_000)
+    transcript_path = transcripts_dir / f"{artifact_stem(source_id)}.json"
+    segments = [
+        {"start": 12.0, "end": 15.0, "text": "Recovered segment one."},
+        {"start": 15.0, "end": 21.0, "text": "Recovered segment two."},
+    ]
+    transcript_path.write_text(json.dumps(segments))
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+            "audio_steps": {
+                source_id: {
+                    "source_id": source_id,
+                    "url": episode["url"],
+                    "title": episode["title"],
+                    "stages": {"downloaded": True, "transcribed": True},
+                }
+            },
+        },
+    )
+
+    captured = {}
+    mock_config = _make_config([SourceEntry(url="https://www.youtube.com/@channel")])
+
+    def _capture_embed(_collection, _model, chunks, metadatas, url):
+        captured["chunks"] = chunks
+        captured["metadatas"] = metadatas
+        captured["url"] = url
+        return len(chunks)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=[episode]), \
+         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
+         patch("brainpack.cli._youtube_build_issue", return_value=None), \
+         patch("brainpack.cli.download_audio") as mock_download, \
+         patch("brainpack.cli.transcribe_audio") as mock_transcribe, \
+         patch("brainpack.cli.embed_and_store", side_effect=_capture_embed):
+
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
+    mock_download.assert_not_called()
+    mock_transcribe.assert_not_called()
+    assert captured["metadatas"][0]["timestamp_start"] == 12.0
+    assert captured["metadatas"][0]["timestamp_end"] == 21.0
 
 
 class TestAudioBuild:
@@ -491,8 +742,11 @@ def test_query_ollama_not_running():
     """query exits 1 with 'Ollama is not running' and 'ollama serve' when port closed but binary present."""
     from brainpack.cli import app
     runner = CliRunner()
+    mock_config = _make_config([SourceEntry(url="https://example.com/article")], llm="ollama")
 
-    with patch("brainpack.cli._check_ollama_reachable", return_value=False), \
+    with patch("brainpack.cli._resolve_pack_dir", return_value=Path("/tmp/mypack")), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=False), \
          patch("brainpack.cli.shutil") as mock_shutil:
         mock_shutil.which.return_value = "/usr/local/bin/ollama"
         result = runner.invoke(app, ["query", "mypack", "test"])
@@ -507,8 +761,11 @@ def test_query_ollama_not_installed():
     """query exits 1 with install guide when ollama binary absent."""
     from brainpack.cli import app
     runner = CliRunner()
+    mock_config = _make_config([SourceEntry(url="https://example.com/article")], llm="ollama")
 
-    with patch("brainpack.cli._check_ollama_reachable", return_value=False), \
+    with patch("brainpack.cli._resolve_pack_dir", return_value=Path("/tmp/mypack")), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=False), \
          patch("brainpack.cli.shutil") as mock_shutil:
         mock_shutil.which.return_value = None
         result = runner.invoke(app, ["query", "mypack", "test"])
@@ -525,7 +782,7 @@ def test_query_ollama_not_installed():
 # ---------------------------------------------------------------------------
 
 def test_check_deps_all_pass():
-    """check-deps exits 0 when ffmpeg, deno, and yt-dlp all pass."""
+    """check-deps exits 0 when ffmpeg and yt-dlp both pass."""
     from brainpack.cli import app
     runner = CliRunner()
 
@@ -533,15 +790,14 @@ def test_check_deps_all_pass():
          patch("brainpack.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
-            "deno": "/usr/bin/deno",
         }.get(name)
         result = runner.invoke(app, ["check-deps"])
 
     assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
 
 
-def test_check_deps_deno_missing():
-    """check-deps exits 1 with Deno install instruction when deno not found."""
+def test_check_deps_does_not_surface_deno():
+    """check-deps no longer reports Deno as a user-facing dependency."""
     from brainpack.cli import app
     runner = CliRunner()
 
@@ -549,15 +805,12 @@ def test_check_deps_deno_missing():
          patch("brainpack.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
-            "deno": None,
         }.get(name)
         result = runner.invoke(app, ["check-deps"])
 
-    assert result.exit_code == 1
-    output = result.output
-    assert "Deno" in output or "deno" in output
-    # Should include install instruction
-    assert "curl" in output or "brew install deno" in output
+    assert result.exit_code == 0
+    assert "Deno" not in result.output
+    assert "deno" not in result.output.lower()
 
 
 def test_check_deps_ytdlp_outdated():
@@ -569,7 +822,6 @@ def test_check_deps_ytdlp_outdated():
          patch("brainpack.cli._ytdlp_version_ok", return_value=(False, "2025.10.01")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
-            "deno": "/usr/bin/deno",
         }.get(name)
         result = runner.invoke(app, ["check-deps"])
 
@@ -588,7 +840,6 @@ def test_check_deps_ffmpeg_missing():
          patch("brainpack.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": None,
-            "deno": "/usr/bin/deno",
         }.get(name)
         result = runner.invoke(app, ["check-deps"])
 
@@ -597,6 +848,330 @@ def test_check_deps_ffmpeg_missing():
     assert "ffmpeg" in output.lower()
     # Should include install instruction
     assert "brew install ffmpeg" in output or "ffmpeg.org" in output
+
+
+def test_doctor_reports_openai_query_readiness(tmp_pack_root):
+    """doctor reports query readiness using the selected pack provider."""
+    from brainpack.cli import app
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+    mock_config = _make_config(
+        [SourceEntry(url="https://example.com/article")],
+        llm="openai",
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
+        result = runner.invoke(app, ["doctor", "test-pack", "--operation", "query"])
+
+    assert result.exit_code == 0
+    assert "Query readiness: ready" in result.output
+    assert "provider=openai" in result.output
+    assert "Ollama" not in result.output
+
+
+def test_build_youtube_source_fails_when_ytdlp_unavailable(tmp_path):
+    """YouTube builds fail cleanly when yt-dlp is missing or outdated."""
+    from brainpack.cli import app
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\n"
+        "description: Test\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - https://www.youtube.com/@channel\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    runner = CliRunner()
+    mock_config = _make_config([SourceEntry(url="https://www.youtube.com/@channel")])
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli._youtube_build_issue", return_value="yt-dlp is not installed. Install or upgrade with: pip install --upgrade yt-dlp"), \
+         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
+         patch("brainpack.cli.list_youtube_episodes") as mock_list:
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    assert result.exit_code == 1
+    assert "yt-dlp is not installed" in result.output
+    mock_list.assert_not_called()
+
+
+def test_build_mixed_pack_keeps_articles_when_audio_is_blocked(tmp_path):
+    """Mixed packs still build article sources when audio work is blocked by ffmpeg."""
+    from brainpack.cli import app
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\n"
+        "description: Test\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+        "  - https://www.youtube.com/@channel\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    runner = CliRunner()
+    mock_config = _make_config(
+        [
+            SourceEntry(url="https://example.com/article"),
+            SourceEntry(url="https://www.youtube.com/@channel"),
+        ]
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.detect_source_type", side_effect=["article", "youtube"]), \
+         patch("brainpack.cli.fetch_article", return_value=("Article text", "Article Title")), \
+         patch("brainpack.cli.chunk_text", return_value=["chunk one"]), \
+         patch("brainpack.cli.embed_and_store", return_value=1), \
+         patch("brainpack.cli._check_ffmpeg_available", return_value=False), \
+         patch("brainpack.cli._youtube_build_issue", return_value=None):
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    assert result.exit_code == 1
+    assert "[embed] Article Title" in result.output
+    assert "blocked" in result.output
+    assert "ffmpeg" in result.output.lower()
+
+
+def test_inventory_summary_marks_new_pack_and_next_build(tmp_path):
+    """Inventory summary marks unbuilt packs as new with a build next step."""
+    from brainpack.inventory import summarize_pack
+
+    pack_dir = tmp_path / "test-pack"
+    pack_dir.mkdir()
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\n"
+        "description: Test\n"
+        "llm: openai\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+    )
+
+    summary = summarize_pack(pack_dir, lambda _cfg: {"blockers": [], "warnings": []})
+
+    assert summary["status"] == "new"
+    assert summary["next_action"] == "brainpack build test-pack"
+
+
+def test_inventory_summary_marks_blocked_pack(tmp_path):
+    """Inventory summary promotes readiness blockers into the main blocked status."""
+    from brainpack.inventory import summarize_pack
+
+    pack_dir = tmp_path / "test-pack"
+    pack_dir.mkdir()
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\n"
+        "description: Test\n"
+        "llm: openai\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+    )
+
+    summary = summarize_pack(
+        pack_dir,
+        lambda _cfg: {"blockers": ["Error: OPENAI_API_KEY is not set."], "warnings": []},
+    )
+
+    assert summary["status"] == "blocked"
+    assert summary["next_action"] == "brainpack doctor test-pack"
+
+
+def test_add_local_pack_stores_origin_metadata(tmp_path):
+    """add stores local-file provenance next to the installed pack."""
+    from brainpack.cli import app
+    from brainpack.inventory import load_pack_origin
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    yaml_file = tmp_path / "pack.yaml"
+    yaml_file.write_text(
+        "name: added-pack\n"
+        "description: test\n"
+        "llm: openai\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
+        result = runner.invoke(app, ["add", str(yaml_file)])
+
+    assert result.exit_code == 0, result.output
+    origin = load_pack_origin(packs_root / "added-pack")
+    assert origin["type"] == "file"
+    assert origin["source"] == str(yaml_file.resolve())
+
+
+def test_add_marketplace_id_uses_local_mapping(tmp_path):
+    """add resolves marketplace-style ids through the local mapping file."""
+    from brainpack.cli import app
+    from brainpack.inventory import load_pack_origin, marketplace_mapping_path
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    packs_root.mkdir()
+    yaml_file = tmp_path / "remote-pack.yaml"
+    yaml_file.write_text(
+        "name: mapped-pack\n"
+        "description: mapped\n"
+        "llm: openai\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+    )
+    marketplace_mapping_path(packs_root).write_text(
+        json.dumps({"starter-pack": str(yaml_file.resolve())})
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
+        result = runner.invoke(app, ["add", "starter-pack"])
+
+    assert result.exit_code == 0, result.output
+    origin = load_pack_origin(packs_root / "mapped-pack")
+    assert origin["type"] == "id"
+    assert origin["source"] == "starter-pack"
+
+
+def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
+    """list shows compact alphabetical rows with status, provider, source count, and summary."""
+    from brainpack.cli import app
+    from brainpack.inventory import save_pack_origin, pack_config_hash
+    from brainpack.pack_state import save_state
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    a_pack = packs_root / "a-pack"
+    b_pack = packs_root / "b-pack"
+    a_pack.mkdir(parents=True)
+    b_pack.mkdir(parents=True)
+    for pack_dir, name in ((b_pack, "b-pack"), (a_pack, "a-pack")):
+        (pack_dir / "pack.yaml").write_text(
+            f"name: {name}\n"
+            "description: test\n"
+            "llm: openai\n"
+            "sources:\n"
+            "  - https://example.com/article\n"
+            "  - https://example.com/other\n"
+        )
+        save_state(
+            pack_dir,
+            {
+                "embedding_model": "all-MiniLM-L6-v2",
+                "processed": {},
+                "audio_steps": {},
+                "last_build_at": "2026-03-13T10:00:00+00:00",
+                "last_built_pack_hash": pack_config_hash(pack_dir),
+            },
+        )
+        save_pack_origin(
+            pack_dir,
+            {"type": "file", "source": f"/tmp/{name}.yaml", "added_at": "2026-03-13T09:00:00+00:00"},
+        )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
+        result = runner.invoke(app, ["list"])
+
+    assert result.exit_code == 0, result.output
+    rows = [line for line in result.output.splitlines() if line.startswith(("a-pack", "b-pack"))]
+    assert rows[0].startswith("a-pack")
+    assert rows[1].startswith("b-pack")
+    assert "  2  " in rows[0]
+    assert "build 2026-03-13" in rows[0]
+
+
+def test_status_shows_origin_blockers_and_next_action(tmp_path):
+    """status prints lifecycle detail, origin, blockers, and one next command."""
+    from brainpack.cli import app
+    from brainpack.inventory import save_pack_origin
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "blocked-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: blocked-pack\n"
+        "description: test\n"
+        "llm: openai\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+    )
+    save_pack_origin(
+        pack_dir,
+        {"type": "file", "source": "/tmp/blocked-pack.yaml", "added_at": "2026-03-13T09:00:00+00:00"},
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch.dict("os.environ", {}, clear=True):
+        result = runner.invoke(app, ["status", "blocked-pack"])
+
+    assert result.exit_code == 0, result.output
+    assert "Status: blocked" in result.output
+    assert "Origin: file: /tmp/blocked-pack.yaml" in result.output
+    assert "OPENAI_API_KEY" in result.output
+    assert "Next: brainpack doctor blocked-pack" in result.output
+
+
+def test_update_uses_remembered_origin_and_shows_change_summary(tmp_path):
+    """update reloads pack.yaml from the remembered origin and prints config changes."""
+    from brainpack.cli import app
+    from brainpack.inventory import load_pack_origin
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "sync-pack"
+    pack_dir.mkdir(parents=True)
+    source_yaml = tmp_path / "sync-pack.yaml"
+    source_yaml.write_text(
+        "name: sync-pack\n"
+        "description: test\n"
+        "llm: openai\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+    )
+    (pack_dir / "pack.yaml").write_text(source_yaml.read_text())
+    (pack_dir / "origin.json").write_text(
+        json.dumps(
+            {
+                "type": "file",
+                "source": str(source_yaml.resolve()),
+                "resolved": str(source_yaml.resolve()),
+                "added_at": "2026-03-13T09:00:00+00:00",
+            }
+        )
+    )
+    source_yaml.write_text(
+        "name: sync-pack\n"
+        "description: test\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+        "  - https://example.com/new\n"
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.build") as mock_build:
+        result = runner.invoke(app, ["update", "sync-pack"])
+
+    assert result.exit_code == 0, result.output
+    assert "Updating pack definition:" in result.output
+    assert "provider: openai -> ollama" in result.output
+    assert "sources: 1 -> 2" in result.output
+    mock_build.assert_called_once()
+    origin = load_pack_origin(pack_dir)
+    assert "provider: openai -> ollama" in origin["last_update_summary"]
 
 
 # ---------------------------------------------------------------------------
