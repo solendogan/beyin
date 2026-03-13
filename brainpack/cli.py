@@ -377,7 +377,8 @@ def _chat_machine_error(
         "reason": next_action_reason(summary),
     }
     if summary.get("blockers"):
-        details["blocker"] = summary["blockers"][0]
+        blocker_message, _ = _split_machine_message(summary["blockers"][0])
+        details["blocker"] = blocker_message
     raise MachineExit.precondition(
         code,
         message,
@@ -468,6 +469,32 @@ def _render_query_output(result: dict) -> None:
         typer.echo(f"  {_source_label(source, index=i)}")
 
 
+def _serialize_query_source(source: dict) -> dict:
+    """Return the stable public source payload for retrieval JSON output."""
+    payload = {
+        "url": source.get("url", ""),
+        "title": source.get("title", "Unknown"),
+    }
+    if source.get("timestamp_start") is not None:
+        payload["timestamp_start"] = source["timestamp_start"]
+    if source.get("timestamp_end") is not None:
+        payload["timestamp_end"] = source["timestamp_end"]
+    return payload
+
+
+def _build_retrieval_payload(question: str, result: dict, *, machine: bool = False) -> dict:
+    """Normalize retrieval results for shared query/chat payload construction."""
+    if not machine:
+        sources = result["sources"]
+    else:
+        sources = [_serialize_query_source(source) for source in result["sources"]]
+    return {
+        "question": question,
+        "answer": result["answer"],
+        "sources": sources,
+    }
+
+
 def _query_payload(
     pack: str,
     question: str,
@@ -485,11 +512,7 @@ def _query_payload(
         model=model,
         llm_provider=config.llm,
     )
-    return {
-        "question": question,
-        "answer": result["answer"],
-        "sources": result["sources"],
-    }
+    return _build_retrieval_payload(question, result, machine=machine)
 
 
 def _chat_one_shot_payload(
@@ -509,11 +532,7 @@ def _chat_one_shot_payload(
         model=model,
         llm_provider=config.llm,
     )
-    return {
-        "question": question,
-        "answer": result["answer"],
-        "sources": result["sources"],
-    }
+    return _build_retrieval_payload(question, result, machine=machine)
 
 
 def _list_payload(
@@ -879,8 +898,21 @@ def build(
 def query(
     pack: str = typer.Argument(..., help="Pack name to query"),
     question: str = typer.Argument(..., help="Question to answer"),
+    json_mode: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit machine-safe JSON output.",
+    ),
 ):
     """Query a pack and receive a cited LLM answer."""
+    if json_mode:
+        raise typer.Exit(
+            code=run_machine_command(
+                command="query",
+                pack=pack,
+                action=lambda: _query_payload(pack, question, machine=True),
+            )
+        )
     _render_query_output(_query_payload(pack, question))
 
 
@@ -891,8 +923,31 @@ def chat(
         None,
         help="Optional one-shot question. Omit for interactive chat.",
     ),
+    json_mode: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit machine-safe JSON output.",
+    ),
 ):
     """Chat with a pack in one-shot or interactive mode."""
+    if json_mode:
+        def _machine_action() -> dict:
+            if question is None:
+                raise MachineExit.usage(
+                    "interactive_json_not_supported",
+                    "brainpack chat --json requires a question argument",
+                    pack=pack,
+                )
+            return _chat_one_shot_payload(pack, question, machine=True)
+
+        raise typer.Exit(
+            code=run_machine_command(
+                command="chat",
+                pack=pack,
+                action=_machine_action,
+            )
+        )
+
     if question is not None:
         _render_query_output(_chat_one_shot_payload(pack, question))
         return

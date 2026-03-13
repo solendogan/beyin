@@ -452,7 +452,11 @@ def test_query_json_returns_shared_answer_and_sources_payload(tmp_path):
         ],
     }
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ), patch(
         "brainpack.cli.load_model",
         return_value=object(),
     ), patch(
@@ -511,7 +515,11 @@ def test_chat_one_shot_json_matches_query_payload_shape(tmp_path):
         ],
     }
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ), patch(
         "brainpack.cli.load_model",
         return_value=object(),
     ), patch(
@@ -596,7 +604,7 @@ def test_query_json_missing_api_key_returns_structured_runtime_blocked_error(tmp
         result = runner.invoke(app, ["query", "openai-pack", "What happened?", "--json"])
 
     assert result.exit_code == 3
-    assert "Set it in your shell environment" not in result.output
+    assert "Next step:" not in result.output
     assert _parse_output(result) == {
         "ok": False,
         "meta": {
@@ -627,7 +635,7 @@ def test_chat_json_missing_pack_returns_structured_error_without_prose_leakage(t
 
     assert result.exit_code == 3
     assert "Next step:" not in result.output
-    assert "Use `brainpack add" not in result.output
+    assert "Chatting with" not in result.output
     assert _parse_output(result) == {
         "ok": False,
         "meta": {
