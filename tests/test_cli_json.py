@@ -269,6 +269,7 @@ def test_list_json_serializes_multiple_packs_without_internal_objects(tmp_path):
             {
                 "name": "alpha-pack",
                 "status": "ready",
+                "type": "text",
                 "provider": "openai",
                 "source_count": 2,
                 "recent_summary": "build 2026-03-13 / upd 2026-03-12",
@@ -283,6 +284,7 @@ def test_list_json_serializes_multiple_packs_without_internal_objects(tmp_path):
             {
                 "name": "beta-pack",
                 "status": "ready",
+                "type": "text",
                 "provider": "openai",
                 "source_count": 1,
                 "recent_summary": "build 2026-03-10 / upd 2026-03-09",
@@ -345,6 +347,7 @@ def test_status_json_returns_ready_pack_detail_without_internal_objects(tmp_path
             "pack": {
                 "name": "ready-pack",
                 "status": "ready",
+                "type": "text",
                 "provider": "openai",
                 "source_count": 2,
                 "recent_summary": "build 2026-03-13 / upd 2026-03-12",
@@ -399,6 +402,7 @@ def test_status_json_returns_blocked_pack_detail_without_internal_objects(tmp_pa
     }
     assert detail["name"] == "blocked-pack"
     assert detail["status"] == "blocked"
+    assert detail["type"] == "text"
     assert detail["provider"] == "openai"
     assert detail["source_count"] == 1
     assert detail["recent_summary"] == "upd 2026-03-11"

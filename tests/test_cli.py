@@ -69,6 +69,19 @@ def test_help_lists_build_and_query():
     assert "query" in result.output
 
 
+def test_help_command_alias_shows_top_level_help():
+    """brainpack help should behave like the friendly alias users expect."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["help"])
+
+    assert result.exit_code == 0
+    assert "Usage:" in result.output
+    assert "create" in result.output
+    assert "list" in result.output
+
+
 def test_no_arg_home_screen_guides_first_run(tmp_path):
     """No-arg invocation on a fresh machine shows a guided home screen."""
     from brainpack.cli import app
@@ -80,8 +93,10 @@ def test_no_arg_home_screen_guides_first_run(tmp_path):
         result = runner.invoke(app, [])
 
     assert result.exit_code == 0
-    assert "Brainpack" in result.output
+    assert "Brainpack v0.1.0" in result.output
     assert "No packs installed yet." in result.output
+    assert "Main commands" in result.output
+    assert "brainpack create" in result.output
     assert "brainpack add <path-or-url-or-id>" in result.output
     assert "brainpack build <pack>" in result.output
 
@@ -98,11 +113,15 @@ def test_no_arg_home_screen_orients_around_existing_inventory(tmp_pack_root):
         result = runner.invoke(app, [])
 
     assert result.exit_code == 0
-    assert "Installed packs:" in result.output
+    assert "Installed packs" in result.output
+    assert "Pack" in result.output
+    assert "Status" in result.output
+    assert "Type" in result.output
     assert "test-pack" in result.output
-    assert "new" in result.output
-    assert "brainpack build test-pack" in result.output
+    assert "needs-build" in result.output
+    assert "brainpack chat test-pack \"question\"" in result.output
     assert "brainpack status test-pack" in result.output
+    assert "next:" not in result.output
 
 
 def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
@@ -122,7 +141,7 @@ def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
     assert help_result.exit_code == 0
     assert "Usage:" not in home_result.output
     assert "Commands:" not in home_result.output
-    assert "Turn creator content into local expert memory." in home_result.output
+    assert "Turn your favorite content into local queryable packs." in home_result.output
     assert home_result.output != help_result.output
 
 
@@ -402,6 +421,44 @@ def test_query_prints_sources_section(tmp_pack_root):
     assert "https://example.com/a" in result.output
     assert "Article B" in result.output
     assert "https://example.com/b" in result.output
+
+
+def test_query_compacts_duplicate_video_sources_by_title_and_url(tmp_pack_root):
+    """query groups repeated timestamp hits from the same video into one compact source entry."""
+    from brainpack.cli import app
+    packs_root, pack_dir = tmp_pack_root
+    runner = CliRunner()
+    _mark_pack_ready(pack_dir)
+
+    mock_result = {
+        "answer": "An answer.",
+        "sources": [
+            {
+                "url": "https://youtu.be/vid123",
+                "title": "Episode 123",
+                "timestamp_start": 12.0,
+                "timestamp_end": 34.0,
+            },
+            {
+                "url": "https://youtu.be/vid123",
+                "title": "Episode 123",
+                "timestamp_start": 40.0,
+                "timestamp_end": 52.0,
+            },
+        ],
+    }
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.run_query", return_value=mock_result):
+        result = runner.invoke(app, ["query", "test-pack", "What?"])
+
+    assert result.exit_code == 0
+    assert result.output.count("Episode 123") == 1
+    assert "00:12-00:34" in result.output
+    assert "00:40-00:52" in result.output
 
 
 def test_query_openai_pack_does_not_require_ollama(tmp_pack_root):
@@ -1413,7 +1470,7 @@ def test_add_marketplace_id_uses_local_mapping(tmp_path):
 
 
 def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
-    """list shows compact alphabetical rows with status, provider, source count, and summary."""
+    """list shows compact alphabetical rows with status, type, source count, and provider."""
     from brainpack.cli import app
     from brainpack.inventory import save_pack_origin, pack_config_hash
     from brainpack.pack_state import save_state
@@ -1456,8 +1513,11 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
     rows = [line for line in result.output.splitlines() if line.startswith(("a-pack", "b-pack"))]
     assert rows[0].startswith("a-pack")
     assert rows[1].startswith("b-pack")
-    assert "  2  " in rows[0]
-    assert "build 2026-03-13" in rows[0]
+    assert "text" in rows[0]
+    assert "openai" in rows[0]
+    assert "      2" in rows[0]
+    assert "Summary" not in result.output
+    assert "Src" not in result.output
 
 
 def test_status_shows_origin_blockers_and_next_action(tmp_path):
@@ -1487,6 +1547,7 @@ def test_status_shows_origin_blockers_and_next_action(tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "Status: blocked" in result.output
+    assert "Type: text" in result.output
     assert "Origin: file: /tmp/blocked-pack.yaml" in result.output
     assert "OPENAI_API_KEY" in result.output
     assert "Next: brainpack doctor blocked-pack" in result.output

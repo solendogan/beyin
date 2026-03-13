@@ -10,6 +10,7 @@ from typing import Optional
 
 import typer
 
+from brainpack import __version__
 from brainpack.chunker import chunk_text, count_tokens
 from brainpack.config import (
     PackConfig,
@@ -18,16 +19,6 @@ from brainpack.config import (
     load_config,
     write_config,
 )
-from brainpack.downloader import (
-    check_deno_available,
-    detect_source_type,
-    download_audio,
-    download_podcast_audio,
-    list_podcast_episodes,
-    list_youtube_episodes,
-)
-from brainpack.embedder import load_model
-from brainpack.ingester import fetch_article
 from brainpack.inventory import (
     inspect_pack,
     list_packs,
@@ -54,10 +45,7 @@ from brainpack.pack_state import (
     save_state,
 )
 from brainpack.machine_output import MachineExit, run_machine_command
-from brainpack.query import _source_label, run_query
 from brainpack.source_ids import artifact_stem, canonical_source_id
-from brainpack.store import embed_and_store, get_collection
-from brainpack.transcriber import transcribe_audio
 
 app = typer.Typer(help="Brainpack — turn creator content into queryable expert memory")
 
@@ -65,43 +53,139 @@ _PACKS_DIR = Path.home() / ".brainpacks"
 _YTDLP_MIN_VERSION = "2025.11.12"
 
 
+def detect_source_type(url: str) -> str:
+    from brainpack.downloader import detect_source_type as _detect_source_type
+
+    return _detect_source_type(url)
+
+
+def check_deno_available() -> bool:
+    from brainpack.downloader import check_deno_available as _check_deno_available
+
+    return _check_deno_available()
+
+
+def download_audio(*args, **kwargs):
+    from brainpack.downloader import download_audio as _download_audio
+
+    return _download_audio(*args, **kwargs)
+
+
+def download_podcast_audio(*args, **kwargs):
+    from brainpack.downloader import download_podcast_audio as _download_podcast_audio
+
+    return _download_podcast_audio(*args, **kwargs)
+
+
+def list_podcast_episodes(*args, **kwargs):
+    from brainpack.downloader import list_podcast_episodes as _list_podcast_episodes
+
+    return _list_podcast_episodes(*args, **kwargs)
+
+
+def list_youtube_episodes(*args, **kwargs):
+    from brainpack.downloader import list_youtube_episodes as _list_youtube_episodes
+
+    return _list_youtube_episodes(*args, **kwargs)
+
+
+def load_model(*args, **kwargs):
+    from brainpack.embedder import load_model as _load_model
+
+    return _load_model(*args, **kwargs)
+
+
+def fetch_article(*args, **kwargs):
+    from brainpack.ingester import fetch_article as _fetch_article
+
+    return _fetch_article(*args, **kwargs)
+
+
+def run_query(*args, **kwargs):
+    from brainpack.query import run_query as _run_query
+
+    return _run_query(*args, **kwargs)
+
+
+def _source_label(*args, **kwargs):
+    from brainpack.query import _source_label as _query_source_label
+
+    return _query_source_label(*args, **kwargs)
+
+
+def get_collection(*args, **kwargs):
+    from brainpack.store import get_collection as _get_collection
+
+    return _get_collection(*args, **kwargs)
+
+
+def embed_and_store(*args, **kwargs):
+    from brainpack.store import embed_and_store as _embed_and_store
+
+    return _embed_and_store(*args, **kwargs)
+
+
+def transcribe_audio(*args, **kwargs):
+    from brainpack.transcriber import transcribe_audio as _transcribe_audio
+
+    return _transcribe_audio(*args, **kwargs)
+
+
+def _display_status(status: str) -> str:
+    """Map internal lifecycle states to cleaner human-facing labels."""
+    if status == "new":
+        return "needs-build"
+    return status
+
+
+def _render_pack_table(summaries: list[dict], *, limit: Optional[int] = None) -> None:
+    """Render the compact pack table used by list and the home screen."""
+    rows = summaries if limit is None else summaries[:limit]
+    typer.echo(f"{'Pack':<20} {'Status':<12} {'Type':<8} {'Sources':>7}  {'Provider':<8}")
+    typer.echo(f"{'-'*20} {'-'*12} {'-'*8} {'-'*7}  {'-'*8}")
+    for summary in rows:
+        typer.echo(
+            f"{summary['name'][:20]:<20} "
+            f"{_display_status(summary['status']):<12} "
+            f"{summary['type']:<8} "
+            f"{summary['source_count']:>7}  "
+            f"{summary['provider']:<8}"
+        )
+
+
 def _render_home_screen() -> None:
     """Show the default introductory screen for no-argument CLI entry."""
     summaries = list_packs(_PACKS_DIR, _pack_readiness_details)
 
-    typer.echo("Brainpack")
-    typer.echo("Turn creator content into local expert memory.")
+    typer.echo(f"Brainpack v{__version__}")
+    typer.echo("Turn your favorite content into local queryable packs.")
     typer.echo("")
 
     if not summaries:
         typer.echo("No packs installed yet.")
-        typer.echo("Start with one clear next step:")
-        typer.echo("  brainpack add <path-or-url-or-id>")
         typer.echo("")
-        typer.echo("Then continue with:")
+        typer.echo("Main commands")
+        typer.echo("  brainpack create")
+        typer.echo("  brainpack add <path-or-url-or-id>")
         typer.echo("  brainpack build <pack>")
         typer.echo("  brainpack list")
-        typer.echo("  brainpack --help")
+        typer.echo("  brainpack help")
         return
 
-    typer.echo("Installed packs:")
-    for summary in summaries[:5]:
-        typer.echo(
-            f"  - {summary['name']} [{summary['status']}] "
-            f"{summary['source_count']} src, {summary['provider']}"
-        )
-        typer.echo(f"    next: {summary['next_action']}")
+    typer.echo("Installed packs")
+    _render_pack_table(summaries, limit=6)
 
-    if len(summaries) > 5:
-        typer.echo(f"  ...and {len(summaries) - 5} more")
+    if len(summaries) > 6:
+        typer.echo(f"...and {len(summaries) - 6} more")
 
-    primary = summaries[0]["name"]
     typer.echo("")
-    typer.echo("Recommended commands:")
+    typer.echo("Main commands")
+    primary = summaries[0]["name"]
+    typer.echo(f'  brainpack chat {primary} "question"')
     typer.echo(f"  brainpack status {primary}")
-    typer.echo(f"  {summaries[0]['next_action']}")
-    typer.echo(f"  why: {next_action_reason(summaries[0])}")
     typer.echo("  brainpack list")
+    typer.echo("  brainpack create")
+    typer.echo("  brainpack help")
 
 
 @app.callback(invoke_without_command=True)
@@ -109,6 +193,14 @@ def main(ctx: typer.Context) -> None:
     """Render the home screen when Brainpack runs without a subcommand."""
     if ctx.invoked_subcommand is None:
         _render_home_screen()
+
+
+@app.command()
+def help(
+    ctx: typer.Context,
+) -> None:
+    """Show top-level help using a friendly command alias."""
+    typer.echo(ctx.find_root().get_help())
 
 
 def _check_ollama_reachable() -> bool:
@@ -485,9 +577,44 @@ def _load_chat_runtime(
 def _render_query_output(result: dict) -> None:
     """Print the LLM answer followed by visible sources."""
     typer.echo(result["answer"])
+    if not result["sources"]:
+        return
+
     typer.echo("\nSources:")
-    for i, source in enumerate(result["sources"], start=1):
-        typer.echo(f"  {_source_label(source, index=i)}")
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    ordered_keys: list[tuple[str, str]] = []
+    for source in result["sources"]:
+        key = (source.get("title", "Unknown"), source.get("url", ""))
+        if key not in grouped:
+            ordered_keys.append(key)
+            grouped[key] = []
+        grouped[key].append(source)
+
+    for index, key in enumerate(ordered_keys, start=1):
+        title, url = key
+        typer.echo(f"  [{index}] {title} — {url}")
+        ranges: list[str] = []
+        seen_ranges: set[str] = set()
+        for source in grouped[key]:
+            start = source.get("timestamp_start")
+            end = source.get("timestamp_end")
+            if start is None or end is None:
+                continue
+            label = _source_label(
+                {
+                    "title": title,
+                    "url": url,
+                    "timestamp_start": start,
+                    "timestamp_end": end,
+                }
+            )
+            range_label = label.split("(")[-1].rstrip(")")
+            if range_label in seen_ranges:
+                continue
+            seen_ranges.add(range_label)
+            ranges.append(range_label)
+        for range_label in ranges:
+            typer.echo(f"      - {range_label}")
 
 
 def _serialize_query_source(source: dict) -> dict:
@@ -593,7 +720,7 @@ def _create_source_prompt(source_type: str) -> str:
     if source_type == "article":
         return "Article URL"
     if source_type == "youtube":
-        return "YouTube channel or playlist URL"
+        return "YouTube video or playlist URL"
     return "Podcast feed URL"
 
 
@@ -1114,16 +1241,7 @@ def list_command(
         typer.echo("No packs installed.")
         return
 
-    typer.echo(f"{'Pack':<20} {'Status':<12} {'Provider':<10} {'Src':>3}  Summary")
-    typer.echo(f"{'-'*20} {'-'*12} {'-'*10} {'-'*3}  {'-'*20}")
-    for summary in summaries:
-        typer.echo(
-            f"{summary['name'][:20]:<20} "
-            f"{summary['status']:<12} "
-            f"{summary['provider']:<10} "
-            f"{summary['source_count']:>3}  "
-            f"{summary['recent_summary']}"
-        )
+    _render_pack_table(summaries)
 
 
 @app.command(name="status")
@@ -1148,7 +1266,8 @@ def status_command(
     summary = _status_payload(pack)["pack"]
 
     typer.echo(f"Pack: {summary['name']}")
-    typer.echo(f"Status: {summary['status']}")
+    typer.echo(f"Status: {_display_status(summary['status'])}")
+    typer.echo(f"Type: {summary['type']}")
     typer.echo(f"Provider: {summary['provider']}")
     typer.echo(f"Sources: {summary['source_count']}")
     typer.echo(f"Origin: {_origin_display(summary.get('origin', {}))}")

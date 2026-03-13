@@ -166,3 +166,30 @@ def test_run_query_includes_chat_history_in_prompt(tmp_pack_dir, mock_model):
     assert "User: First question" in user_message
     assert "Assistant: First answer" in user_message
     assert "Question: Second question" in user_message
+
+
+def test_run_query_prefers_answering_in_turkish_for_turkish_questions(tmp_pack_dir, mock_model):
+    """run_query instructs the model to stay in Turkish when the question/context are Turkish."""
+    from brainpack.store import get_collection, embed_and_store
+    from brainpack.query import run_query
+
+    col = get_collection(tmp_pack_dir, "test-pack")
+    embed_and_store(
+        col,
+        mock_model,
+        ["Bu metin Turkce icerik ve tesvik detaylari icerir."],
+        [{"url": "https://example.com/a", "title": "Turkce Makale"}],
+        url="https://example.com/a",
+    )
+
+    with patch("brainpack.query.OpenAI") as MockOpenAI:
+        client = MockOpenAI.return_value
+        choice = MagicMock()
+        choice.message.content = "Turkce cevap."
+        client.chat.completions.create.return_value = MagicMock(choices=[choice])
+
+        run_query("Bu desteklerde neler degisti?", col, mock_model)
+
+    system_message = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "Answer in Turkish" in system_message
+    assert "Do not switch to English" in system_message

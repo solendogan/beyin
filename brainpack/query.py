@@ -2,12 +2,18 @@
 import os
 from typing import Any, Dict, List, Tuple
 
-import numpy as np
-import tiktoken
-from openai import OpenAI
-from sentence_transformers import SentenceTransformer
+_ENC = None
+OpenAI = None
 
-_enc = tiktoken.get_encoding("cl100k_base")
+
+def _encoding():
+    """Load the tokenizer lazily to keep non-query CLI startup fast."""
+    global _ENC
+    if _ENC is None:
+        import tiktoken
+
+        _ENC = tiktoken.get_encoding("cl100k_base")
+    return _ENC
 
 
 def _provider_settings(provider: str) -> Tuple[str, str]:
@@ -34,7 +40,7 @@ def _cap_context(chunks: List[str], max_tokens: int = 3000) -> List[str]:
     """
     kept, total = [], 0
     for chunk in chunks:
-        t = len(_enc.encode(chunk))
+        t = len(_encoding().encode(chunk))
         if total + t > max_tokens:
             break
         kept.append(chunk)
@@ -75,10 +81,36 @@ def _conversation_history_block(history: List[Dict[str, str]] | None) -> str:
     return "\n".join(lines)
 
 
+def _response_language_instruction(question: str, context: str) -> str:
+    """Tell the model to answer in the user's language and avoid mixed-language drift."""
+    lowered = f"{question}\n{context}".lower()
+    turkish_hints = (
+        " bir ",
+        " ve ",
+        " için ",
+        " teşvik",
+        "ş",
+        "ğ",
+        "ı",
+        "ç",
+        "ö",
+        "ü",
+    )
+    if any(hint in lowered for hint in turkish_hints):
+        return (
+            "Answer in Turkish. Do not switch to English unless the user explicitly asks. "
+            "Keep company names, product names, and proper nouns unchanged."
+        )
+    return (
+        "Answer in the same language as the user's question. "
+        "Do not mix languages unless the user explicitly asks for translation."
+    )
+
+
 def run_query(
     question: str,
     collection,
-    model: SentenceTransformer,
+    model,
     llm_provider: str = "ollama",
     llm_model: str = "llama3.2",
     history: List[Dict[str, str]] | None = None,
@@ -100,6 +132,8 @@ def run_query(
     # Step 1: Embed question (single vector)
     # model.encode on a single string may return 1D or 2D depending on backend.
     # Flatten to 1D then convert to list for ChromaDB compatibility.
+    import numpy as np
+
     q_vec_raw = model.encode(question)
     q_embedding = np.array(q_vec_raw).flatten().tolist()
 
@@ -125,9 +159,10 @@ def run_query(
 
     system_prompt = (
         "You are a helpful assistant. Answer the user's question using ONLY the "
-        "provided context. After your answer, list the sources you used as numbered "
-        "citations matching the [N] labels in the context. If the context does not "
-        "contain enough information to answer, say so clearly."
+        "provided context. "
+        f"{_response_language_instruction(question, context)} "
+        "Do not invent facts beyond the context. If the context does not contain "
+        "enough information to answer, say so clearly."
     )
     history_block = _conversation_history_block(history)
     history_prefix = f"{history_block}\n\n" if history_block else ""
@@ -135,6 +170,12 @@ def run_query(
 
     # Step 5: Call LLM (QRY-03, QRY-04)
     base_url, api_key = _provider_settings(llm_provider)
+    global OpenAI
+    if OpenAI is None:
+        from openai import OpenAI as _OpenAI
+
+        OpenAI = _OpenAI
+
     client = OpenAI(base_url=base_url, api_key=api_key)
     response = client.chat.completions.create(
         model=llm_model,

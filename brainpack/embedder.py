@@ -1,20 +1,45 @@
 """Sentence embedding using sentence-transformers."""
-from typing import List
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+from typing import Any, List
 
-from sentence_transformers import SentenceTransformer
+SentenceTransformer = None
 
 
-def load_model(model_name: str = "all-MiniLM-L6-v2") -> SentenceTransformer:
+def load_model(model_name: str = "all-MiniLM-L6-v2") -> Any:
     """
     Load a SentenceTransformer model by name.
 
     First call downloads model weights (~90 MB for all-MiniLM-L6-v2) to
     ~/.cache/huggingface/. Subsequent calls use cached weights.
     """
-    return SentenceTransformer(model_name)
+    global SentenceTransformer
+    if SentenceTransformer is None:
+        from sentence_transformers import SentenceTransformer as _SentenceTransformer
+
+        SentenceTransformer = _SentenceTransformer
+
+    # Keep model-loading chatter out of the user-facing CLI.
+    try:
+        from huggingface_hub.utils import logging as hf_logging
+
+        hf_logging.set_verbosity_error()
+    except Exception:
+        pass
+
+    try:
+        from transformers.utils import logging as transformers_logging
+
+        transformers_logging.set_verbosity_error()
+    except Exception:
+        pass
+
+    sink = StringIO()
+    with redirect_stdout(sink), redirect_stderr(sink):
+        return SentenceTransformer(model_name)
 
 
-def embed_chunks(model: SentenceTransformer, chunks: List[str]) -> List[List[float]]:
+def embed_chunks(model: Any, chunks: List[str]) -> List[List[float]]:
     """
     Embed a list of text chunks using the provided model.
 

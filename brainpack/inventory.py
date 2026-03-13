@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from brainpack.config import PackConfig, _load_config_from_file, load_config
+from brainpack.downloader import detect_source_type
 from brainpack.pack_state import load_state
 
 _ORIGIN_FILE = "origin.json"
@@ -132,6 +133,19 @@ def _public_origin(origin: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
+def _source_family(config: PackConfig) -> str:
+    """Return the compact user-facing source family label for a pack."""
+    families = {
+        "text" if detect_source_type(source.url) == "article" else detect_source_type(source.url)
+        for source in config.sources
+    }
+    if not families:
+        return "text"
+    if len(families) == 1:
+        return next(iter(families))
+    return "mixed"
+
+
 def _public_messages(values: Any) -> list[str]:
     """Normalize human-oriented multi-line messages into stable public strings."""
     messages: list[str] = []
@@ -205,6 +219,7 @@ def summarize_pack(
     return {
         "name": config.name,
         "status": status,
+        "type": _source_family(config),
         "provider": config.llm,
         "source_count": len(config.sources),
         "recent_summary": recent_summary,
@@ -237,6 +252,7 @@ def serialize_pack_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "name": summary["name"],
         "status": summary["status"],
+        "type": summary["type"],
         "provider": summary["provider"],
         "source_count": summary["source_count"],
         "recent_summary": summary["recent_summary"],
