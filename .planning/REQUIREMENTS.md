@@ -19,7 +19,7 @@
 
 ### Query UX
 
-- [ ] **QUX-01**: User can query a pack through `brainpack chat <pack>` in either interactive or one-shot form
+- [x] **QUX-01**: User can query a pack through `brainpack chat <pack>` in either interactive or one-shot form
 - [x] **QUX-02**: Query readiness checks load pack config first and validate only the provider that pack actually uses
 - [x] **QUX-03**: Query/build integration preserves timestamp-capable citations where available and surfaces them in results
 
@@ -68,7 +68,7 @@
 | PCK-04 | Phase 5 | Completed |
 | PCK-05 | Phase 5 | Completed |
 | PCK-06 | Phase 4 | Completed |
-| QUX-01 | Phase 6 | Pending |
+| QUX-01 | Phase 6 | Complete |
 | QUX-02 | Phase 4 | Completed |
 | QUX-03 | Phase 4 | Completed |
 | RUN-01 | Phase 4 | Completed |
