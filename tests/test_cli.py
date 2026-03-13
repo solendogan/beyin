@@ -58,7 +58,8 @@ def test_no_arg_home_screen_guides_first_run(tmp_path):
     runner = CliRunner()
     packs_root = tmp_path / "brainpacks"
 
-    result = runner.invoke(app, [])
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, [])
 
     assert result.exit_code == 0
     assert "Brainpack" in result.output

@@ -55,6 +55,51 @@ _PACKS_DIR = Path.home() / ".brainpacks"
 _YTDLP_MIN_VERSION = "2025.11.12"
 
 
+def _render_home_screen() -> None:
+    """Show the default introductory screen for no-argument CLI entry."""
+    summaries = list_packs(_PACKS_DIR, _pack_readiness_details)
+
+    typer.echo("Brainpack")
+    typer.echo("Turn creator content into local expert memory.")
+    typer.echo("")
+
+    if not summaries:
+        typer.echo("No packs installed yet.")
+        typer.echo("Start with one clear next step:")
+        typer.echo("  brainpack add <path-or-url-or-id>")
+        typer.echo("")
+        typer.echo("Then continue with:")
+        typer.echo("  brainpack build <pack>")
+        typer.echo("  brainpack list")
+        typer.echo("  brainpack --help")
+        return
+
+    typer.echo("Installed packs:")
+    for summary in summaries[:5]:
+        typer.echo(
+            f"  - {summary['name']} [{summary['status']}] "
+            f"{summary['source_count']} src, {summary['provider']}"
+        )
+        typer.echo(f"    next: {summary['next_action']}")
+
+    if len(summaries) > 5:
+        typer.echo(f"  ...and {len(summaries) - 5} more")
+
+    primary = summaries[0]["name"]
+    typer.echo("")
+    typer.echo("Recommended commands:")
+    typer.echo(f"  brainpack status {primary}")
+    typer.echo(f"  {summaries[0]['next_action']}")
+    typer.echo("  brainpack list")
+
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """Render the home screen when Brainpack runs without a subcommand."""
+    if ctx.invoked_subcommand is None:
+        _render_home_screen()
+
+
 def _check_ollama_reachable() -> bool:
     """Return True if Ollama is listening on localhost:11434, False otherwise."""
     import socket as _socket
