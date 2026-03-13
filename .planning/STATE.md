@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: milestone
 current_phase: 7
 current_phase_name: machine-safe-cli-surface
-current_plan: 3
-status: in_progress
-stopped_at: Completed 07-03-PLAN.md
-last_updated: "2026-03-13T14:10:23Z"
+current_plan: 4
+status: completed
+stopped_at: Completed 07-04-PLAN.md
+last_updated: "2026-03-13T14:24:23Z"
 last_activity: 2026-03-13
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 16
-  completed_plans: 15
-  percent: 94
+  completed_plans: 16
+  percent: 100
 ---
 
 # Project State
@@ -24,33 +24,33 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** Turn trusted creators' content into searchable expert memory — so users stop re-watching and start querying.
-**Current focus:** Phase 7 execution — machine-safe CLI surface
+**Current focus:** Phase 7 complete — machine-safe CLI surface is ready for milestone follow-up
 
 ## Current Position
 
 Phase: 7 (4 of 4 planned in v1.1)
-Plan: 3 of 4 in current phase
-Status: Phase in progress — 07-03 completed
-Last activity: 2026-03-13 — Completed 07-03 retrieval JSON surfaces
+Plan: 4 of 4 in current phase
+Status: Phase complete — 07-04 completed
+Last activity: 2026-03-13 — Completed 07-04 contract hardening and regression coverage
 
 **Current Phase:** 7
 **Current Phase Name:** machine-safe-cli-surface
 **Total Phases:** 4
-**Current Plan:** 3
+**Current Plan:** 4
 **Total Plans in Phase:** 4
-**Status:** Phase in progress — 07-03 completed
+**Status:** Phase complete — 07-04 completed
 **Last Activity:** 2026-03-13
-**Last Activity Description:** Completed 07-03 retrieval JSON surfaces
-**Progress:** [█████████▍] 94%
+**Last Activity Description:** Completed 07-04 contract hardening and regression coverage
+**Progress:** [██████████] 100%
 
-Progress: [█████████▍] 94%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 5 min
-- Total execution time: 15 min
+- Total plans completed: 4
+- Average duration: 7 min
+- Total execution time: 29 min
 
 **By Phase:**
 
@@ -59,8 +59,8 @@ Progress: [█████████▍] 94%
 | 01-core-text-pipeline | 1 | 15 min | 15 min |
 
 **Recent Trend:**
-- Last 5 plans: 3, 7, 4, 5, 6 min
-- Trend: Stable short execution cycles
+- Last 5 plans: 4, 5, 4, 6, 14 min
+- Trend: Short execution cycles with a longer final hardening pass
 
 *Updated after each plan completion*
 | Phase 01-core-text-pipeline P03 | 8 | 1 tasks | 2 files |
@@ -83,6 +83,7 @@ Progress: [█████████▍] 94%
 | Phase 07-machine-safe-cli-surface P01 | 5 | 2 tasks | 3 files |
 | Phase 07-machine-safe-cli-surface P02 | 4 | 2 tasks | 3 files |
 | Phase 07-machine-safe-cli-surface P03 | 6 | 2 tasks | 2 files |
+| Phase 07-machine-safe-cli-surface P04 | 14 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -150,6 +151,8 @@ Recent decisions affecting current work:
 - [Phase 07-machine-safe-cli-surface]: `query --json` and one-shot `chat --json` now share the same retrieval payload shape: `question`, `answer`, and explicit source objects with optional timestamp ranges.
 - [Phase 07-machine-safe-cli-surface]: `chat --json` without a question is a usage error envelope, not the start of an interactive machine session.
 - [Phase 07-machine-safe-cli-surface]: Chat readiness errors now normalize blocker details to one stable first-line string before entering the machine contract.
+- [Phase 07-machine-safe-cli-surface]: Query now blocks new, stale, and failed packs before runtime loading while preserving the existing `runtime_blocked` provider-error contract for machine callers.
+- [Phase 07-machine-safe-cli-surface]: Final contract regressions pin one parseable JSON document plus stable top-level success/error keys across `list`, `status`, `query`, and one-shot `chat`.
 
 ### Pending Todos
 
@@ -163,6 +166,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-13T14:10:23Z
-Stopped at: Completed 07-03-PLAN.md
+Last session: 2026-03-13T14:24:23Z
+Stopped at: Completed 07-04-PLAN.md
 Resume file: None
