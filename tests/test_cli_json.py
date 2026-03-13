@@ -428,3 +428,289 @@ def test_status_json_missing_pack_returns_structured_error_and_exact_exit_code(t
         },
         "warnings": [],
     }
+
+
+def test_query_json_returns_shared_answer_and_sources_payload(tmp_path):
+    """query --json returns the shared retrieval payload inside the machine envelope."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "query-pack"
+    _write_pack(pack_dir, name="query-pack")
+
+    mock_result = {
+        "answer": "Structured answer",
+        "sources": [
+            {
+                "url": "https://example.com/article",
+                "title": "Example Article",
+                "timestamp_start": 12.0,
+                "timestamp_end": 34.0,
+                "source_id": "internal-source-id",
+            }
+        ],
+    }
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.run_query",
+        return_value=mock_result,
+    ):
+        result = runner.invoke(app, ["query", "query-pack", "What happened?", "--json"])
+
+    assert result.exit_code == 0
+    assert _parse_output(result) == {
+        "ok": True,
+        "meta": {
+            "schema": CLI_SCHEMA_VERSION,
+            "command": "query",
+            "pack": "query-pack",
+        },
+        "data": {
+            "question": "What happened?",
+            "answer": "Structured answer",
+            "sources": [
+                {
+                    "url": "https://example.com/article",
+                    "title": "Example Article",
+                    "timestamp_start": 12.0,
+                    "timestamp_end": 34.0,
+                }
+            ],
+        },
+        "warnings": [],
+    }
+
+
+def test_chat_one_shot_json_matches_query_payload_shape(tmp_path):
+    """chat --json one-shot returns the same retrieval payload shape as query --json."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "chat-pack"
+    _write_pack(pack_dir, name="chat-pack")
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+
+    mock_result = {
+        "answer": "Structured answer",
+        "sources": [
+            {
+                "url": "https://example.com/article",
+                "title": "Example Article",
+                "timestamp_start": 12.0,
+                "timestamp_end": 34.0,
+                "source_id": "internal-source-id",
+            }
+        ],
+    }
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.run_query",
+        return_value=mock_result,
+    ):
+        result = runner.invoke(
+            app,
+            ["chat", "chat-pack", "What happened?", "--json"],
+        )
+
+    payload = _parse_output(result)
+
+    assert result.exit_code == 0
+    assert payload["ok"] is True
+    assert payload["meta"] == {
+        "schema": CLI_SCHEMA_VERSION,
+        "command": "chat",
+        "pack": "chat-pack",
+    }
+    assert payload["data"] == {
+        "question": "What happened?",
+        "answer": "Structured answer",
+        "sources": [
+            {
+                "url": "https://example.com/article",
+                "title": "Example Article",
+                "timestamp_start": 12.0,
+                "timestamp_end": 34.0,
+            }
+        ],
+    }
+
+
+def test_query_json_missing_pack_returns_structured_error_without_prose_leakage(tmp_path):
+    """query --json missing-pack failures stay inside the shared error envelope."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["query", "missing-pack", "What happened?", "--json"])
+
+    assert result.exit_code == 3
+    assert result.output.strip().startswith("{")
+    assert "Next step:" not in result.output
+    assert "Sources:" not in result.output
+    assert _parse_output(result) == {
+        "ok": False,
+        "meta": {
+            "schema": CLI_SCHEMA_VERSION,
+            "command": "query",
+            "pack": "missing-pack",
+        },
+        "error": {
+            "code": "pack_not_found",
+            "message": "Pack 'missing-pack' is not installed.",
+            "details": {"next_action": "brainpack add <path-or-url-or-id>"},
+        },
+        "warnings": [],
+    }
+
+
+def test_query_json_missing_api_key_returns_structured_runtime_blocked_error(tmp_path):
+    """query --json turns provider readiness failures into structured JSON."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "openai-pack"
+    _write_pack(pack_dir, name="openai-pack", llm="openai")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {},
+        clear=True,
+    ):
+        result = runner.invoke(app, ["query", "openai-pack", "What happened?", "--json"])
+
+    assert result.exit_code == 3
+    assert "Set it in your shell environment" not in result.output
+    assert _parse_output(result) == {
+        "ok": False,
+        "meta": {
+            "schema": CLI_SCHEMA_VERSION,
+            "command": "query",
+            "pack": "openai-pack",
+        },
+        "error": {
+            "code": "runtime_blocked",
+            "message": "Error: OPENAI_API_KEY is not set.",
+            "details": {
+                "hint": "Set it in your shell environment, then retry.",
+            },
+        },
+        "warnings": [],
+    }
+
+
+def test_chat_json_missing_pack_returns_structured_error_without_prose_leakage(tmp_path):
+    """chat --json missing-pack failures stay machine-safe and skip onboarding prose."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["chat", "missing-pack", "What happened?", "--json"])
+
+    assert result.exit_code == 3
+    assert "Next step:" not in result.output
+    assert "Use `brainpack add" not in result.output
+    assert _parse_output(result) == {
+        "ok": False,
+        "meta": {
+            "schema": CLI_SCHEMA_VERSION,
+            "command": "chat",
+            "pack": "missing-pack",
+        },
+        "error": {
+            "code": "pack_not_found",
+            "message": "Pack 'missing-pack' is not installed.",
+            "details": {
+                "next_action": "brainpack create",
+                "note": "Use `brainpack add <path-or-url-or-id>` if you already have a pack.yaml to import.",
+            },
+        },
+        "warnings": [],
+    }
+
+
+def test_chat_json_blocked_pack_returns_structured_error_and_exact_exit_code(tmp_path):
+    """chat --json returns a structured blocked-pack error instead of human guidance prose."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "blocked-pack"
+    _write_pack(pack_dir, name="blocked-pack", llm="openai")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {},
+        clear=True,
+    ):
+        result = runner.invoke(app, ["chat", "blocked-pack", "What happened?", "--json"])
+
+    assert result.exit_code == 3
+    assert "Next step:" not in result.output
+    assert "Why:" not in result.output
+    assert _parse_output(result) == {
+        "ok": False,
+        "meta": {
+            "schema": CLI_SCHEMA_VERSION,
+            "command": "chat",
+            "pack": "blocked-pack",
+        },
+        "error": {
+            "code": "pack_blocked",
+            "message": "Pack 'blocked-pack' is blocked before chat can start.",
+            "details": {
+                "next_action": "brainpack doctor blocked-pack",
+                "reason": "Doctor explains the blocker before you try chat again.",
+                "blocker": "Error: OPENAI_API_KEY is not set.",
+            },
+        },
+        "warnings": [],
+    }
+
+
+def test_chat_json_without_question_is_rejected_as_usage_error(tmp_path):
+    """interactive chat --json is rejected explicitly instead of starting a session."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "chat-pack"
+    _write_pack(pack_dir, name="chat-pack")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["chat", "chat-pack", "--json"])
+
+    assert result.exit_code == 2
+    assert "Chatting with" not in result.output
+    assert _parse_output(result) == {
+        "ok": False,
+        "meta": {
+            "schema": CLI_SCHEMA_VERSION,
+            "command": "chat",
+            "pack": "chat-pack",
+        },
+        "error": {
+            "code": "interactive_json_not_supported",
+            "message": "brainpack chat --json requires a question argument",
+            "details": {},
+        },
+        "warnings": [],
+    }
