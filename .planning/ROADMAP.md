@@ -8,7 +8,7 @@ Milestone `v1.1` turns Brainpack from a developer-shaped CLI into an onboarding-
 
 - [x] **Phase 4: Runtime Correctness Foundation** - Fix provider-aware preflight, canonical source IDs, timestamp citation integrity, and build-time dependency enforcement
 - [x] **Phase 5: Pack Inventory and Shared Pack Management** - Add list/status visibility, origin-aware shared pack installation, and pack lifecycle surfaces users can actually understand
-- [ ] **Phase 6: Guided Creation and Chat UX** - Add default entry routing, guided pack creation, and a `chat`-first query experience
+- [x] **Phase 6: Guided Creation and Chat UX** - Add default entry routing, guided pack creation, and a `chat`-first query experience
 - [ ] **Phase 7: Machine-Safe CLI Surface** - Add stable JSON output and machine-oriented command primitives for future OpenClaw/MCP wrappers
 
 ## Phase Details
@@ -61,5 +61,5 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 |-------|--------------|--------|
 | 4. Runtime Correctness Foundation | PCK-06, QUX-02, QUX-03, RUN-01, RUN-02 | Completed |
 | 5. Pack Inventory and Shared Pack Management | ONB-03, PCK-04, PCK-05 | Completed |
-| 6. Guided Creation and Chat UX | ONB-01, ONB-02, QUX-01 | In Progress |
+| 6. Guided Creation and Chat UX | ONB-01, ONB-02, QUX-01 | Completed |
 | 7. Machine-Safe CLI Surface | AUT-01, AUT-02 | Planned |
