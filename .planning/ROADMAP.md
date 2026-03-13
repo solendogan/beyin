@@ -62,4 +62,4 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 | 4. Runtime Correctness Foundation | PCK-06, QUX-02, QUX-03, RUN-01, RUN-02 | Completed |
 | 5. Pack Inventory and Shared Pack Management | ONB-03, PCK-04, PCK-05 | Completed |
 | 6. Guided Creation and Chat UX | ONB-01, ONB-02, QUX-01 | Completed |
-| 7. Machine-Safe CLI Surface | AUT-01, AUT-02 | Planned |
+| 7. Machine-Safe CLI Surface | AUT-01, AUT-02 | In Progress |

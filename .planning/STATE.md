@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-current_phase: 6
-current_phase_name: guided-creation-and-chat-ux
-current_plan: 4
-status: verifying
-stopped_at: Completed 06-04-PLAN.md
-last_updated: "2026-03-13T02:05:07.911Z"
+current_phase: 7
+current_phase_name: machine-safe-cli-surface
+current_plan: 1
+status: in_progress
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-13T13:51:03Z"
 last_activity: 2026-03-13
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 12
-  completed_plans: 12
-  percent: 100
+  total_plans: 16
+  completed_plans: 13
+  percent: 81
 ---
 
 # Project State
@@ -24,26 +24,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** Turn trusted creators' content into searchable expert memory — so users stop re-watching and start querying.
-**Current focus:** Phase 6 execution — guided creation and chat UX
+**Current focus:** Phase 7 execution — machine-safe CLI surface
 
 ## Current Position
 
-Phase: 6 (4 of 4 planned in v1.1)
-Plan: 4 of 4 in current phase
-Status: Phase complete — ready for verification
-Last activity: 2026-03-13 — Completed 06-04 redirect and handoff polish
+Phase: 7 (4 of 4 planned in v1.1)
+Plan: 1 of 4 in current phase
+Status: Phase in progress — 07-01 completed
+Last activity: 2026-03-13 — Completed 07-01 machine output contract
 
-**Current Phase:** 6
-**Current Phase Name:** guided-creation-and-chat-ux
+**Current Phase:** 7
+**Current Phase Name:** machine-safe-cli-surface
 **Total Phases:** 4
-**Current Plan:** 4
+**Current Plan:** 1
 **Total Plans in Phase:** 4
-**Status:** Phase complete — ready for verification
+**Status:** Phase in progress — 07-01 completed
 **Last Activity:** 2026-03-13
-**Last Activity Description:** Completed 06-04 redirect and handoff polish
-**Progress:** [██████████] 100%
+**Last Activity Description:** Completed 07-01 machine output contract
+**Progress:** [████████░░] 81%
 
-Progress: [██████████] 100%
+Progress: [████████░░] 81%
 
 ## Performance Metrics
 
@@ -59,8 +59,8 @@ Progress: [██████████] 100%
 | 01-core-text-pipeline | 1 | 15 min | 15 min |
 
 **Recent Trend:**
-- Last 5 plans: 15 min
-- Trend: Baseline established
+- Last 5 plans: 2, 3, 7, 4, 5 min
+- Trend: Stable short execution cycles
 
 *Updated after each plan completion*
 | Phase 01-core-text-pipeline P03 | 8 | 1 tasks | 2 files |
@@ -80,6 +80,7 @@ Progress: [██████████] 100%
 | Phase 06-guided-creation-and-chat-ux P02 | 3 | 2 tasks | 3 files |
 | Phase 06-guided-creation-and-chat-ux P03 | 7 | 2 tasks | 4 files |
 | Phase 06-guided-creation-and-chat-ux P04 | 4 | 2 tasks | 3 files |
+| Phase 07-machine-safe-cli-surface P01 | 5 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,9 @@ Recent decisions affecting current work:
 - [Phase 06-guided-creation-and-chat-ux]: Interactive memory stays process-local by passing prior turns into run_query and never writing history to disk.
 - [Phase 06-guided-creation-and-chat-ux]: Chat now stops on missing, unbuilt, changed, and blocked pack states before loading model or collection objects.
 - [Phase 06-guided-creation-and-chat-ux]: Inventory summaries now carry reusable next-step reasons so home and chat guidance stay aligned.
+- [Phase 07-machine-safe-cli-surface]: Machine-safe responses now use one top-level JSON envelope with `ok`, `meta.schema`, and either `data` or `error`.
+- [Phase 07-machine-safe-cli-surface]: Covered machine failures map onto a fixed exit taxonomy: usage `2`, precondition `3`, unexpected `4`.
+- [Phase 07-machine-safe-cli-surface]: `query`, one-shot `chat`, `list`, and `status` now build structured payloads before rendering, creating one seam for later `--json` rollout.
 
 ### Pending Todos
 
@@ -153,6 +157,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-13T02:05:07.909Z
-Stopped at: Completed 06-04-PLAN.md
+Last session: 2026-03-13T13:51:03Z
+Stopped at: Completed 07-01-PLAN.md
 Resume file: None

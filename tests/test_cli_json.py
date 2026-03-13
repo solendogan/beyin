@@ -1,6 +1,10 @@
 """Machine-safe CLI contract tests."""
 
 import json
+from pathlib import Path
+from unittest.mock import patch
+
+from typer.testing import CliRunner
 
 from brainpack.machine_output import (
     CLI_SCHEMA_VERSION,
@@ -10,6 +14,60 @@ from brainpack.machine_output import (
     emit_json,
     run_machine_command,
 )
+
+
+def _write_pack(
+    pack_dir: Path,
+    *,
+    name: str,
+    llm: str = "openai",
+    sources: list[str] | None = None,
+) -> None:
+    urls = sources or ["https://example.com/article"]
+    source_lines = "\n".join(f"  - {url}" for url in urls)
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    (pack_dir / "pack.yaml").write_text(
+        f"name: {name}\n"
+        "description: Test pack\n"
+        f"llm: {llm}\n"
+        "sources:\n"
+        f"{source_lines}\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+
+def _mark_pack_built(pack_dir: Path, *, last_build_at: str) -> None:
+    from brainpack.inventory import pack_config_hash
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+            "audio_steps": {},
+            "last_build_at": last_build_at,
+            "last_built_pack_hash": pack_config_hash(pack_dir),
+        },
+    )
+
+
+def _save_origin(pack_dir: Path, *, source: str, added_at: str, last_updated_at: str | None = None) -> None:
+    from brainpack.inventory import save_pack_origin
+
+    origin = {
+        "type": "file",
+        "source": source,
+        "resolved": source,
+        "added_at": added_at,
+    }
+    if last_updated_at is not None:
+        origin["last_updated_at"] = last_updated_at
+    save_pack_origin(pack_dir, origin)
+
+
+def _parse_output(result) -> dict:
+    return json.loads(result.output)
 
 
 def test_success_envelope_uses_shared_schema_and_top_level_shape():
@@ -120,6 +178,253 @@ def test_run_machine_command_normalizes_unexpected_error_to_shared_envelope_and_
             "code": "unexpected_error",
             "message": "Unexpected error while running command.",
             "details": {"type": "RuntimeError"},
+        },
+        "warnings": [],
+    }
+
+
+def test_list_json_returns_shared_envelope_for_empty_inventory(tmp_path):
+    """list --json returns the shared envelope with an empty packs array."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["list", "--json"])
+
+    assert result.exit_code == 0
+    assert _parse_output(result) == {
+        "ok": True,
+        "meta": {
+            "schema": CLI_SCHEMA_VERSION,
+            "command": "list",
+        },
+        "data": {"packs": []},
+        "warnings": [],
+    }
+
+
+def test_list_json_serializes_multiple_packs_without_internal_objects(tmp_path):
+    """list --json exposes explicit public fields instead of raw inventory internals."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    alpha_pack = packs_root / "alpha-pack"
+    beta_pack = packs_root / "beta-pack"
+    _write_pack(
+        alpha_pack,
+        name="alpha-pack",
+        sources=[
+            "https://example.com/article",
+            "https://example.com/other",
+        ],
+    )
+    _write_pack(beta_pack, name="beta-pack")
+    _mark_pack_built(alpha_pack, last_build_at="2026-03-13T10:00:00+00:00")
+    _mark_pack_built(beta_pack, last_build_at="2026-03-10T10:00:00+00:00")
+    _save_origin(
+        alpha_pack,
+        source="/tmp/alpha-pack.yaml",
+        added_at="2026-03-11T09:00:00+00:00",
+        last_updated_at="2026-03-12T09:00:00+00:00",
+    )
+    _save_origin(
+        beta_pack,
+        source="/tmp/beta-pack.yaml",
+        added_at="2026-03-09T09:00:00+00:00",
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ):
+        result = runner.invoke(app, ["list", "--json"])
+
+    payload = _parse_output(result)
+
+    assert result.exit_code == 0
+    assert payload["ok"] is True
+    assert payload["meta"] == {
+        "schema": CLI_SCHEMA_VERSION,
+        "command": "list",
+    }
+    assert payload["data"] == {
+        "packs": [
+            {
+                "name": "alpha-pack",
+                "status": "ready",
+                "provider": "openai",
+                "source_count": 2,
+                "recent_summary": "build 2026-03-13 / upd 2026-03-12",
+                "next_action": 'brainpack query alpha-pack "question"',
+                "blockers": [],
+                "warnings": [],
+                "origin": {
+                    "type": "file",
+                    "source": "/tmp/alpha-pack.yaml",
+                },
+            },
+            {
+                "name": "beta-pack",
+                "status": "ready",
+                "provider": "openai",
+                "source_count": 1,
+                "recent_summary": "build 2026-03-10 / upd 2026-03-09",
+                "next_action": 'brainpack query beta-pack "question"',
+                "blockers": [],
+                "warnings": [],
+                "origin": {
+                    "type": "file",
+                    "source": "/tmp/beta-pack.yaml",
+                },
+            },
+        ]
+    }
+    for pack in payload["data"]["packs"]:
+        assert "config" not in pack
+        assert "state" not in pack
+
+
+def test_status_json_returns_ready_pack_detail_without_internal_objects(tmp_path):
+    """status --json returns one normalized pack detail object for ready packs."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "ready-pack"
+    _write_pack(
+        pack_dir,
+        name="ready-pack",
+        sources=[
+            "https://example.com/article",
+            "https://example.com/other",
+        ],
+    )
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+    _save_origin(
+        pack_dir,
+        source="/tmp/ready-pack.yaml",
+        added_at="2026-03-11T09:00:00+00:00",
+        last_updated_at="2026-03-12T09:00:00+00:00",
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ):
+        result = runner.invoke(app, ["status", "ready-pack", "--json"])
+
+    payload = _parse_output(result)
+
+    assert result.exit_code == 0
+    assert payload == {
+        "ok": True,
+        "meta": {
+            "schema": CLI_SCHEMA_VERSION,
+            "command": "status",
+            "pack": "ready-pack",
+        },
+        "data": {
+            "pack": {
+                "name": "ready-pack",
+                "status": "ready",
+                "provider": "openai",
+                "source_count": 2,
+                "recent_summary": "build 2026-03-13 / upd 2026-03-12",
+                "next_action": 'brainpack query ready-pack "question"',
+                "blockers": [],
+                "warnings": [],
+                "origin": {
+                    "type": "file",
+                    "source": "/tmp/ready-pack.yaml",
+                },
+                "last_build_at": "2026-03-13T10:00:00+00:00",
+                "last_update_at": "2026-03-12T09:00:00+00:00",
+                "last_update_summary": [],
+            }
+        },
+        "warnings": [],
+    }
+    assert "config" not in payload["data"]["pack"]
+    assert "state" not in payload["data"]["pack"]
+
+
+def test_status_json_returns_blocked_pack_detail_without_internal_objects(tmp_path):
+    """status --json returns blocked pack detail without leaking config or state objects."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "blocked-pack"
+    _write_pack(pack_dir, name="blocked-pack")
+    _save_origin(
+        pack_dir,
+        source="/tmp/blocked-pack.yaml",
+        added_at="2026-03-11T09:00:00+00:00",
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {},
+        clear=True,
+    ):
+        result = runner.invoke(app, ["status", "blocked-pack", "--json"])
+
+    payload = _parse_output(result)
+    detail = payload["data"]["pack"]
+
+    assert result.exit_code == 0
+    assert payload["ok"] is True
+    assert payload["meta"] == {
+        "schema": CLI_SCHEMA_VERSION,
+        "command": "status",
+        "pack": "blocked-pack",
+    }
+    assert detail["name"] == "blocked-pack"
+    assert detail["status"] == "blocked"
+    assert detail["provider"] == "openai"
+    assert detail["source_count"] == 1
+    assert detail["recent_summary"] == "upd 2026-03-11"
+    assert detail["next_action"] == "brainpack doctor blocked-pack"
+    assert detail["blockers"] == ["Error: OPENAI_API_KEY is not set."]
+    assert detail["warnings"] == []
+    assert detail["origin"] == {
+        "type": "file",
+        "source": "/tmp/blocked-pack.yaml",
+    }
+    assert detail["last_build_at"] is None
+    assert detail["last_update_at"] == "2026-03-11T09:00:00+00:00"
+    assert detail["last_update_summary"] == []
+    assert "config" not in detail
+    assert "state" not in detail
+
+
+def test_status_json_missing_pack_returns_structured_error_and_exact_exit_code(tmp_path):
+    """status --json returns the shared missing-pack error envelope with exit code 3."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["status", "missing-pack", "--json"])
+
+    assert result.exit_code == 3
+    assert _parse_output(result) == {
+        "ok": False,
+        "meta": {
+            "schema": CLI_SCHEMA_VERSION,
+            "command": "status",
+            "pack": "missing-pack",
+        },
+        "error": {
+            "code": "pack_not_found",
+            "message": "Pack 'missing-pack' is not installed.",
+            "details": {"next_action": "brainpack add <path-or-url-or-id>"},
         },
         "warnings": [],
     }
