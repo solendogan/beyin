@@ -360,31 +360,68 @@ def _load_query_runtime(
             )
         typer.echo(provider_error, err=True)
         raise typer.Exit(code=1)
+    summary = inspect_pack(pack_dir, _pack_readiness_details)
+    status = summary["status"]
+    if status == "new":
+        _raise_retrieval_precondition(
+            pack,
+            code="pack_not_built",
+            message=f"Pack '{pack}' is not built yet.",
+            summary=summary,
+            machine_command=machine_command,
+        )
+    if status == "needs-build":
+        _raise_retrieval_precondition(
+            pack,
+            code="pack_needs_build",
+            message=(
+                f"Pack '{pack}' changed after its last build and needs a rebuild before query can continue."
+            ),
+            summary=summary,
+            machine_command=machine_command,
+        )
+    if status == "error":
+        _raise_retrieval_precondition(
+            pack,
+            code="pack_build_failed",
+            message=f"Pack '{pack}' needs a successful build before query can continue.",
+            summary=summary,
+            machine_command=machine_command,
+        )
     model = load_model(config.embedding_model)
     collection = get_collection(pack_dir, config.name)
     return pack_dir, config, model, collection
 
 
-def _chat_machine_error(
+def _raise_retrieval_precondition(
     pack: str,
     code: str,
     message: str,
     summary: dict,
+    *,
+    machine_command: Optional[str] = None,
+    include_blocker: bool = False,
 ) -> None:
-    """Raise a structured machine error for chat readiness failures."""
+    """Stop retrieval flows with consistent human and machine precondition guidance."""
     details = {
         "next_action": summary["next_action"],
         "reason": next_action_reason(summary),
     }
-    if summary.get("blockers"):
+    if include_blocker and summary.get("blockers"):
         blocker_message, _ = _split_machine_message(summary["blockers"][0])
         details["blocker"] = blocker_message
-    raise MachineExit.precondition(
-        code,
-        message,
-        pack=pack,
-        details=details,
-    )
+    if machine_command:
+        raise MachineExit.precondition(
+            code,
+            message,
+            pack=pack,
+            details=details,
+        )
+    typer.echo(message, err=True)
+    if include_blocker and summary.get("blockers"):
+        typer.echo(f"Why: {summary['blockers'][0]}", err=True)
+    _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
+    raise typer.Exit(code=1)
 
 
 def _load_chat_runtime(
@@ -403,57 +440,41 @@ def _load_chat_runtime(
     status = summary["status"]
 
     if status == "blocked":
-        if machine_command:
-            _chat_machine_error(
-                pack,
-                "pack_blocked",
-                f"Pack '{pack}' is blocked before chat can start.",
-                summary,
-            )
-        typer.echo(f"Pack '{pack}' is blocked before chat can start.", err=True)
-        if summary.get("blockers"):
-            typer.echo(f"Why: {summary['blockers'][0]}", err=True)
-        _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
-        raise typer.Exit(code=1)
+        _raise_retrieval_precondition(
+            pack,
+            "pack_blocked",
+            f"Pack '{pack}' is blocked before chat can start.",
+            summary,
+            machine_command=machine_command,
+            include_blocker=True,
+        )
 
     if status == "new":
-        if machine_command:
-            _chat_machine_error(
-                pack,
-                "pack_not_built",
-                f"Pack '{pack}' is not built yet.",
-                summary,
-            )
-        typer.echo(f"Pack '{pack}' is not built yet.", err=True)
-        _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
-        raise typer.Exit(code=1)
+        _raise_retrieval_precondition(
+            pack,
+            "pack_not_built",
+            f"Pack '{pack}' is not built yet.",
+            summary,
+            machine_command=machine_command,
+        )
 
     if status == "needs-build":
-        if machine_command:
-            _chat_machine_error(
-                pack,
-                "pack_needs_build",
-                f"Pack '{pack}' changed after its last build and needs a rebuild before chat can continue.",
-                summary,
-            )
-        typer.echo(
+        _raise_retrieval_precondition(
+            pack,
+            "pack_needs_build",
             f"Pack '{pack}' changed after its last build and needs a rebuild before chat can continue.",
-            err=True,
+            summary,
+            machine_command=machine_command,
         )
-        _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
-        raise typer.Exit(code=1)
 
     if status == "error":
-        if machine_command:
-            _chat_machine_error(
-                pack,
-                "pack_build_failed",
-                f"Pack '{pack}' needs a successful build before chat can continue.",
-                summary,
-            )
-        typer.echo(f"Pack '{pack}' needs a successful build before chat can continue.", err=True)
-        _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
-        raise typer.Exit(code=1)
+        _raise_retrieval_precondition(
+            pack,
+            "pack_build_failed",
+            f"Pack '{pack}' needs a successful build before chat can continue.",
+            summary,
+            machine_command=machine_command,
+        )
 
     config = summary["config"]
     model = load_model(config.embedding_model)
