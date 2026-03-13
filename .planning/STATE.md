@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: milestone
 current_phase: 7
 current_phase_name: machine-safe-cli-surface
-current_plan: 1
+current_plan: 3
 status: in_progress
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-13T13:51:03Z"
+stopped_at: Completed 07-03-PLAN.md
+last_updated: "2026-03-13T14:10:23Z"
 last_activity: 2026-03-13
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 16
-  completed_plans: 13
-  percent: 81
+  completed_plans: 15
+  percent: 94
 ---
 
 # Project State
@@ -29,27 +29,27 @@ See: .planning/PROJECT.md (updated 2026-03-13)
 ## Current Position
 
 Phase: 7 (4 of 4 planned in v1.1)
-Plan: 1 of 4 in current phase
-Status: Phase in progress — 07-01 completed
-Last activity: 2026-03-13 — Completed 07-01 machine output contract
+Plan: 3 of 4 in current phase
+Status: Phase in progress — 07-03 completed
+Last activity: 2026-03-13 — Completed 07-03 retrieval JSON surfaces
 
 **Current Phase:** 7
 **Current Phase Name:** machine-safe-cli-surface
 **Total Phases:** 4
-**Current Plan:** 1
+**Current Plan:** 3
 **Total Plans in Phase:** 4
-**Status:** Phase in progress — 07-01 completed
+**Status:** Phase in progress — 07-03 completed
 **Last Activity:** 2026-03-13
-**Last Activity Description:** Completed 07-01 machine output contract
-**Progress:** [████████░░] 81%
+**Last Activity Description:** Completed 07-03 retrieval JSON surfaces
+**Progress:** [█████████▍] 94%
 
-Progress: [████████░░] 81%
+Progress: [█████████▍] 94%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 15 min
+- Total plans completed: 3
+- Average duration: 5 min
 - Total execution time: 15 min
 
 **By Phase:**
@@ -59,7 +59,7 @@ Progress: [████████░░] 81%
 | 01-core-text-pipeline | 1 | 15 min | 15 min |
 
 **Recent Trend:**
-- Last 5 plans: 2, 3, 7, 4, 5 min
+- Last 5 plans: 3, 7, 4, 5, 6 min
 - Trend: Stable short execution cycles
 
 *Updated after each plan completion*
@@ -81,6 +81,8 @@ Progress: [████████░░] 81%
 | Phase 06-guided-creation-and-chat-ux P03 | 7 | 2 tasks | 4 files |
 | Phase 06-guided-creation-and-chat-ux P04 | 4 | 2 tasks | 3 files |
 | Phase 07-machine-safe-cli-surface P01 | 5 | 2 tasks | 3 files |
+| Phase 07-machine-safe-cli-surface P02 | 4 | 2 tasks | 3 files |
+| Phase 07-machine-safe-cli-surface P03 | 6 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -144,6 +146,10 @@ Recent decisions affecting current work:
 - [Phase 07-machine-safe-cli-surface]: Machine-safe responses now use one top-level JSON envelope with `ok`, `meta.schema`, and either `data` or `error`.
 - [Phase 07-machine-safe-cli-surface]: Covered machine failures map onto a fixed exit taxonomy: usage `2`, precondition `3`, unexpected `4`.
 - [Phase 07-machine-safe-cli-surface]: `query`, one-shot `chat`, `list`, and `status` now build structured payloads before rendering, creating one seam for later `--json` rollout.
+- [Phase 07-machine-safe-cli-surface]: `list --json` and `status --json` now serialize explicit public inventory fields, keeping raw `config`, `state`, and provenance internals out of the machine contract.
+- [Phase 07-machine-safe-cli-surface]: `query --json` and one-shot `chat --json` now share the same retrieval payload shape: `question`, `answer`, and explicit source objects with optional timestamp ranges.
+- [Phase 07-machine-safe-cli-surface]: `chat --json` without a question is a usage error envelope, not the start of an interactive machine session.
+- [Phase 07-machine-safe-cli-surface]: Chat readiness errors now normalize blocker details to one stable first-line string before entering the machine contract.
 
 ### Pending Todos
 
@@ -157,6 +163,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-13T13:51:03Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-13T14:10:23Z
+Stopped at: Completed 07-03-PLAN.md
 Resume file: None
