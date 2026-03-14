@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from brainpack.machine_output import (
@@ -48,6 +49,36 @@ def _mark_pack_built(pack_dir: Path, *, last_build_at: str) -> None:
             "audio_steps": {},
             "last_build_at": last_build_at,
             "last_built_pack_hash": pack_config_hash(pack_dir),
+        },
+    )
+
+
+def _mark_pack_stale(pack_dir: Path, *, last_build_at: str) -> None:
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+            "audio_steps": {},
+            "last_build_at": last_build_at,
+            "last_built_pack_hash": "outdated-hash",
+        },
+    )
+
+
+def _mark_pack_failed(pack_dir: Path) -> None:
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {
+                "https://example.com/article": {"status": "failed"},
+            },
+            "audio_steps": {},
         },
     )
 
@@ -507,6 +538,137 @@ def test_query_json_returns_shared_answer_and_sources_payload(tmp_path):
             ],
         },
         "warnings": [],
+    }
+
+
+def test_load_evidence_runtime_allows_built_openai_pack_without_api_key(tmp_path):
+    from brainpack.cli import _load_evidence_runtime
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "evidence-pack"
+    _write_pack(pack_dir, name="evidence-pack", llm="openai")
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {},
+        clear=True,
+    ), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ) as mock_load_model, patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ) as mock_get_collection:
+        _, config, _, _ = _load_evidence_runtime("evidence-pack", machine_command="evidence")
+
+    assert config.llm == "openai"
+    mock_load_model.assert_called_once_with("all-MiniLM-L6-v2")
+    mock_get_collection.assert_called_once()
+
+
+def test_load_evidence_runtime_allows_built_ollama_pack_without_reachability_check(tmp_path):
+    from brainpack.cli import _load_evidence_runtime
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "ollama-pack"
+    _write_pack(pack_dir, name="ollama-pack", llm="ollama")
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli._check_ollama_reachable",
+        return_value=False,
+    ) as mock_reachable, patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ):
+        _load_evidence_runtime("ollama-pack", machine_command="evidence")
+
+    mock_reachable.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("status_setup", "expected_code", "expected_message"),
+    [
+        ("new", "pack_not_built", "Pack 'blocked-pack' is not built yet."),
+        (
+            "needs-build",
+            "pack_needs_build",
+            "Pack 'blocked-pack' changed after its last build and needs a rebuild before evidence retrieval can continue.",
+        ),
+        (
+            "error",
+            "pack_build_failed",
+            "Pack 'blocked-pack' needs a successful build before evidence retrieval can continue.",
+        ),
+    ],
+)
+def test_load_evidence_runtime_blocks_on_pack_state_only(
+    tmp_path,
+    status_setup,
+    expected_code,
+    expected_message,
+):
+    from brainpack.cli import _load_evidence_runtime
+    from brainpack.machine_output import MachineExit
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "blocked-pack"
+    _write_pack(pack_dir, name="blocked-pack", llm="openai")
+
+    if status_setup == "needs-build":
+        _mark_pack_stale(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+    elif status_setup == "error":
+        _mark_pack_failed(pack_dir)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {},
+        clear=True,
+    ):
+        with pytest.raises(MachineExit) as exc_info:
+            _load_evidence_runtime("blocked-pack", machine_command="evidence")
+
+    exc = exc_info.value
+    assert exc.code == expected_code
+    assert exc.message == expected_message
+
+
+def test_build_evidence_payload_returns_question_and_evidence_without_answer():
+    from brainpack.cli import _build_evidence_payload
+
+    payload = _build_evidence_payload(
+        "What happened?",
+        [
+            {
+                "text": "Chunk A",
+                "url": "https://example.com/a",
+                "title": "Article A",
+                "rank": 1,
+                "distance": 0.11,
+                "timestamp_start": 12.0,
+                "timestamp_end": 34.0,
+            }
+        ],
+        machine=True,
+    )
+
+    assert payload == {
+        "question": "What happened?",
+        "evidence": [
+            {
+                "text": "Chunk A",
+                "url": "https://example.com/a",
+                "title": "Article A",
+                "rank": 1,
+                "distance": 0.11,
+                "timestamp_start": 12.0,
+                "timestamp_end": 34.0,
+            }
+        ],
     }
 
 

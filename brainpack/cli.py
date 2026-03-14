@@ -107,6 +107,12 @@ def run_query(*args, **kwargs):
     return _run_query(*args, **kwargs)
 
 
+def retrieve_evidence(*args, **kwargs):
+    from brainpack.query import retrieve_evidence as _retrieve_evidence
+
+    return _retrieve_evidence(*args, **kwargs)
+
+
 def _source_label(*args, **kwargs):
     from brainpack.query import _source_label as _query_source_label
 
@@ -485,6 +491,76 @@ def _load_query_runtime(
     return pack_dir, config, model, collection
 
 
+def _has_successful_build(state: dict) -> bool:
+    if state.get("last_build_at"):
+        return True
+    processed = state.get("processed", {})
+    if any(item.get("status") == "done" for item in processed.values()):
+        return True
+    audio_steps = state.get("audio_steps", {})
+    return any(step.get("stages", {}).get("embedded") for step in audio_steps.values())
+
+
+def _has_failed_build(state: dict) -> bool:
+    return any(item.get("status") == "failed" for item in state.get("processed", {}).values())
+
+
+def _retrieval_precondition_summary(status: str, pack: str) -> dict:
+    next_action = f"brainpack build {pack}"
+    return {
+        "status": status,
+        "next_action": next_action,
+        "blockers": [],
+        "warnings": [],
+    }
+
+
+def _load_evidence_runtime(
+    pack: str,
+    *,
+    machine_command: Optional[str] = None,
+) -> tuple[Path, PackConfig, object, object]:
+    """Load retrieval-only runtime without requiring answer-provider readiness."""
+    pack_dir = _resolve_pack_dir(pack, machine_command=machine_command)
+    config = load_config(pack_dir)
+    state = load_state(pack_dir)
+    has_build = _has_successful_build(state)
+    current_hash = pack_config_hash(pack_dir)
+    last_build_hash = state.get("last_built_pack_hash")
+    needs_build = bool(has_build and last_build_hash and last_build_hash != current_hash)
+    has_error = _has_failed_build(state)
+
+    if has_error:
+        _raise_retrieval_precondition(
+            pack,
+            code="pack_build_failed",
+            message=f"Pack '{pack}' needs a successful build before evidence retrieval can continue.",
+            summary=_retrieval_precondition_summary("error", pack),
+            machine_command=machine_command,
+        )
+    if not has_build:
+        _raise_retrieval_precondition(
+            pack,
+            code="pack_not_built",
+            message=f"Pack '{pack}' is not built yet.",
+            summary=_retrieval_precondition_summary("new", pack),
+            machine_command=machine_command,
+        )
+    if needs_build:
+        _raise_retrieval_precondition(
+            pack,
+            code="pack_needs_build",
+            message=(
+                f"Pack '{pack}' changed after its last build and needs a rebuild before evidence retrieval can continue."
+            ),
+            summary=_retrieval_precondition_summary("needs-build", pack),
+            machine_command=machine_command,
+        )
+    model = load_model(config.embedding_model)
+    collection = get_collection(pack_dir, config.name)
+    return pack_dir, config, model, collection
+
+
 def _raise_retrieval_precondition(
     pack: str,
     code: str,
@@ -630,6 +706,23 @@ def _serialize_query_source(source: dict) -> dict:
     return payload
 
 
+def _serialize_evidence_item(item: dict) -> dict:
+    """Return the stable public evidence payload item."""
+    payload = {
+        "text": item.get("text", ""),
+        "url": item.get("url", ""),
+        "title": item.get("title", "Unknown"),
+        "rank": item.get("rank"),
+    }
+    if item.get("distance") is not None:
+        payload["distance"] = item["distance"]
+    if item.get("timestamp_start") is not None:
+        payload["timestamp_start"] = item["timestamp_start"]
+    if item.get("timestamp_end") is not None:
+        payload["timestamp_end"] = item["timestamp_end"]
+    return payload
+
+
 def _build_retrieval_payload(question: str, result: dict, *, machine: bool = False) -> dict:
     """Normalize retrieval results for shared query/chat payload construction."""
     if not machine:
@@ -640,6 +733,18 @@ def _build_retrieval_payload(question: str, result: dict, *, machine: bool = Fal
         "question": question,
         "answer": result["answer"],
         "sources": sources,
+    }
+
+
+def _build_evidence_payload(question: str, evidence: list[dict], *, machine: bool = False) -> dict:
+    """Normalize retrieval evidence for the agent-first MCP contract."""
+    if machine:
+        items = [_serialize_evidence_item(item) for item in evidence]
+    else:
+        items = evidence
+    return {
+        "question": question,
+        "evidence": items,
     }
 
 
@@ -681,6 +786,21 @@ def _chat_one_shot_payload(
         llm_provider=config.llm,
     )
     return _build_retrieval_payload(question, result, machine=machine)
+
+
+def _evidence_payload(
+    pack: str,
+    question: str,
+    *,
+    machine: bool = False,
+) -> dict:
+    """Build a reusable evidence-only payload for agent retrieval."""
+    _, _, model, collection = _load_evidence_runtime(
+        pack,
+        machine_command="evidence" if machine else None,
+    )
+    evidence = retrieve_evidence(question=question, collection=collection, model=model)
+    return _build_evidence_payload(question, evidence, machine=machine)
 
 
 def _list_payload(

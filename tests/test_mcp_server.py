@@ -42,6 +42,36 @@ def _mark_pack_built(pack_dir: Path, *, last_build_at: str) -> None:
     )
 
 
+def _mark_pack_stale(pack_dir: Path, *, last_build_at: str) -> None:
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+            "audio_steps": {},
+            "last_build_at": last_build_at,
+            "last_built_pack_hash": "outdated-hash",
+        },
+    )
+
+
+def _mark_pack_failed(pack_dir: Path) -> None:
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {
+                "https://example.com/article": {"status": "failed"},
+            },
+            "audio_steps": {},
+        },
+    )
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
@@ -62,6 +92,7 @@ async def test_mcp_server_lists_expected_tools(mcp_app):
         "brainpack_list",
         "brainpack_status",
         "brainpack_doctor",
+        "brainpack_evidence",
         "brainpack_query",
         "brainpack_chat",
         "brainpack_build",
@@ -172,6 +203,151 @@ async def test_mcp_query_pack_returns_structured_retrieval_payload(mcp_app, tmp_
         },
         "warnings": [],
     }
+
+
+@pytest.mark.anyio
+async def test_mcp_evidence_returns_structured_evidence_payload(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "evidence-pack"
+    _write_pack(pack_dir, name="evidence-pack", llm="openai")
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+
+    mock_evidence = [
+        {
+            "text": "Raw chunk text",
+            "url": "https://example.com/article",
+            "title": "Example Article",
+            "rank": 1,
+            "distance": 0.11,
+            "timestamp_start": 12.0,
+            "timestamp_end": 34.0,
+        }
+    ]
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {},
+        clear=True,
+    ), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.retrieve_evidence",
+        return_value=mock_evidence,
+    ):
+        _, structured = await mcp_app.call_tool(
+            "brainpack_evidence",
+            {"pack": "evidence-pack", "question": "What happened?"},
+        )
+
+    assert structured == {
+        "ok": True,
+        "meta": {
+            "schema": "brainpack.cli.v1",
+            "command": "evidence",
+            "pack": "evidence-pack",
+            "surface": "mcp",
+            "server_version": "0.1.0",
+        },
+        "data": {
+            "question": "What happened?",
+            "evidence": [
+                {
+                    "text": "Raw chunk text",
+                    "url": "https://example.com/article",
+                    "title": "Example Article",
+                    "rank": 1,
+                    "distance": 0.11,
+                    "timestamp_start": 12.0,
+                    "timestamp_end": 34.0,
+                }
+            ],
+        },
+        "warnings": [],
+    }
+
+
+@pytest.mark.anyio
+async def test_mcp_evidence_allows_built_ollama_pack_without_reachability_check(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "ollama-pack"
+    _write_pack(pack_dir, name="ollama-pack", llm="ollama")
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli._check_ollama_reachable",
+        return_value=False,
+    ) as mock_reachable, patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.retrieve_evidence",
+        return_value=[],
+    ):
+        _, structured = await mcp_app.call_tool(
+            "brainpack_evidence",
+            {"pack": "ollama-pack", "question": "What happened?"},
+        )
+
+    assert structured["ok"] is True
+    assert structured["data"] == {"question": "What happened?", "evidence": []}
+    mock_reachable.assert_not_called()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("state_setup", "expected_code", "expected_message"),
+    [
+        ("missing", "pack_not_found", "Pack 'state-pack' is not installed."),
+        ("new", "pack_not_built", "Pack 'state-pack' is not built yet."),
+        (
+            "needs-build",
+            "pack_needs_build",
+            "Pack 'state-pack' changed after its last build and needs a rebuild before evidence retrieval can continue.",
+        ),
+        (
+            "error",
+            "pack_build_failed",
+            "Pack 'state-pack' needs a successful build before evidence retrieval can continue.",
+        ),
+    ],
+)
+async def test_mcp_evidence_blocks_on_pack_state_preconditions(
+    mcp_app,
+    tmp_path,
+    state_setup,
+    expected_code,
+    expected_message,
+):
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "state-pack"
+
+    if state_setup != "missing":
+        _write_pack(pack_dir, name="state-pack", llm="openai")
+        if state_setup == "needs-build":
+            _mark_pack_stale(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+        elif state_setup == "error":
+            _mark_pack_failed(pack_dir)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {},
+        clear=True,
+    ):
+        _, structured = await mcp_app.call_tool(
+            "brainpack_evidence",
+            {"pack": "state-pack", "question": "What happened?"},
+        )
+
+    assert structured["ok"] is False
+    assert structured["error"]["code"] == expected_code
+    assert structured["error"]["message"] == expected_message
 
 
 @pytest.mark.anyio

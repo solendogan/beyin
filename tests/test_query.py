@@ -47,6 +47,56 @@ def test_context_cap_small_chunks_pass_through():
     assert capped == chunks
 
 
+def test_retrieve_evidence_returns_raw_text_metadata_and_rank(mock_model):
+    from brainpack.query import retrieve_evidence
+
+    collection = MagicMock()
+    collection.query.return_value = {
+        "documents": [["Chunk A", "Chunk B"]],
+        "metadatas": [[
+            {"url": "https://example.com/a", "title": "Article A"},
+            {"url": "https://example.com/b", "title": "Article B", "timestamp_start": 12.0, "timestamp_end": 34.0},
+        ]],
+        "distances": [[0.11, 0.22]],
+    }
+
+    evidence = retrieve_evidence("test question", collection, mock_model, n_results=2)
+
+    assert evidence == [
+        {
+            "text": "Chunk A",
+            "url": "https://example.com/a",
+            "title": "Article A",
+            "rank": 1,
+            "distance": 0.11,
+        },
+        {
+            "text": "Chunk B",
+            "url": "https://example.com/b",
+            "title": "Article B",
+            "rank": 2,
+            "distance": 0.22,
+            "timestamp_start": 12.0,
+            "timestamp_end": 34.0,
+        },
+    ]
+
+
+def test_retrieve_evidence_defaults_to_broader_than_answer_path(mock_model):
+    from brainpack.query import retrieve_evidence
+
+    collection = MagicMock()
+    collection.query.return_value = {
+        "documents": [[]],
+        "metadatas": [[]],
+        "distances": [[]],
+    }
+
+    retrieve_evidence("test question", collection, mock_model)
+
+    assert collection.query.call_args.kwargs["n_results"] > 5
+
+
 def test_topk(tmp_pack_dir, mock_model):
     from brainpack.store import get_collection, embed_and_store
     from brainpack.query import run_query
@@ -103,6 +153,44 @@ def test_answer_is_nonempty(tmp_pack_dir, mock_model):
         result = run_query("test question", col, mock_model)
     assert isinstance(result["answer"], str)
     assert len(result["answer"]) > 0
+
+
+def test_run_query_caps_context_after_shared_retrieval(mock_model):
+    from brainpack.query import run_query
+
+    long_chunk = "word " * 2500
+    short_chunk = "second " * 700
+
+    with patch(
+        "brainpack.query.retrieve_evidence",
+        return_value=[
+            {
+                "text": long_chunk,
+                "url": "https://example.com/a",
+                "title": "Article A",
+                "rank": 1,
+                "distance": 0.1,
+            },
+            {
+                "text": short_chunk,
+                "url": "https://example.com/b",
+                "title": "Article B",
+                "rank": 2,
+                "distance": 0.2,
+            },
+        ],
+    ), patch("brainpack.query.OpenAI") as MockOpenAI:
+        client = MockOpenAI.return_value
+        choice = MagicMock()
+        choice.message.content = "Capped answer."
+        client.chat.completions.create.return_value = MagicMock(choices=[choice])
+
+        result = run_query("test question", MagicMock(), mock_model)
+
+    user_message = client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+    assert short_chunk not in user_message
+    assert long_chunk in user_message
+    assert len(result["sources"]) == 1
 
 
 def test_timestamp_source_labels_include_ranges():

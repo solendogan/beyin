@@ -10,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 from brainpack import __version__
 from brainpack.cli import (
     _doctor_payload,
+    _evidence_payload,
     _chat_one_shot_payload,
     _list_payload,
     _query_payload,
@@ -108,6 +109,16 @@ def brainpack_doctor(pack: str, operation: str = "all") -> dict[str, Any]:
         command="doctor",
         pack=pack,
         action=lambda: _doctor_payload(pack, operation, machine=True),
+    )
+
+
+@app.tool()
+def brainpack_evidence(pack: str, question: str) -> dict[str, Any]:
+    """Return retrieval evidence for external agent synthesis."""
+    return _tool_result(
+        command="evidence",
+        pack=pack,
+        action=lambda: _evidence_payload(pack, question, machine=True),
     )
 
 

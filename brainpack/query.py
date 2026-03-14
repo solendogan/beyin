@@ -4,6 +4,8 @@ from typing import Any, Dict, List, Tuple
 
 _ENC = None
 OpenAI = None
+DEFAULT_EVIDENCE_RESULTS = 8
+ANSWER_RESULTS = 5
 
 
 def _encoding():
@@ -107,6 +109,67 @@ def _response_language_instruction(question: str, context: str) -> str:
     )
 
 
+def _embed_question(question: str, model) -> List[float]:
+    """Embed one question and normalize the vector for ChromaDB query input."""
+    import numpy as np
+
+    q_vec_raw = model.encode(question)
+    return np.array(q_vec_raw).flatten().tolist()
+
+
+def _evidence_item(chunk: str, meta: Dict[str, Any], *, rank: int, distance: float | None) -> Dict[str, Any]:
+    """Normalize one retrieved chunk into the shared evidence shape."""
+    item = {
+        "text": chunk,
+        "url": meta.get("url", ""),
+        "title": meta.get("title", "Unknown"),
+        "rank": rank,
+    }
+    if distance is not None:
+        item["distance"] = distance
+    if meta.get("timestamp_start") is not None:
+        item["timestamp_start"] = meta["timestamp_start"]
+    if meta.get("timestamp_end") is not None:
+        item["timestamp_end"] = meta["timestamp_end"]
+    return item
+
+
+def _source_from_evidence(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the answer-path source shape from one evidence item."""
+    source = {
+        "url": item["url"],
+        "title": item["title"],
+    }
+    if item.get("timestamp_start") is not None:
+        source["timestamp_start"] = item["timestamp_start"]
+    if item.get("timestamp_end") is not None:
+        source["timestamp_end"] = item["timestamp_end"]
+    return source
+
+
+def retrieve_evidence(
+    question: str,
+    collection,
+    model,
+    n_results: int = DEFAULT_EVIDENCE_RESULTS,
+) -> List[Dict[str, Any]]:
+    """Retrieve raw evidence items without calling the answer model."""
+    q_embedding = _embed_question(question, model)
+    results = collection.query(
+        query_embeddings=[q_embedding],
+        n_results=n_results,
+        include=["documents", "metadatas", "distances"],
+    )
+    chunks = results["documents"][0]
+    metadatas = results["metadatas"][0]
+    distances = results["distances"][0]
+
+    return [
+        _evidence_item(chunk, meta, rank=index, distance=distance)
+        for index, (chunk, meta, distance) in enumerate(zip(chunks, metadatas, distances), start=1)
+    ]
+
+
 def run_query(
     question: str,
     collection,
@@ -129,31 +192,18 @@ def run_query(
     Returns sources as the metadata dicts from ChromaDB — each contains at
     minimum {"url": ..., "title": ...} as stored by embed_and_store.
     """
-    # Step 1: Embed question (single vector)
-    # model.encode on a single string may return 1D or 2D depending on backend.
-    # Flatten to 1D then convert to list for ChromaDB compatibility.
-    import numpy as np
-
-    q_vec_raw = model.encode(question)
-    q_embedding = np.array(q_vec_raw).flatten().tolist()
-
-    # Step 2: Retrieve top-5 chunks (QRY-06)
-    results = collection.query(
-        query_embeddings=[q_embedding],
-        n_results=5,
-        include=["documents", "metadatas", "distances"],
-    )
-    chunks = results["documents"][0]
-    metadatas = results["metadatas"][0]
+    evidence = retrieve_evidence(question, collection, model, n_results=ANSWER_RESULTS)
+    chunks = [item["text"] for item in evidence]
 
     # Step 3: Cap context at 3,000 tokens (QRY-05)
     chunks = _cap_context(chunks, max_tokens=3000)
-    metadatas = metadatas[: len(chunks)]
+    evidence = evidence[: len(chunks)]
 
     # Step 4: Build cited context with [N] labels (QRY-02)
     context_parts = []
-    for i, (chunk, meta) in enumerate(zip(chunks, metadatas)):
-        source_label = _source_label(meta, index=i + 1)
+    for item in evidence:
+        source_label = _source_label(_source_from_evidence(item), index=item["rank"])
+        chunk = item["text"]
         context_parts.append(f"{source_label}\n{chunk}")
     context = "\n\n---\n\n".join(context_parts)
 
@@ -186,4 +236,4 @@ def run_query(
     )
     answer = response.choices[0].message.content
 
-    return {"answer": answer, "sources": metadatas}
+    return {"answer": answer, "sources": [_source_from_evidence(item) for item in evidence]}
