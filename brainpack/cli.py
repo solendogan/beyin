@@ -20,6 +20,7 @@ from brainpack.config import (
     write_config,
 )
 from brainpack.inventory import (
+    human_guidance_command,
     inspect_pack,
     list_packs,
     load_config_from_source_path,
@@ -47,7 +48,11 @@ from brainpack.pack_state import (
 from brainpack.machine_output import MachineExit, run_machine_command
 from brainpack.source_ids import artifact_stem, canonical_source_id
 
-app = typer.Typer(help="Brainpack — turn creator content into queryable expert memory")
+app = typer.Typer(
+    help=(
+        "Brainpack — use with an agent for evidence retrieval, or run query/chat in local model mode"
+    )
+)
 
 _PACKS_DIR = Path.home() / ".brainpacks"
 _YTDLP_MIN_VERSION = "2025.11.12"
@@ -159,6 +164,49 @@ def _render_pack_table(summaries: list[dict], *, limit: Optional[int] = None) ->
         )
 
 
+def _pack_label(summary: Optional[dict]) -> str:
+    if summary and summary.get("name"):
+        return str(summary["name"])
+    return "<pack>"
+
+
+def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False) -> None:
+    """Render the shared human onboarding guidance across home, status, and errors."""
+    pack_name = _pack_label(summary)
+    status = summary.get("status") if summary else None
+    lifecycle_command = human_guidance_command(summary) if summary else None
+    build_command = f"brainpack build {pack_name}"
+    doctor_command = f"brainpack doctor {pack_name}"
+
+    typer.echo("Use with agent (recommended)", err=err)
+    typer.echo(
+        "  brainpack finds evidence for agents like Codex, Claude Code, or OpenClaw.",
+        err=err,
+    )
+    typer.echo("  1. Connect agent: brainpack mcp-server", err=err)
+    typer.echo("  2. Set up pack: brainpack create", err=err)
+    typer.echo("     or brainpack add <path-or-url-or-id>", err=err)
+    typer.echo("  3. Build: brainpack build <pack>" if summary is None else f"  3. Build: {build_command}", err=err)
+    if summary:
+        if status == "blocked":
+            typer.echo(f"  Current pack unblock step: {lifecycle_command}", err=err)
+        elif status in {"new", "needs-build", "error"}:
+            typer.echo(f"  Current pack build step: {lifecycle_command}", err=err)
+        else:
+            typer.echo(f"  Current pack is ready for agent use: {pack_name}", err=err)
+
+    typer.echo("", err=err)
+    typer.echo("Use with local model", err=err)
+    typer.echo("  1. Install local runtime (for example Ollama).", err=err)
+    typer.echo("  2. Run doctor: brainpack doctor <pack>" if summary is None else f"  2. Run doctor: {doctor_command}", err=err)
+    typer.echo("  3. Set up pack: brainpack create", err=err)
+    typer.echo("     or brainpack add <path-or-url-or-id>", err=err)
+    typer.echo("  4. Build: brainpack build <pack>" if summary is None else f"  4. Build: {build_command}", err=err)
+    if summary and status == "ready":
+        typer.echo(f'  5. Ask locally: brainpack query {pack_name} "question"', err=err)
+        typer.echo(f'     or brainpack chat {pack_name} "question"', err=err)
+
+
 def _render_home_screen() -> None:
     """Show the default introductory screen for no-argument CLI entry."""
     summaries = list_packs(_PACKS_DIR, _pack_readiness_details)
@@ -170,10 +218,9 @@ def _render_home_screen() -> None:
     if not summaries:
         typer.echo("No packs installed yet.")
         typer.echo("")
-        typer.echo("Main commands")
-        typer.echo("  brainpack create")
-        typer.echo("  brainpack add <path-or-url-or-id>")
-        typer.echo("  brainpack build <pack>")
+        _render_usage_guidance()
+        typer.echo("")
+        typer.echo("More commands")
         typer.echo("  brainpack list")
         typer.echo("  brainpack help")
         return
@@ -185,8 +232,10 @@ def _render_home_screen() -> None:
         typer.echo(f"...and {len(summaries) - 6} more")
 
     typer.echo("")
-    typer.echo("Main commands")
     primary = summaries[0]["name"]
+    _render_usage_guidance(summaries[0])
+    typer.echo("")
+    typer.echo("Main commands")
     typer.echo(f'  brainpack chat {primary} "question"')
     typer.echo(f"  brainpack status {primary}")
     typer.echo("  brainpack list")
@@ -588,7 +637,8 @@ def _raise_retrieval_precondition(
     typer.echo(message, err=True)
     if include_blocker and summary.get("blockers"):
         typer.echo(f"Why: {summary['blockers'][0]}", err=True)
-    _render_next_step(summary["next_action"], next_action_reason(summary), err=True)
+    typer.echo("", err=True)
+    _render_usage_guidance(summary, err=True)
     raise typer.Exit(code=1)
 
 
@@ -1250,15 +1300,15 @@ def build(
 
 @app.command()
 def query(
-    pack: str = typer.Argument(..., help="Pack name to query"),
-    question: str = typer.Argument(..., help="Question to answer"),
+    pack: str = typer.Argument(..., help="Pack name to query in local mode"),
+    question: str = typer.Argument(..., help="Question to answer in local mode"),
     json_mode: bool = typer.Option(
         False,
         "--json",
         help="Emit machine-safe JSON output.",
     ),
 ):
-    """Query a pack and receive a cited LLM answer."""
+    """Query a pack directly in local model mode and receive a cited LLM answer."""
     if json_mode:
         raise typer.Exit(
             code=run_machine_command(
@@ -1272,10 +1322,10 @@ def query(
 
 @app.command()
 def chat(
-    pack: str = typer.Argument(..., help="Pack name to chat with"),
+    pack: str = typer.Argument(..., help="Pack name to chat with in local mode"),
     question: Optional[str] = typer.Argument(
         None,
-        help="Optional one-shot question. Omit for interactive chat.",
+        help="Optional one-shot local-mode question. Omit for interactive chat.",
     ),
     json_mode: bool = typer.Option(
         False,
@@ -1283,7 +1333,7 @@ def chat(
         help="Emit machine-safe JSON output.",
     ),
 ):
-    """Chat with a pack in one-shot or interactive mode."""
+    """Chat with a pack in local model mode, one-shot or interactive."""
     if json_mode:
         def _machine_action() -> dict:
             if question is None:
@@ -1458,7 +1508,8 @@ def status_command(
         for line in last_update_summary:
             typer.echo(f"  - {line}")
 
-    typer.echo(f"Next: {summary['next_action']}")
+    typer.echo("")
+    _render_usage_guidance(summary)
 
 
 @app.command(name="add")
@@ -1581,7 +1632,7 @@ def update(
 
 @app.command(name="mcp-server")
 def mcp_server_command() -> None:
-    """Run Brainpack as a local MCP server over stdio."""
+    """Run Brainpack as a local stdio server for agents on the same machine."""
     from brainpack.mcp_server import run_stdio_server
 
     run_stdio_server()

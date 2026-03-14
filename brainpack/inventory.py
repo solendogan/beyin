@@ -192,14 +192,14 @@ def summarize_pack(
     if blockers:
         status = "blocked"
         next_action = f"brainpack doctor {config.name}"
+    elif has_error:
+        status = "error"
+        next_action = f"brainpack build {config.name}"
     elif is_new:
         status = "new"
         next_action = f"brainpack build {config.name}"
     elif needs_build:
         status = "needs-build"
-        next_action = f"brainpack build {config.name}"
-    elif has_error:
-        status = "error"
         next_action = f"brainpack build {config.name}"
     else:
         status = "ready"
@@ -278,19 +278,30 @@ def serialize_pack_detail(summary: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
+def human_guidance_command(summary: Dict[str, Any]) -> str:
+    """Return the human-facing lifecycle command without mutating machine contracts."""
+    name = str(summary.get("name", "<pack>"))
+    status = summary.get("status")
+    if status == "blocked":
+        return f"brainpack doctor {name}"
+    if status in {"new", "needs-build", "error"}:
+        return f"brainpack build {name}"
+    return "brainpack mcp-server"
+
+
 def next_action_reason(summary: Dict[str, Any]) -> str:
     """Explain why the recommended next command is the best next step."""
     status = summary.get("status")
     if status == "blocked":
-        return "Doctor explains the blocker before you try chat again."
+        return "Resolve the blocker so this pack is ready for agent or local-model use."
     if status == "new":
-        return "Build indexes this pack before Brainpack can answer questions."
+        return "Build this pack before Brainpack can serve it to an agent or local model."
     if status == "needs-build":
-        return "Build refreshes the indexed memory so chat uses the latest pack changes."
+        return "Rebuild this pack so agent and local-mode retrieval use the latest indexed changes."
     if status == "error":
-        return "Build retries the pack after an earlier indexing failure."
+        return "Rebuild this pack after the last indexing failure before using it again."
     if status == "ready":
-        return "Ask a question against the current indexed memory."
+        return "Connect an agent for the recommended path, or query the pack directly in local mode."
     return "Re-add or repair the pack definition before continuing."
 
 
