@@ -59,18 +59,58 @@ def _mark_pack_ready(pack_dir: Path, *, last_build_at: str = "2026-03-13T10:00:0
     )
 
 
-def test_help_lists_build_and_query():
-    """brainpack --help exits 0 and lists both commands."""
+def _mark_pack_needs_build(
+    pack_dir: Path,
+    *,
+    last_build_at: str = "2026-03-13T10:00:00+00:00",
+):
+    """Persist a stale build state so lifecycle tests hit needs-build paths."""
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+            "audio_steps": {},
+            "last_build_at": last_build_at,
+            "last_built_pack_hash": "outdated-hash",
+        },
+    )
+
+
+def _mark_pack_failed(pack_dir: Path):
+    """Persist a failed build state so lifecycle tests hit error paths."""
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {
+                "https://example.com/article": {"status": "failed"},
+            },
+            "audio_steps": {},
+        },
+    )
+
+
+def test_help_frames_agent_and_local_modes():
+    """brainpack --help should frame the product around agent and local-model use."""
     from brainpack.cli import app
+
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
+
     assert result.exit_code == 0
+    assert "agent" in result.output.lower()
+    assert "local model" in result.output.lower()
     assert "build" in result.output
     assert "query" in result.output
 
 
-def test_help_command_alias_shows_top_level_help():
-    """brainpack help should behave like the friendly alias users expect."""
+def test_help_command_alias_shows_top_level_framing():
+    """brainpack help should preserve the same top-level onboarding framing."""
     from brainpack.cli import app
 
     runner = CliRunner()
@@ -78,8 +118,27 @@ def test_help_command_alias_shows_top_level_help():
 
     assert result.exit_code == 0
     assert "Usage:" in result.output
-    assert "create" in result.output
-    assert "list" in result.output
+    assert "agent" in result.output.lower()
+    assert "local model" in result.output.lower()
+
+
+def test_local_mode_command_help_and_agent_server_help_use_new_positioning():
+    """Command help should position query/chat as local mode and mcp-server for agents."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+
+    query_help = runner.invoke(app, ["query", "--help"])
+    chat_help = runner.invoke(app, ["chat", "--help"])
+    mcp_help = runner.invoke(app, ["mcp-server", "--help"])
+
+    assert query_help.exit_code == 0
+    assert "local mode" in query_help.output.lower()
+    assert chat_help.exit_code == 0
+    assert "local mode" in chat_help.output.lower()
+    assert mcp_help.exit_code == 0
+    assert "agent" in mcp_help.output.lower()
+    assert "stdio" in mcp_help.output.lower()
 
 
 def test_no_arg_home_screen_guides_first_run(tmp_path):
@@ -95,14 +154,24 @@ def test_no_arg_home_screen_guides_first_run(tmp_path):
     assert result.exit_code == 0
     assert "Brainpack v0.1.0" in result.output
     assert "No packs installed yet." in result.output
-    assert "Main commands" in result.output
+    assert "Use with agent" in result.output
+    assert "recommended" in result.output.lower()
+    assert "brainpack finds evidence" in result.output
+    assert "brainpack mcp-server" in result.output
+    assert "Codex" in result.output
+    assert "connect agent" in result.output.lower()
+    assert "set up pack" in result.output.lower()
+    assert "build" in result.output.lower()
+    assert "Use with local model" in result.output
+    assert "install local runtime" in result.output.lower()
+    assert "brainpack doctor" in result.output
     assert "brainpack create" in result.output
     assert "brainpack add <path-or-url-or-id>" in result.output
     assert "brainpack build <pack>" in result.output
 
 
 def test_no_arg_home_screen_orients_around_existing_inventory(tmp_pack_root):
-    """No-arg invocation with installed packs shows inventory-oriented guidance."""
+    """No-arg invocation with installed packs keeps onboarding ahead of local shortcuts."""
     from brainpack.cli import app
 
     packs_root, _ = tmp_pack_root
@@ -119,8 +188,12 @@ def test_no_arg_home_screen_orients_around_existing_inventory(tmp_pack_root):
     assert "Type" in result.output
     assert "test-pack" in result.output
     assert "needs-build" in result.output
+    assert "Use with agent" in result.output
+    assert "Use with local model" in result.output
+    assert "brainpack mcp-server" in result.output
     assert "brainpack chat test-pack \"question\"" in result.output
     assert "brainpack status test-pack" in result.output
+    assert result.output.index("Use with agent") < result.output.index('brainpack chat test-pack "question"')
     assert "next:" not in result.output
 
 
@@ -692,7 +765,7 @@ def test_chat_missing_pack_redirects_to_create_or_add(tmp_path):
 
 
 def test_chat_unbuilt_pack_redirects_to_build(tmp_pack_root):
-    """Unbuilt-pack chat should stop and point the user at build."""
+    """Unbuilt-pack chat should reuse onboarding guidance instead of a raw next-step line."""
     from brainpack.cli import app
 
     packs_root, _ = tmp_pack_root
@@ -707,14 +780,18 @@ def test_chat_unbuilt_pack_redirects_to_build(tmp_pack_root):
 
     assert result.exit_code == 1
     assert "not built" in result.output.lower() or "build" in result.output.lower()
-    assert "Next step: brainpack build test-pack" in result.output
+    assert "Use with agent" in result.output
+    assert "Use with local model" in result.output
+    assert "brainpack mcp-server" in result.output
+    assert "brainpack build test-pack" in result.output
+    assert "Next step:" not in result.output
     mock_load_model.assert_not_called()
     mock_get_collection.assert_not_called()
     mock_run_query.assert_not_called()
 
 
 def test_chat_blocked_pack_redirects_to_doctor(tmp_pack_root):
-    """Blocked-pack chat should redirect the user to doctor before querying."""
+    """Blocked-pack chat should reuse onboarding guidance instead of stale chat-first copy."""
     from brainpack.cli import app
 
     packs_root, _ = tmp_pack_root
@@ -730,14 +807,19 @@ def test_chat_blocked_pack_redirects_to_doctor(tmp_pack_root):
 
     assert result.exit_code == 1
     assert "blocked" in result.output.lower()
-    assert "Next step: brainpack doctor test-pack" in result.output
+    assert "Use with agent" in result.output
+    assert "Use with local model" in result.output
+    assert "brainpack mcp-server" in result.output
+    assert "brainpack doctor test-pack" in result.output
+    assert "try chat again" not in result.output
+    assert "Next step:" not in result.output
     mock_load_model.assert_not_called()
     mock_get_collection.assert_not_called()
     mock_run_query.assert_not_called()
 
 
 def test_query_unbuilt_pack_redirects_to_build(tmp_pack_root):
-    """Unbuilt-pack query should stop early and point the user at build."""
+    """Unbuilt-pack query should reuse onboarding guidance instead of a raw next-step line."""
     from brainpack.cli import app
 
     packs_root, _ = tmp_pack_root
@@ -752,7 +834,55 @@ def test_query_unbuilt_pack_redirects_to_build(tmp_pack_root):
 
     assert result.exit_code == 1
     assert "not built" in result.output.lower() or "build" in result.output.lower()
-    assert "Next step: brainpack build test-pack" in result.output
+    assert "Use with agent" in result.output
+    assert "Use with local model" in result.output
+    assert "brainpack mcp-server" in result.output
+    assert "brainpack build test-pack" in result.output
+    assert "Next step:" not in result.output
+    mock_load_model.assert_not_called()
+    mock_get_collection.assert_not_called()
+    mock_run_query.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("command", "status_setup", "expected_command"),
+    [
+        ("query", "needs-build", "brainpack build test-pack"),
+        ("query", "error", "brainpack build test-pack"),
+        ("chat", "needs-build", "brainpack build test-pack"),
+        ("chat", "error", "brainpack build test-pack"),
+    ],
+)
+def test_retrieval_preconditions_share_onboarding_guidance(
+    tmp_pack_root,
+    command,
+    status_setup,
+    expected_command,
+):
+    """Human query/chat preconditions should render the shared onboarding guidance seam."""
+    from brainpack.cli import app
+
+    packs_root, pack_dir = tmp_pack_root
+    runner = CliRunner()
+
+    if status_setup == "needs-build":
+        _mark_pack_needs_build(pack_dir)
+    elif status_setup == "error":
+        _mark_pack_failed(pack_dir)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli.load_model") as mock_load_model, \
+         patch("brainpack.cli.get_collection") as mock_get_collection, \
+         patch("brainpack.cli.run_query") as mock_run_query:
+        result = runner.invoke(app, [command, "test-pack", "Can I ask now?"])
+
+    assert result.exit_code == 1
+    assert "Use with agent" in result.output
+    assert "Use with local model" in result.output
+    assert "brainpack mcp-server" in result.output
+    assert expected_command in result.output
+    assert "Next step:" not in result.output
     mock_load_model.assert_not_called()
     mock_get_collection.assert_not_called()
     mock_run_query.assert_not_called()
@@ -1520,17 +1650,34 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
     assert "Src" not in result.output
 
 
-def test_status_shows_origin_blockers_and_next_action(tmp_path):
-    """status prints lifecycle detail, origin, blockers, and one next command."""
+@pytest.mark.parametrize(
+    ("pack_name", "state_setup", "env_vars", "expected_status", "expected_command"),
+    [
+        ("ready-pack", "ready", {"OPENAI_API_KEY": "sk-test"}, "ready", "brainpack mcp-server"),
+        ("blocked-pack", "blocked", {}, "blocked", "brainpack doctor blocked-pack"),
+        ("new-pack", "new", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build new-pack"),
+        ("stale-pack", "needs-build", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build stale-pack"),
+        ("error-pack", "error", {"OPENAI_API_KEY": "sk-test"}, "error", "brainpack build error-pack"),
+    ],
+)
+def test_status_uses_onboarding_guidance_across_lifecycle_states(
+    tmp_path,
+    pack_name,
+    state_setup,
+    env_vars,
+    expected_status,
+    expected_command,
+):
+    """status should use the shared onboarding guidance seam across lifecycle states."""
     from brainpack.cli import app
     from brainpack.inventory import save_pack_origin
 
     runner = CliRunner()
     packs_root = tmp_path / "brainpacks"
-    pack_dir = packs_root / "blocked-pack"
+    pack_dir = packs_root / pack_name
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
-        "name: blocked-pack\n"
+        f"name: {pack_name}\n"
         "description: test\n"
         "llm: openai\n"
         "sources:\n"
@@ -1538,19 +1685,34 @@ def test_status_shows_origin_blockers_and_next_action(tmp_path):
     )
     save_pack_origin(
         pack_dir,
-        {"type": "file", "source": "/tmp/blocked-pack.yaml", "added_at": "2026-03-13T09:00:00+00:00"},
+        {"type": "file", "source": f"/tmp/{pack_name}.yaml", "added_at": "2026-03-13T09:00:00+00:00"},
     )
 
+    if state_setup == "ready":
+        _mark_pack_ready(pack_dir)
+    elif state_setup == "needs-build":
+        _mark_pack_needs_build(pack_dir)
+    elif state_setup == "error":
+        _mark_pack_failed(pack_dir)
+
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch.dict("os.environ", {}, clear=True):
-        result = runner.invoke(app, ["status", "blocked-pack"])
+         patch.dict("os.environ", env_vars, clear=True), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True):
+        result = runner.invoke(app, ["status", pack_name])
 
     assert result.exit_code == 0, result.output
-    assert "Status: blocked" in result.output
+    assert f"Status: {expected_status}" in result.output
     assert "Type: text" in result.output
-    assert "Origin: file: /tmp/blocked-pack.yaml" in result.output
-    assert "OPENAI_API_KEY" in result.output
-    assert "Next: brainpack doctor blocked-pack" in result.output
+    assert f"Origin: file: /tmp/{pack_name}.yaml" in result.output
+    assert "Use with agent" in result.output
+    assert "Use with local model" in result.output
+    assert "brainpack mcp-server" in result.output
+    assert expected_command in result.output
+    assert "Next:" not in result.output
+    if state_setup == "ready":
+        assert result.output.index("Use with agent") < result.output.index(f'brainpack query {pack_name} "question"')
+    if state_setup == "blocked":
+        assert "OPENAI_API_KEY" in result.output
 
 
 def test_update_uses_remembered_origin_and_shows_change_summary(tmp_path):

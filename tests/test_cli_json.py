@@ -866,7 +866,7 @@ def test_chat_json_blocked_pack_returns_structured_error_and_exact_exit_code(tmp
             "message": "Pack 'blocked-pack' is blocked before chat can start.",
             "details": {
                 "next_action": "brainpack doctor blocked-pack",
-                "reason": "Doctor explains the blocker before you try chat again.",
+                "reason": "Resolve the blocker so this pack is ready for agent or local-model use.",
                 "blocker": "Error: OPENAI_API_KEY is not set.",
             },
         },
@@ -987,11 +987,70 @@ def test_query_json_unbuilt_pack_returns_structured_precondition_error(tmp_path)
             "message": "Pack 'new-pack' is not built yet.",
             "details": {
                 "next_action": "brainpack build new-pack",
-                "reason": "Build indexes this pack before Brainpack can answer questions.",
+                "reason": "Build this pack before Brainpack can serve it to an agent or local model.",
             },
         },
         "warnings": [],
     }
+    mock_load_model.assert_not_called()
+    mock_get_collection.assert_not_called()
+    mock_run_query.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("state_setup", "expected_code", "expected_reason"),
+    [
+        ("new", "pack_not_built", "Build this pack before Brainpack can serve it to an agent or local model."),
+        (
+            "needs-build",
+            "pack_needs_build",
+            "Rebuild this pack so agent and local-mode retrieval use the latest indexed changes.",
+        ),
+        (
+            "error",
+            "pack_build_failed",
+            "Rebuild this pack after the last indexing failure before using it again.",
+        ),
+    ],
+)
+def test_query_json_precondition_errors_lock_onboarding_aligned_reason_text(
+    tmp_path,
+    state_setup,
+    expected_code,
+    expected_reason,
+):
+    """Machine precondition envelopes should lock deliberate lifecycle reason wording."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "reason-pack"
+    _write_pack(pack_dir, name="reason-pack", llm="ollama")
+
+    if state_setup == "needs-build":
+        _mark_pack_stale(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+    elif state_setup == "error":
+        _mark_pack_failed(pack_dir)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli._check_ollama_reachable",
+        return_value=True,
+    ), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ) as mock_load_model, patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ) as mock_get_collection, patch(
+        "brainpack.cli.run_query",
+    ) as mock_run_query:
+        result = runner.invoke(app, ["query", "reason-pack", "What happened?", "--json"])
+
+    payload = _assert_single_machine_document(result, ok=False)
+
+    assert result.exit_code == 3
+    assert payload["error"]["code"] == expected_code
+    assert payload["error"]["details"]["reason"] == expected_reason
     mock_load_model.assert_not_called()
     mock_get_collection.assert_not_called()
     mock_run_query.assert_not_called()
