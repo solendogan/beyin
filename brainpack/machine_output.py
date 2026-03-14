@@ -133,27 +133,27 @@ class MachineExit(Exception):
         )
 
 
-def run_machine_command(
+def capture_machine_command(
     *,
     command: str,
     action: Callable[[], Any],
     pack: Optional[str] = None,
     meta: Optional[dict[str, Any]] = None,
-) -> int:
-    """Run one machine-safe command, normalizing expected and unexpected failures."""
+) -> tuple[dict[str, Any], int]:
+    """Run one machine-safe action and return its normalized envelope plus exit code."""
     try:
         data = action()
-        emit_json(
+        return (
             build_success_envelope(
                 command=command,
                 pack=pack,
                 data=data,
                 meta=meta,
-            )
+            ),
+            0,
         )
-        return 0
     except MachineExit as exc:
-        emit_json(
+        return (
             build_error_envelope(
                 command=command,
                 pack=exc.pack or pack,
@@ -162,11 +162,11 @@ def run_machine_command(
                 details=exc.details,
                 warnings=exc.warnings,
                 meta=exc.meta or meta,
-            )
+            ),
+            exc.exit_code,
         )
-        return exc.exit_code
     except Exception as exc:  # pragma: no cover - exercised via contract tests
-        emit_json(
+        return (
             build_error_envelope(
                 command=command,
                 pack=pack,
@@ -174,6 +174,24 @@ def run_machine_command(
                 message="Unexpected error while running command.",
                 details={"type": type(exc).__name__},
                 meta=meta,
-            )
+            ),
+            EXIT_UNEXPECTED,
         )
-        return EXIT_UNEXPECTED
+
+
+def run_machine_command(
+    *,
+    command: str,
+    action: Callable[[], Any],
+    pack: Optional[str] = None,
+    meta: Optional[dict[str, Any]] = None,
+) -> int:
+    """Run one machine-safe command, normalizing expected and unexpected failures."""
+    payload, exit_code = capture_machine_command(
+        command=command,
+        action=action,
+        pack=pack,
+        meta=meta,
+    )
+    emit_json(payload)
+    return exit_code

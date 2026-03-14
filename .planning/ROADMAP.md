@@ -63,3 +63,13 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 | 5. Pack Inventory and Shared Pack Management | ONB-03, PCK-04, PCK-05 | Completed |
 | 6. Guided Creation and Chat UX | ONB-01, ONB-02, QUX-01 | Completed |
 | 7. Machine-Safe CLI Surface | AUT-01, AUT-02 | Completed |
+
+### Phase 8: MCP server mode
+
+**Goal:** Expose Brainpack's machine-safe inventory and retrieval surfaces through a local MCP server so agent clients can inspect packs and query them without scraping CLI output
+**Requirements**: OCL-02
+**Depends on:** Phase 7
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 8 to break down)

@@ -707,6 +707,92 @@ def _status_payload(
     return {"pack": summary}
 
 
+def _doctor_statuses(
+    pack: str,
+    operation: str = "all",
+    *,
+    machine: bool = False,
+) -> list[dict[str, str]]:
+    """Build the reusable doctor/readiness payload."""
+    if operation not in {"query", "build", "all"}:
+        if machine:
+            raise MachineExit.usage(
+                "invalid_operation",
+                f"Unsupported doctor operation '{operation}'.",
+                pack=pack,
+                details={"valid_operations": ["query", "build", "all"]},
+            )
+        typer.echo(
+            f"Error: Unsupported doctor operation '{operation}'. "
+            "Use query, build, or all.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    pack_dir = _resolve_pack_dir(pack, machine_command="doctor" if machine else None)
+    config = load_config(pack_dir)
+    statuses: list[dict[str, str]] = []
+    readiness = _pack_readiness_details(config)
+
+    if operation in {"query", "all"}:
+        if not readiness["blockers"] or not any(
+            blocker.startswith("Error: OPENAI_API_KEY")
+            or blocker.startswith("Error: Ollama")
+            or blocker.startswith("Error: Anthropic")
+            or blocker.startswith("Error: Unknown LLM provider")
+            for blocker in readiness["blockers"]
+        ):
+            statuses.append({"label": "Query readiness", "value": f"ready (provider={config.llm})"})
+        else:
+            statuses.append({"label": "Query readiness", "value": f"blocked (provider={config.llm})"})
+            for blocker in readiness["blockers"]:
+                if blocker.startswith("Error:"):
+                    statuses.append({"label": "Query detail", "value": blocker})
+
+    if operation in {"build", "all"}:
+        if _has_youtube_sources(config):
+            youtube_issue = _youtube_build_issue()
+            if youtube_issue is None:
+                statuses.append({"label": "Build YouTube", "value": "ready"})
+            else:
+                statuses.append({"label": "Build YouTube", "value": "blocked"})
+                statuses.append({"label": "Build YouTube detail", "value": youtube_issue})
+        if _has_audio_sources(config):
+            if _check_ffmpeg_available():
+                statuses.append({"label": "Build audio", "value": "ready"})
+            else:
+                statuses.append(
+                    {
+                        "label": "Build audio",
+                        "value": "blocked",
+                    }
+                )
+                statuses.append(
+                    {
+                        "label": "Build audio detail",
+                        "value": "ffmpeg is required for audio builds. Install: brew install ffmpeg",
+                    }
+                )
+        if not _has_audio_sources(config):
+            statuses.append({"label": "Build audio", "value": "not-needed"})
+
+    return statuses
+
+
+def _doctor_payload(
+    pack: str,
+    operation: str = "all",
+    *,
+    machine: bool = False,
+) -> dict:
+    """Build a reusable payload for doctor output."""
+    return {
+        "pack": pack,
+        "operation": operation,
+        "statuses": _doctor_statuses(pack, operation, machine=machine),
+    }
+
+
 def _origin_display(origin: dict) -> str:
     origin_type = origin.get("type")
     origin_source = origin.get("source")
@@ -1175,47 +1261,10 @@ def doctor(
     ),
 ) -> None:
     """Report operation-scoped runtime readiness for a pack."""
-    pack_dir = _resolve_pack_dir(pack)
-    config = load_config(pack_dir)
-    statuses: list[tuple[str, str]] = []
-    readiness = _pack_readiness_details(config)
-
-    if operation in {"query", "all"}:
-        if not readiness["blockers"] or not any(
-            blocker.startswith("Error: OPENAI_API_KEY")
-            or blocker.startswith("Error: Ollama")
-            or blocker.startswith("Error: Anthropic")
-            or blocker.startswith("Error: Unknown LLM provider")
-            for blocker in readiness["blockers"]
-        ):
-            statuses.append(("Query readiness", f"ready (provider={config.llm})"))
-        else:
-            statuses.append(("Query readiness", f"blocked (provider={config.llm})"))
-            for blocker in readiness["blockers"]:
-                if blocker.startswith("Error:"):
-                    statuses.append(("Query detail", blocker))
-
-    if operation in {"build", "all"}:
-        if _has_youtube_sources(config):
-            youtube_issue = _youtube_build_issue()
-            if youtube_issue is None:
-                statuses.append(("Build YouTube", "ready"))
-            else:
-                statuses.append(("Build YouTube", "blocked"))
-                statuses.append(("Build YouTube detail", youtube_issue))
-        if _has_audio_sources(config):
-            if _check_ffmpeg_available():
-                statuses.append(("Build audio", "ready"))
-            else:
-                statuses.append(("Build audio", "blocked"))
-                statuses.append((
-                    "Build audio detail",
-                    "ffmpeg is required for audio builds. Install: brew install ffmpeg",
-                ))
-        if not _has_audio_sources(config):
-            statuses.append(("Build audio", "not-needed"))
-
-    for label, value in statuses:
+    statuses = _doctor_payload(pack, operation)["statuses"]
+    for item in statuses:
+        label = item["label"]
+        value = item["value"]
         typer.echo(f"{label}: {value}")
 
 
@@ -1408,6 +1457,14 @@ def update(
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     build(pack=pack, model=model, language=language)
+
+
+@app.command(name="mcp-server")
+def mcp_server_command() -> None:
+    """Run Brainpack as a local MCP server over stdio."""
+    from brainpack.mcp_server import run_stdio_server
+
+    run_stdio_server()
 
 
 if __name__ == "__main__":
