@@ -949,7 +949,7 @@ def test_machine_json_commands_emit_one_document_with_stable_top_level_keys(tmp_
     _assert_single_machine_document(chat_result, ok=True)
 
 
-def test_query_json_unbuilt_pack_returns_structured_precondition_error(tmp_path):
+def test_query_json_unbuilt_pack_returns_structured_next_action_precondition_error(tmp_path):
     """query --json rejects unbuilt packs with the shared precondition contract."""
     from brainpack.cli import app
 
@@ -1013,7 +1013,7 @@ def test_query_json_unbuilt_pack_returns_structured_precondition_error(tmp_path)
         ),
     ],
 )
-def test_query_json_precondition_errors_lock_onboarding_aligned_reason_text(
+def test_query_json_next_action_precondition_errors_lock_onboarding_aligned_reason_text(
     tmp_path,
     state_setup,
     expected_code,
