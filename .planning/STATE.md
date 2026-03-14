@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-current_phase: 7
-current_phase_name: machine-safe-cli-surface
-current_plan: 4
+current_phase: 10
+current_phase_name: update-agent-and-local-mode-onboarding
+current_plan: 2
 status: completed
-stopped_at: Completed 07-04-PLAN.md
-last_updated: "2026-03-13T14:24:23Z"
-last_activity: 2026-03-13
+stopped_at: Completed 10-02-PLAN.md
+last_updated: "2026-03-14T20:50:14.450Z"
+last_activity: 2026-03-14
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 16
-  completed_plans: 16
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 22
+  completed_plans: 22
   percent: 100
 ---
 
@@ -24,23 +24,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** Turn trusted creators' content into searchable expert memory — so users stop re-watching and start querying.
-**Current focus:** Phase 7 complete — machine-safe CLI surface is ready for milestone follow-up
+**Current focus:** Milestone complete — Phase 10 aligned CLI and long-form onboarding around the agent-first and local-mode split
 
 ## Current Position
 
-Phase: 7 (4 of 4 planned in v1.1)
-Plan: 4 of 4 in current phase
-Status: Phase complete — 07-04 completed
-Last activity: 2026-03-13 — Completed 07-04 contract hardening and regression coverage
+Phase: 10 (7 of 7 tracked phases)
+Plan: 2 of 2 in current phase
+Status: Phase complete — 10-02 completed
+Last activity: 2026-03-14 — Completed Phase 10 onboarding alignment across CLI and long-form docs
 
-**Current Phase:** 7
-**Current Phase Name:** machine-safe-cli-surface
-**Total Phases:** 4
-**Current Plan:** 4
-**Total Plans in Phase:** 4
-**Status:** Phase complete — 07-04 completed
-**Last Activity:** 2026-03-13
-**Last Activity Description:** Completed 07-04 contract hardening and regression coverage
+**Current Phase:** 10
+**Current Phase Name:** update-agent-and-local-mode-onboarding
+**Total Phases:** 7
+**Current Plan:** 2
+**Total Plans in Phase:** 2
+**Status:** Milestone complete
+**Last Activity:** 2026-03-14
+**Last Activity Description:** Completed Phase 10: CLI and long-form docs now share the agent-first onboarding story and explicit local-mode path
 **Progress:** [██████████] 100%
 
 Progress: [██████████] 100%
@@ -84,8 +84,16 @@ Progress: [██████████] 100%
 | Phase 07-machine-safe-cli-surface P02 | 4 | 2 tasks | 3 files |
 | Phase 07-machine-safe-cli-surface P03 | 6 | 2 tasks | 2 files |
 | Phase 07-machine-safe-cli-surface P04 | 14 | 2 tasks | 3 files |
+| Phase 10-update-agent-and-local-mode-onboarding P01 | 4 | 2 tasks | 4 files |
+| Phase 10-update-agent-and-local-mode-onboarding P02 | 2 | 2 tasks | 2 files |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 9 added: Make Agent Mode retrieval-first
+- Reason: MCP proved useful, but the real product value is retrieval/evidence quality for external agents rather than Brainpack's own local final-answer prose
+- Decision: Agent Mode is now the recommended default path; Local Mode remains available as the standalone/privacy-focused option
 
 ### Decisions
 
@@ -153,10 +161,26 @@ Recent decisions affecting current work:
 - [Phase 07-machine-safe-cli-surface]: Chat readiness errors now normalize blocker details to one stable first-line string before entering the machine contract.
 - [Phase 07-machine-safe-cli-surface]: Query now blocks new, stale, and failed packs before runtime loading while preserving the existing `runtime_blocked` provider-error contract for machine callers.
 - [Phase 07-machine-safe-cli-surface]: Final contract regressions pin one parseable JSON document plus stable top-level success/error keys across `list`, `status`, `query`, and one-shot `chat`.
+- [Phase 08-mcp-server-mode]: MCP ships as a local stdio server first, not HTTP, so Codex/Claude/OpenClaw-style agents on the same machine can launch Brainpack directly without service infrastructure.
+- [Phase 08-mcp-server-mode]: MCP tools use explicit `brainpack_*` namespacing and reuse machine-safe payload builders instead of scraping CLI prose.
+- Product direction: Agent Mode is now the recommended default path; Brainpack should prioritize retrieval/evidence packaging for external agents while keeping local LLM answering as an optional standalone mode.
+- [Phase 09-make-agent-mode-retrieval-first]: `retrieve_evidence()` now sits below `run_query()`, so Brainpack can expose raw retrieval evidence without coupling agent mode to LLM generation.
+- [Phase 09-make-agent-mode-retrieval-first]: `brainpack_evidence` is the new MCP contract for external agents; it returns evidence only and does not include a Brainpack-generated answer.
+- [Phase 09-make-agent-mode-retrieval-first]: evidence-mode readiness is based on pack/index state, not OpenAI key or Ollama reachability.
+- [Phase 10-update-agent-and-local-mode-onboarding]: Kept machine-safe next_action stable and introduced a separate human_guidance_command seam for CLI onboarding output.
+- [Phase 10-update-agent-and-local-mode-onboarding]: Failed-pack lifecycle classification now resolves to error before new or needs-build so onboarding guidance matches real pack state.
+- [Phase 10-update-agent-and-local-mode-onboarding]: Reframed both long-form docs around the same two-path story used by the CLI: Use with agent and Use with local model.
+- [Phase 10-update-agent-and-local-mode-onboarding]: Pointed the recommended path to the shipped brainpack mcp-server command instead of legacy attach-style or future-server concepts.
+- [Phase 10-update-agent-and-local-mode-onboarding]: Kept query and chat explicitly documented as the standalone local-mode path rather than treating them as deprecated.
 
 ### Pending Todos
 
-None yet.
+- `2026-03-13-improve-retrieval-quality-benchmarking.md` — deferred retrieval-quality work: benchmarking, chunking/reranking improvements, multilingual embedding evaluation, and local model-selection follow-up after MCP/OpenClaw priorities.
+- `2026-03-13-improve-build-progress-display.md` — replace noisy build logs with stable progress UI for playlists/multi-source packs, including current title, stage, overall progress, and elapsed time.
+- `2026-03-13-simplify-guided-pack-creation.md` — make `create` URL-first with source-type auto-detection, optional description, and follow-up consideration for PDF sources.
+- `2026-03-14-define-agent-and-local-modes-roadmap.md` — turn the two-mode product direction into actual onboarding, MCP, and retrieval-first work, with Agent Mode as the recommended default.
+- `2026-03-14-add-default-agent-answer-format-guidance.md` — add low-priority default answer-style guidance for agent wrappers so Brainpack evidence answers use a consistent structure without per-prompt instructions.
+- `2026-03-14-update-agent-and-local-mode-onboarding.md` — align future onboarding/help/docs around Agent Mode as the recommended path and Local Mode as the standalone option.
 
 ### Blockers/Concerns
 
@@ -166,6 +190,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-13T14:24:23Z
-Stopped at: Completed 07-04-PLAN.md
+Last session: 2026-03-14T20:50:14.449Z
+Stopped at: Completed 10-02-PLAN.md
 Resume file: None
