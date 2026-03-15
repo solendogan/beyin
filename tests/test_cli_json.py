@@ -1,6 +1,7 @@
 """Machine-safe CLI contract tests."""
 
 import json
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -478,6 +479,47 @@ def test_status_json_missing_pack_returns_structured_error_and_exact_exit_code(t
     }
 
 
+def test_list_json_does_not_load_interactive_prompts_when_settings_are_missing(tmp_path):
+    """Machine-safe list stays non-interactive even on a fresh machine."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli.load_prompt_backend",
+        side_effect=AssertionError("interactive backend should stay unloaded"),
+    ):
+        result = runner.invoke(app, ["list", "--json"])
+
+    assert result.exit_code == 0
+    assert _parse_output(result)["ok"] is True
+
+
+def test_status_json_does_not_load_interactive_prompts(tmp_path):
+    """status --json must not touch the interactive layer."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "ready-pack"
+    _write_pack(pack_dir, name="ready-pack")
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ), patch(
+        "brainpack.cli.load_prompt_backend",
+        side_effect=AssertionError("interactive backend should stay unloaded"),
+    ):
+        result = runner.invoke(app, ["status", "ready-pack", "--json"])
+
+    assert result.exit_code == 0
+    assert _parse_output(result)["ok"] is True
+
+
 def test_query_json_returns_shared_answer_and_sources_payload(tmp_path):
     """query --json returns the shared retrieval payload inside the machine envelope."""
     from brainpack.cli import app
@@ -539,6 +581,39 @@ def test_query_json_returns_shared_answer_and_sources_payload(tmp_path):
         },
         "warnings": [],
     }
+
+
+def test_query_json_does_not_load_interactive_prompts(tmp_path):
+    """query --json must remain prompt-free even when settings are absent."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "query-pack"
+    _write_pack(pack_dir, name="query-pack")
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ), patch(
+        "brainpack.cli.load_prompt_backend",
+        side_effect=AssertionError("interactive backend should stay unloaded"),
+    ), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.run_query",
+        return_value={"answer": "ok", "sources": []},
+    ):
+        result = runner.invoke(app, ["query", "query-pack", "What happened?", "--json"])
+
+    assert result.exit_code == 0
+    assert _parse_output(result)["ok"] is True
 
 
 def test_load_evidence_runtime_allows_built_openai_pack_without_api_key(tmp_path):
@@ -735,6 +810,65 @@ def test_chat_one_shot_json_matches_query_payload_shape(tmp_path):
             }
         ],
     }
+
+
+def test_chat_json_does_not_load_interactive_prompts(tmp_path):
+    """chat --json one-shot must not import or invoke the prompt layer."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "chat-pack"
+    _write_pack(pack_dir, name="chat-pack")
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ), patch(
+        "brainpack.cli.load_prompt_backend",
+        side_effect=AssertionError("interactive backend should stay unloaded"),
+    ), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.run_query",
+        return_value={"answer": "ok", "sources": []},
+    ):
+        result = runner.invoke(app, ["chat", "chat-pack", "What happened?", "--json"])
+
+    assert result.exit_code == 0
+    assert _parse_output(result)["ok"] is True
+
+
+def test_non_interactive_json_execution_keeps_inquirerpy_unloaded(tmp_path):
+    """A machine-safe command should leave the prompt dependency unloaded."""
+    removed = {
+        name: sys.modules.pop(name)
+        for name in list(sys.modules)
+        if name == "InquirerPy" or name.startswith("InquirerPy.")
+    }
+
+    try:
+        from brainpack.cli import app
+
+        runner = CliRunner()
+        packs_root = tmp_path / "brainpacks"
+
+        with patch("brainpack.cli._PACKS_DIR", packs_root):
+            result = runner.invoke(app, ["list", "--json"])
+
+        assert result.exit_code == 0
+        assert not any(
+            name == "InquirerPy" or name.startswith("InquirerPy.")
+            for name in sys.modules
+        )
+    finally:
+        sys.modules.update(removed)
 
 
 def test_query_json_missing_pack_returns_structured_error_without_prose_leakage(tmp_path):

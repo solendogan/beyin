@@ -1,5 +1,7 @@
 """Tests for cli.py — covers CLI-01, CLI-02."""
+import importlib
 import json
+import sys
 import pytest
 import yaml
 from pathlib import Path
@@ -216,6 +218,103 @@ def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
     assert "Commands:" not in home_result.output
     assert "Turn your favorite content into local queryable packs." in home_result.output
     assert home_result.output != help_result.output
+
+
+def test_no_arg_tty_first_run_routes_to_the_setup_seam_before_home_screen():
+    """No-subcommand first-run setup is only considered on the interactive TTY path."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+
+    with patch("brainpack.cli.needs_initial_setup", return_value=True) as needs_mock, patch(
+        "brainpack.cli.is_interactive_session",
+        return_value=True,
+    ) as tty_mock, patch(
+        "brainpack.cli._run_initial_setup_flow",
+        return_value=True,
+    ) as setup_mock, patch(
+        "brainpack.cli._render_home_screen"
+    ) as home_mock:
+        result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    needs_mock.assert_called_once_with()
+    tty_mock.assert_called_once_with()
+    setup_mock.assert_called_once_with()
+    home_mock.assert_not_called()
+
+
+def test_no_arg_non_tty_first_run_falls_back_to_current_home_screen():
+    """Fresh non-TTY runs should not try to prompt and should keep the current guidance."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+
+    with patch("brainpack.cli.needs_initial_setup", return_value=True), patch(
+        "brainpack.cli.is_interactive_session",
+        return_value=False,
+    ) as tty_mock, patch(
+        "brainpack.cli._run_initial_setup_flow"
+    ) as setup_mock, patch(
+        "brainpack.cli._render_home_screen"
+    ) as home_mock:
+        result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    tty_mock.assert_called_once_with()
+    setup_mock.assert_not_called()
+    home_mock.assert_called_once_with()
+
+
+def test_explicit_subcommands_skip_the_initial_setup_gate(tmp_path):
+    """Explicit commands stay scriptable and do not consult the first-run setup gate."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli.needs_initial_setup",
+        side_effect=AssertionError("setup gate should not run"),
+    ), patch(
+        "brainpack.cli.is_interactive_session",
+        side_effect=AssertionError("TTY detection should not run"),
+    ):
+        result = runner.invoke(app, ["list"])
+
+    assert result.exit_code == 0
+    assert "No packs installed." in result.output
+
+
+def test_plain_module_import_does_not_import_inquirerpy():
+    """Interactive dependencies should stay unloaded on normal module import."""
+    removed = {
+        name: sys.modules.pop(name)
+        for name in list(sys.modules)
+        if name == "InquirerPy" or name.startswith("InquirerPy.")
+    }
+
+    try:
+        module = importlib.import_module("brainpack.interactive")
+        importlib.reload(module)
+        assert not any(
+            name == "InquirerPy" or name.startswith("InquirerPy.")
+            for name in sys.modules
+        )
+    finally:
+        sys.modules.update(removed)
+
+
+@pytest.mark.parametrize("exc_type", [KeyboardInterrupt, EOFError])
+def test_interactive_abort_normalizes_cancellation(exc_type):
+    """Interactive cancellation should collapse into one reusable abort type."""
+    from brainpack.interactive import InteractiveAbort, normalize_prompt_abort
+
+    def _raise_abort():
+        raise exc_type()
+
+    with pytest.raises(InteractiveAbort):
+        normalize_prompt_abort(_raise_abort)
 
 
 def test_create_wizard_asks_source_type_first(tmp_path):
