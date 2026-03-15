@@ -1,5 +1,6 @@
 """Tests for config.py — covers PCK-01, ING-01, ING-02."""
 import pytest
+import yaml
 from pathlib import Path
 
 
@@ -178,3 +179,29 @@ def test_episode_limit_null_means_unlimited(tmp_path):
     )
     config = load_config(pack_dir)
     assert config.episode_limit is None
+
+
+def test_write_config_preserves_source_limits_in_canonical_yaml(tmp_path):
+    """write_config should keep per-source limits when guided edits rewrite pack.yaml."""
+    from brainpack.config import PackConfig, SourceEntry, write_config
+
+    destination = tmp_path / "pack.yaml"
+    write_config(
+        PackConfig(
+            name="guided-pack",
+            description="Guided pack",
+            llm="ollama",
+            sources=[
+                SourceEntry(url="https://example.com/article"),
+                SourceEntry(url=str(tmp_path / "notes.md"), limit=5),
+            ],
+        ),
+        destination,
+    )
+
+    raw = yaml.safe_load(destination.read_text())
+
+    assert raw["sources"] == [
+        {"url": "https://example.com/article"},
+        {"url": str(tmp_path / "notes.md"), "limit": 5},
+    ]

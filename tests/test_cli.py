@@ -578,52 +578,92 @@ def test_interactive_abort_normalizes_cancellation(exc_type):
         normalize_prompt_abort(_raise_abort)
 
 
-def test_create_wizard_asks_source_type_first(tmp_path):
-    """create begins by asking the user which source family they want to use."""
+def test_no_arg_interactive_home_routes_to_authoring_menu_after_setup():
+    """Interactive no-arg use should hand off to the human authoring menu after setup."""
     from brainpack.cli import app
 
     runner = CliRunner()
-    packs_root = tmp_path / "brainpacks"
-    prompts = []
-    answers = iter(
-        [
-            "article",
-            "guided-pack",
-            "Guided pack",
-            "https://example.com/article",
-        ]
-    )
-
-    def fake_prompt(text, **kwargs):
-        prompts.append(text)
-        return next(answers)
-
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.typer.prompt", side_effect=fake_prompt):
-        result = runner.invoke(app, ["create"])
+    with patch("brainpack.cli.needs_initial_setup", return_value=False), patch(
+        "brainpack.cli.is_interactive_session",
+        return_value=True,
+    ), patch(
+        "brainpack.cli.run_authoring_menu",
+        create=True,
+        return_value=True,
+    ) as menu_mock, patch(
+        "brainpack.cli._render_home_screen",
+    ) as home_mock:
+        result = runner.invoke(app, [])
 
     assert result.exit_code == 0
-    assert prompts
-    assert prompts[0] == "Source type (article/youtube/podcast)"
+    menu_mock.assert_called_once_with()
+    home_mock.assert_not_called()
 
 
-def test_create_wizard_writes_canonical_pack_yaml(tmp_path):
-    """create writes canonical pack.yaml into the managed pack directory."""
+@pytest.mark.parametrize(
+    ("selection", "expected_attr"),
+    [
+        ("create", "run_create_flow"),
+        ("import", "run_import_flow"),
+        ("manage", "run_manage_pack_flow"),
+    ],
+)
+def test_authoring_menu_branches_create_import_and_manage(tmp_path, selection, expected_attr):
+    """The human menu should branch into create, import, or manage without changing direct commands."""
+    from brainpack.interactive import run_authoring_menu
+
+    backend = _FakePromptBackend([selection])
+
+    with patch("brainpack.interactive.run_create_flow", create=True) as create_mock, patch(
+        "brainpack.interactive.run_import_flow",
+        create=True,
+    ) as import_mock, patch(
+        "brainpack.interactive.run_manage_pack_flow",
+        create=True,
+    ) as manage_mock:
+        completed = run_authoring_menu(
+            packs_dir=tmp_path / "brainpacks",
+            prompt_backend=backend,
+        )
+
+    select_calls = [kwargs for prompt_type, kwargs in backend.calls if prompt_type == "select"]
+    labels = [choice["name"] for choice in select_calls[0]["choices"]]
+
+    assert completed is True
+    assert labels == [
+        "Create new pack",
+        "Import existing pack",
+        "Manage existing pack",
+    ]
+    assert create_mock.call_count == (1 if expected_attr == "run_create_flow" else 0)
+    assert import_mock.call_count == (1 if expected_attr == "run_import_flow" else 0)
+    assert manage_mock.call_count == (1 if expected_attr == "run_manage_pack_flow" else 0)
+
+
+def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp_path):
+    """create should start from a source URL/path prompt and persist local text paths as sources."""
     from brainpack.cli import app
 
     runner = CliRunner()
     packs_root = tmp_path / "brainpacks"
-    answers = iter(
+    local_source = tmp_path / "notes.md"
+    local_source.write_text("# Notes\n")
+    backend = _FakePromptBackend(
         [
-            "youtube",
+            str(local_source),
             "creator-pack",
             "Creator notes",
-            "https://youtube.com/@creator",
+            True,
         ]
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.typer.prompt", side_effect=lambda text, **kwargs: next(answers)):
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli.is_interactive_session",
+        return_value=True,
+    ), patch(
+        "brainpack.cli.load_prompt_backend",
+        return_value=backend,
+    ):
         result = runner.invoke(app, ["create"])
 
     assert result.exit_code == 0
@@ -639,40 +679,112 @@ def test_create_wizard_writes_canonical_pack_yaml(tmp_path):
         "embedding_model": "all-MiniLM-L6-v2",
         "whisper_model": "small",
         "episode_limit": 20,
-        "sources": [{"url": "https://youtube.com/@creator"}],
+        "sources": [{"url": str(local_source)}],
     }
     assert config.name == "creator-pack"
-    assert config.sources == [SourceEntry(url="https://youtube.com/@creator")]
+    assert config.sources == [SourceEntry(url=str(local_source))]
+    text_prompts = [
+        kwargs["message"]
+        for prompt_type, kwargs in backend.calls
+        if prompt_type == "text"
+    ]
+    assert text_prompts[0] == "Source URL or local path"
+    assert "Source type" not in " ".join(text_prompts)
 
 
-def test_create_wizard_handles_one_source_family_and_ends_with_build_guidance(tmp_path):
-    """create writes one source family per run and points the user to build next."""
+def test_add_rejects_local_text_path_as_pack_import(tmp_path):
+    """add remains import-only and should not reinterpret a local text file as pack authoring input."""
     from brainpack.cli import app
 
     runner = CliRunner()
     packs_root = tmp_path / "brainpacks"
-    answers = iter(
+    local_source = tmp_path / "notes.txt"
+    local_source.write_text("plain text source")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["add", str(local_source)])
+
+    assert result.exit_code == 1
+    assert "Invalid pack.yaml" in result.output
+
+
+def test_manage_flow_can_edit_basic_metadata_and_add_source(tmp_path):
+    """Manage flow should update description and add a local text-like source without manual YAML edits."""
+    from brainpack.config import write_config, PackConfig
+    from brainpack.interactive import run_manage_pack_flow
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "managed-pack"
+    local_source = tmp_path / "transcript.md"
+    local_source.write_text("notes")
+    write_config(
+        PackConfig(
+            name="managed-pack",
+            description="Original description",
+            llm="ollama",
+            sources=[SourceEntry(url="https://example.com/article")],
+        ),
+        pack_dir / "pack.yaml",
+    )
+
+    backend = _FakePromptBackend(
         [
-            "podcast",
-            "pod-pack",
-            "Podcast notes",
-            "https://example.com/feed.xml",
+            "managed-pack",
+            "Updated description",
+            True,
+            str(local_source),
+            True,
         ]
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.typer.prompt", side_effect=lambda text, **kwargs: next(answers)):
-        result = runner.invoke(app, ["create"])
+    completed = run_manage_pack_flow(
+        packs_dir=packs_root,
+        prompt_backend=backend,
+    )
 
-    assert result.exit_code == 0
+    config = load_config(pack_dir)
 
-    config = load_config(packs_root / "pod-pack")
+    assert completed is True
+    assert config.description == "Updated description"
+    assert [source.url for source in config.sources] == [
+        "https://example.com/article",
+        str(local_source),
+    ]
 
-    assert [source.url for source in config.sources] == ["https://example.com/feed.xml"]
-    assert "One source family per pack keeps the first run simple." in result.output
-    assert "Next step: brainpack build pod-pack" in result.output
-    assert result.output.count("Next step:") == 1
-    assert "pack.yaml" not in result.output
+
+def test_manage_flow_cancel_preserves_existing_pack_definition(tmp_path):
+    """Cancelling managed edits should leave the current pack.yaml untouched."""
+    from brainpack.config import write_config, PackConfig
+    from brainpack.interactive import run_manage_pack_flow
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "managed-pack"
+    write_config(
+        PackConfig(
+            name="managed-pack",
+            description="Original description",
+            llm="ollama",
+            sources=[SourceEntry(url="https://example.com/article")],
+        ),
+        pack_dir / "pack.yaml",
+    )
+    original = (pack_dir / "pack.yaml").read_text()
+    backend = _FakePromptBackend(
+        [
+            "managed-pack",
+            "Changed description",
+            False,
+            KeyboardInterrupt(),
+        ]
+    )
+
+    completed = run_manage_pack_flow(
+        packs_dir=packs_root,
+        prompt_backend=backend,
+    )
+
+    assert completed is False
+    assert (pack_dir / "pack.yaml").read_text() == original
 
 
 def test_build_exits_0(tmp_pack_root):

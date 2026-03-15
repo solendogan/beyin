@@ -1,5 +1,7 @@
 """MCP server tests for Brainpack's machine-safe tool surface."""
 
+import json
+
 from pathlib import Path
 from unittest.mock import patch
 
@@ -416,6 +418,10 @@ async def test_mcp_add_returns_structured_command_result(mcp_app, tmp_path):
     assert structured["data"]["exit_code"] == 0
     assert "Pack 'imported-pack' added" in structured["data"]["stdout"]
     assert (packs_root / "imported-pack" / "pack.yaml").exists()
+    origin = json.loads((packs_root / "imported-pack" / "origin.json").read_text())
+    assert origin["type"] == "file"
+    assert origin["source"] == str(source_yaml.resolve())
+    assert origin["last_update_summary"] == ["initial add"]
 
 
 @pytest.mark.anyio
