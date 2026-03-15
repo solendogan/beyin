@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: milestone
 current_phase: 11
 current_phase_name: add interactive setup settings and guided pack authoring ux
-current_plan: 3
+current_plan: 4
 status: executing
-stopped_at: Completed 11-02-PLAN.md
-last_updated: "2026-03-15T01:30:14.846Z"
+stopped_at: Completed 11-03-PLAN.md
+last_updated: "2026-03-15T01:43:52.138Z"
 last_activity: 2026-03-15
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 26
-  completed_plans: 24
-  percent: 95
+  completed_plans: 25
+  percent: 98
 ---
 
 # Project State
@@ -29,21 +29,21 @@ See: .planning/PROJECT.md (updated 2026-03-13)
 ## Current Position
 
 Phase: 11 (8 of 8 tracked phases)
-Plan: 2 of 4 in current phase
-Status: Ready to execute 11-02
-Last activity: 2026-03-15 — Completed Phase 11 Plan 01: global settings seam and TTY-only setup foundation
+Plan: 3 of 4 in current phase
+Status: Ready to execute 11-04
+Last activity: 2026-03-15 — Completed Phase 11 Plan 03: guided authoring menu and shared authoring seam
 
 **Current Phase:** 11
 **Current Phase Name:** add interactive setup settings and guided pack authoring ux
 **Total Phases:** 8
-**Current Plan:** 3
+**Current Plan:** 4
 **Total Plans in Phase:** 4
 **Status:** Ready to execute
 **Last Activity:** 2026-03-15
-**Last Activity Description:** Completed Phase 11 Plan 01: global settings seam and TTY-only setup foundation
-**Progress:** [██████████] 95%
+**Last Activity Description:** Completed Phase 11 Plan 03: guided authoring menu and shared authoring seam
+**Progress:** [██████████] 98%
 
-Progress: [█████████░] 93%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -88,6 +88,7 @@ Progress: [█████████░] 93%
 | Phase 10-update-agent-and-local-mode-onboarding P02 | 2 | 2 tasks | 2 files |
 | Phase 11 P01 | 4 | 2 tasks | 8 files |
 | Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux P02 | 5 | 2 tasks | 6 files |
+| Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux P03 | 5 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -183,6 +184,9 @@ Recent decisions affecting current work:
 - [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Initial setup uses the no-arg interactive path exactly once, then defers later edits to brainpack settings.
 - [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Setup and settings both end with one applied summary block and one next step: brainpack create.
 - [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Saved mode preference only reorders human guidance; JSON and MCP paths keep their existing payload contracts.
+- [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: The no-arg TTY path now routes into a create/import/manage authoring menu after setup, while non-interactive home output stays unchanged.
+- [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Source intent is inferred from one source URL-or-path input, but pack.yaml-looking inputs are rejected from create/manage so the add boundary stays explicit.
+- [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Guided manage edits are staged in memory and written through the canonical config writer only after one final confirmation.
 
 ### Pending Todos
 
@@ -201,6 +205,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-15T01:30:14.844Z
-Stopped at: Completed 11-02-PLAN.md
+Last session: 2026-03-15T01:43:52.136Z
+Stopped at: Completed 11-03-PLAN.md
 Resume file: None
