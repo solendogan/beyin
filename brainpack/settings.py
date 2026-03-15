@@ -6,11 +6,15 @@ import json
 import os
 import platform
 import tempfile
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 SETTINGS_VERSION = 1
+_PREFERRED_MODES = ["agent", "local", "both"]
+_SETUP_PATHS = ["recommended", "custom"]
+_LOCAL_PROVIDERS = ["ollama", "openai"]
+_WHISPER_MODELS = ["small", "medium", "large"]
 
 
 def _recommended_transcription_backend() -> str:
@@ -27,7 +31,9 @@ class BrainpackSettings:
     setup_completed: bool = False
     preferred_mode: str = "agent"
     audio_enabled_by_default: bool = True
-    preferred_transcription_backend: str = _recommended_transcription_backend()
+    preferred_transcription_backend: str = field(
+        default_factory=_recommended_transcription_backend
+    )
     preferred_whisper_model: str = "small"
     preferred_local_provider: str = "ollama"
 
@@ -39,6 +45,28 @@ def settings_path() -> Path:
 
 def _default_settings() -> BrainpackSettings:
     return BrainpackSettings()
+
+
+def available_setup_choices() -> dict[str, Any]:
+    """Return the machine-valid high-level setup choices for interactive flows."""
+    recommended = _default_settings()
+    backends = [recommended.preferred_transcription_backend]
+    if recommended.preferred_transcription_backend != "faster-whisper":
+        backends.append("faster-whisper")
+    return {
+        "setup_paths": list(_SETUP_PATHS),
+        "preferred_modes": list(_PREFERRED_MODES),
+        "transcription_backends": backends,
+        "whisper_models": list(_WHISPER_MODELS),
+        "local_providers": list(_LOCAL_PROVIDERS),
+        "recommended": {
+            "preferred_mode": recommended.preferred_mode,
+            "audio_enabled_by_default": recommended.audio_enabled_by_default,
+            "preferred_transcription_backend": recommended.preferred_transcription_backend,
+            "preferred_whisper_model": recommended.preferred_whisper_model,
+            "preferred_local_provider": recommended.preferred_local_provider,
+        },
+    }
 
 
 def _merge_settings(raw: dict[str, Any]) -> BrainpackSettings:
@@ -94,3 +122,23 @@ def needs_initial_setup() -> bool:
     """Return True when Brainpack should consider the first-run setup path."""
     return not load_settings().setup_completed
 
+
+def describe_settings_summary(settings: BrainpackSettings) -> str:
+    """Return a compact human summary of the active settings."""
+    mode_labels = {
+        "agent": "Use with agent",
+        "local": "Use with local model",
+        "both": "Use with agent and local model",
+    }
+    audio_label = "enabled" if settings.audio_enabled_by_default else "disabled"
+    return "\n".join(
+        [
+            f"Mode: {mode_labels.get(settings.preferred_mode, settings.preferred_mode)}",
+            f"Audio/video defaults: {audio_label}",
+            (
+                "Transcription: "
+                f"{settings.preferred_transcription_backend} / {settings.preferred_whisper_model}"
+            ),
+            f"Local answers: {settings.preferred_local_provider}",
+        ]
+    )

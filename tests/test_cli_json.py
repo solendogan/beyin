@@ -552,7 +552,7 @@ def test_status_json_ignores_saved_mode_preferences_and_stays_machine_safe(
         {"OPENAI_API_KEY": "sk-test"},
         clear=False,
     ), patch(
-        "brainpack.interactive.load_prompt_backend",
+        "brainpack.cli.load_prompt_backend",
         side_effect=AssertionError("interactive backend should stay unloaded"),
     ):
         result = runner.invoke(app, ["status", "ready-pack", "--json"])

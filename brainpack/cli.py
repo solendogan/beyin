@@ -20,10 +20,10 @@ from brainpack.config import (
     write_config,
 )
 from brainpack.interactive import (
-    InteractiveAbort,
     is_interactive_session,
     load_prompt_backend,
-    require_interactive_session,
+    run_initial_setup_flow as interactive_run_initial_setup_flow,
+    run_settings_flow as interactive_run_settings_flow,
 )
 from brainpack.inventory import (
     human_guidance_command,
@@ -53,7 +53,7 @@ from brainpack.pack_state import (
 )
 from brainpack.machine_output import MachineExit, run_machine_command
 from brainpack.source_ids import artifact_stem, canonical_source_id
-from brainpack.settings import needs_initial_setup
+from brainpack.settings import load_settings, needs_initial_setup
 
 app = typer.Typer(
     help=(
@@ -179,39 +179,71 @@ def _pack_label(summary: Optional[dict]) -> str:
 
 def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False) -> None:
     """Render the shared human onboarding guidance across home, status, and errors."""
+    preferred_mode = load_settings().preferred_mode
     pack_name = _pack_label(summary)
     status = summary.get("status") if summary else None
     lifecycle_command = human_guidance_command(summary) if summary else None
     build_command = f"brainpack build {pack_name}"
     doctor_command = f"brainpack doctor {pack_name}"
+    
+    def _render_agent_guidance() -> None:
+        heading = "Use with agent"
+        if preferred_mode != "local":
+            heading += " (recommended)"
+        typer.echo(heading, err=err)
+        typer.echo(
+            "  brainpack finds evidence for agents like Codex, Claude Code, or OpenClaw.",
+            err=err,
+        )
+        typer.echo("  1. Connect agent: brainpack mcp-server", err=err)
+        typer.echo("  2. Set up pack: brainpack create", err=err)
+        typer.echo("     or brainpack add <path-or-url-or-id>", err=err)
+        typer.echo(
+            "  3. Build: brainpack build <pack>"
+            if summary is None
+            else f"  3. Build: {build_command}",
+            err=err,
+        )
+        if summary:
+            if status == "blocked":
+                typer.echo(f"  Current pack unblock step: {lifecycle_command}", err=err)
+            elif status in {"new", "needs-build", "error"}:
+                typer.echo(f"  Current pack build step: {lifecycle_command}", err=err)
+            else:
+                typer.echo(f"  Current pack is ready for agent use: {pack_name}", err=err)
 
-    typer.echo("Use with agent (recommended)", err=err)
-    typer.echo(
-        "  brainpack finds evidence for agents like Codex, Claude Code, or OpenClaw.",
-        err=err,
-    )
-    typer.echo("  1. Connect agent: brainpack mcp-server", err=err)
-    typer.echo("  2. Set up pack: brainpack create", err=err)
-    typer.echo("     or brainpack add <path-or-url-or-id>", err=err)
-    typer.echo("  3. Build: brainpack build <pack>" if summary is None else f"  3. Build: {build_command}", err=err)
-    if summary:
-        if status == "blocked":
-            typer.echo(f"  Current pack unblock step: {lifecycle_command}", err=err)
-        elif status in {"new", "needs-build", "error"}:
-            typer.echo(f"  Current pack build step: {lifecycle_command}", err=err)
-        else:
-            typer.echo(f"  Current pack is ready for agent use: {pack_name}", err=err)
+    def _render_local_guidance() -> None:
+        heading = "Use with local model"
+        if preferred_mode == "local":
+            heading += " (recommended)"
+        typer.echo(heading, err=err)
+        typer.echo("  1. Install local runtime (for example Ollama).", err=err)
+        typer.echo(
+            "  2. Run doctor: brainpack doctor <pack>"
+            if summary is None
+            else f"  2. Run doctor: {doctor_command}",
+            err=err,
+        )
+        typer.echo("  3. Set up pack: brainpack create", err=err)
+        typer.echo("     or brainpack add <path-or-url-or-id>", err=err)
+        typer.echo(
+            "  4. Build: brainpack build <pack>"
+            if summary is None
+            else f"  4. Build: {build_command}",
+            err=err,
+        )
+        if summary and status == "ready":
+            typer.echo(f'  5. Ask locally: brainpack query {pack_name} "question"', err=err)
+            typer.echo(f'     or brainpack chat {pack_name} "question"', err=err)
 
-    typer.echo("", err=err)
-    typer.echo("Use with local model", err=err)
-    typer.echo("  1. Install local runtime (for example Ollama).", err=err)
-    typer.echo("  2. Run doctor: brainpack doctor <pack>" if summary is None else f"  2. Run doctor: {doctor_command}", err=err)
-    typer.echo("  3. Set up pack: brainpack create", err=err)
-    typer.echo("     or brainpack add <path-or-url-or-id>", err=err)
-    typer.echo("  4. Build: brainpack build <pack>" if summary is None else f"  4. Build: {build_command}", err=err)
-    if summary and status == "ready":
-        typer.echo(f'  5. Ask locally: brainpack query {pack_name} "question"', err=err)
-        typer.echo(f'     or brainpack chat {pack_name} "question"', err=err)
+    renderers = [_render_agent_guidance, _render_local_guidance]
+    if preferred_mode == "local":
+        renderers = [_render_local_guidance, _render_agent_guidance]
+
+    for index, render in enumerate(renderers):
+        if index:
+            typer.echo("", err=err)
+        render()
 
 
 def _render_home_screen() -> None:
@@ -251,12 +283,8 @@ def _render_home_screen() -> None:
 
 
 def _run_initial_setup_flow() -> bool:
-    """Placeholder seam for later setup work without changing current home behavior."""
-    try:
-        require_interactive_session()
-    except InteractiveAbort:
-        return False
-    return False
+    """Run the interactive first-run setup and return True when it handled output."""
+    return interactive_run_initial_setup_flow(prompt_backend=load_prompt_backend())
 
 
 @app.callback(invoke_without_command=True)
@@ -267,6 +295,18 @@ def main(ctx: typer.Context) -> None:
             if _run_initial_setup_flow():
                 return
         _render_home_screen()
+
+
+@app.command(name="settings")
+def settings_command() -> None:
+    """Edit the global Brainpack defaults used by interactive setup and guidance."""
+    if not is_interactive_session():
+        typer.echo("Error: `brainpack settings` requires a TTY session.", err=True)
+        typer.echo("Run `brainpack settings` from an interactive terminal.", err=True)
+        raise typer.Exit(code=1)
+
+    if not interactive_run_settings_flow(prompt_backend=load_prompt_backend()):
+        raise typer.Exit(code=1)
 
 
 @app.command()

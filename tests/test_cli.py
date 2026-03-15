@@ -358,7 +358,7 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
         "brainpack.cli.is_interactive_session",
         return_value=True,
     ), patch(
-        "brainpack.interactive.load_prompt_backend",
+        "brainpack.cli.load_prompt_backend",
         return_value=backend,
     ) as load_backend:
         first = runner.invoke(app, [])
@@ -441,7 +441,7 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
     )
 
     with patch("brainpack.cli.is_interactive_session", return_value=True), patch(
-        "brainpack.interactive.load_prompt_backend",
+        "brainpack.cli.load_prompt_backend",
         return_value=backend,
     ):
         result = runner.invoke(app, ["settings"])
@@ -468,7 +468,7 @@ def test_settings_command_requires_tty_and_keeps_prompt_backend_unloaded(
     runner = CliRunner()
 
     with patch("brainpack.cli.is_interactive_session", return_value=False), patch(
-        "brainpack.interactive.load_prompt_backend",
+        "brainpack.cli.load_prompt_backend",
         side_effect=AssertionError("prompt backend should stay unloaded"),
     ):
         result = runner.invoke(app, ["settings"])
