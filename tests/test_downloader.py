@@ -49,6 +49,18 @@ class TestDetectSourceType:
     def test_medium_article_url(self):
         assert detect_source_type("https://medium.com/@author/post") == "article"
 
+    def test_local_path_markdown_detected_as_local_text(self, tmp_path):
+        source = tmp_path / "notes.md"
+        source.write_text("hello", encoding="utf-8")
+
+        assert detect_source_type(str(source)) == "local_text"
+
+    def test_local_path_pack_yaml_detected_as_pack(self, tmp_path):
+        source = tmp_path / "pack.yaml"
+        source.write_text("name: demo\n", encoding="utf-8")
+
+        assert detect_source_type(str(source)) == "pack"
+
 
 # ING-01: YouTube episode listing
 class TestListYoutubeEpisodes:

@@ -1,4 +1,6 @@
 """Tests for ingester.py — covers ING-03."""
+from pathlib import Path
+
 import pytest
 from unittest.mock import patch
 
@@ -46,3 +48,34 @@ def test_fetch_article_falls_back_to_url_as_title():
     text, title = result
     assert len(text) > 0
     assert title == url  # falls back to URL when no metadata
+
+
+def test_local_path_load_text_like_source_reads_markdown(tmp_path):
+    from brainpack.ingester import load_text_like_source
+
+    source = tmp_path / "notes.md"
+    source.write_text("# Heading\n\nUseful local text.\n", encoding="utf-8")
+
+    text, title = load_text_like_source(source)
+
+    assert "Useful local text." in text
+    assert title == "notes"
+
+
+def test_local_path_load_text_like_source_raises_for_missing_file(tmp_path):
+    from brainpack.ingester import load_text_like_source
+
+    missing = tmp_path / "missing.md"
+
+    with pytest.raises(FileNotFoundError):
+        load_text_like_source(missing)
+
+
+def test_local_path_load_text_like_source_rejects_unsupported_suffix(tmp_path):
+    from brainpack.ingester import load_text_like_source
+
+    source = tmp_path / "recording.mp3"
+    source.write_bytes(b"not text")
+
+    with pytest.raises(ValueError, match="Unsupported local source type"):
+        load_text_like_source(source)

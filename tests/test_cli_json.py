@@ -565,6 +565,35 @@ def test_status_json_ignores_saved_mode_preferences_and_stays_machine_safe(
     assert "Use with local model" not in result.output
 
 
+def test_status_json_local_path_pack_stays_single_document(tmp_path):
+    """status --json stays machine-safe for packs authored from local text-like paths."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "local-pack"
+    source = tmp_path / "notes.md"
+    source.write_text("Local text", encoding="utf-8")
+    _write_pack(pack_dir, name="local-pack", sources=[str(source)])
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ), patch(
+        "brainpack.cli.load_prompt_backend",
+        side_effect=AssertionError("interactive backend should stay unloaded"),
+    ):
+        result = runner.invoke(app, ["status", "local-pack", "--json"])
+
+    payload = _assert_single_machine_document(result, ok=True)
+
+    assert result.exit_code == 0
+    assert payload["data"]["pack"]["name"] == "local-pack"
+    assert payload["data"]["pack"]["source_count"] == 1
+
+
 def test_query_json_returns_shared_answer_and_sources_payload(tmp_path):
     """query --json returns the shared retrieval payload inside the machine envelope."""
     from brainpack.cli import app

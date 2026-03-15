@@ -914,6 +914,232 @@ def test_build_warns_and_marks_failed_when_fetch_returns_none(tmp_pack_root):
     assert "warn" in result.output.lower()
 
 
+def test_build_local_path_reads_text_without_remote_fetch(tmp_path):
+    """build ingests a local text-like path through the narrow local loader."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "local-pack"
+    pack_dir.mkdir(parents=True)
+    source = tmp_path / "notes.md"
+    source.write_text("# Notes\n\nLocal build content.\n", encoding="utf-8")
+    (pack_dir / "pack.yaml").write_text(
+        "name: local-pack\n"
+        "description: Local source pack\n"
+        "llm: ollama\n"
+        "sources:\n"
+        f"  - {source}\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.fetch_article") as mock_fetch, \
+         patch("brainpack.cli.chunk_text", return_value=["chunk one"]), \
+         patch("brainpack.cli.embed_and_store", return_value=1), \
+         patch("brainpack.cli.mark_processed") as mock_mark, \
+         patch("brainpack.cli.mark_failed") as mock_fail:
+        result = runner.invoke(app, ["build", "local-pack"])
+
+    assert result.exit_code == 0, f"Exit code {result.exit_code}, output: {result.output}"
+    mock_fetch.assert_not_called()
+    mock_mark.assert_called_once()
+    mock_fail.assert_not_called()
+    assert "embed" in result.output.lower()
+
+
+def test_build_local_path_missing_file_fails_clearly(tmp_path):
+    """build marks missing local text-like sources failed without treating them as remote articles."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "missing-local-pack"
+    pack_dir.mkdir(parents=True)
+    missing = tmp_path / "missing.md"
+    (pack_dir / "pack.yaml").write_text(
+        "name: missing-local-pack\n"
+        "description: Missing local source pack\n"
+        "llm: ollama\n"
+        "sources:\n"
+        f"  - {missing}\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.fetch_article") as mock_fetch, \
+         patch("brainpack.cli.chunk_text") as mock_chunk, \
+         patch("brainpack.cli.embed_and_store") as mock_embed, \
+         patch("brainpack.cli.mark_processed") as mock_mark, \
+         patch("brainpack.cli.mark_failed") as mock_fail:
+        result = runner.invoke(app, ["build", "missing-local-pack"])
+
+    assert result.exit_code == 0, f"Exit code {result.exit_code}, output: {result.output}"
+    mock_fetch.assert_not_called()
+    mock_chunk.assert_not_called()
+    mock_embed.assert_not_called()
+    mock_mark.assert_not_called()
+    mock_fail.assert_called_once()
+    assert "missing local source" in result.output.lower()
+
+
+def test_build_local_path_unsupported_suffix_fails_clearly(tmp_path):
+    """build keeps local-file support narrow and rejects unsupported local suffixes."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "binary-pack"
+    pack_dir.mkdir(parents=True)
+    source = tmp_path / "recording.mp3"
+    source.write_bytes(b"binary")
+    (pack_dir / "pack.yaml").write_text(
+        "name: binary-pack\n"
+        "description: Unsupported local source pack\n"
+        "llm: ollama\n"
+        "sources:\n"
+        f"  - {source}\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.fetch_article") as mock_fetch, \
+         patch("brainpack.cli.chunk_text") as mock_chunk, \
+         patch("brainpack.cli.embed_and_store") as mock_embed, \
+         patch("brainpack.cli.mark_processed") as mock_mark, \
+         patch("brainpack.cli.mark_failed") as mock_fail:
+        result = runner.invoke(app, ["build", "binary-pack"])
+
+    assert result.exit_code == 0, f"Exit code {result.exit_code}, output: {result.output}"
+    mock_fetch.assert_not_called()
+    mock_chunk.assert_not_called()
+    mock_embed.assert_not_called()
+    mock_mark.assert_not_called()
+    mock_fail.assert_called_once()
+    assert "unsupported local source type" in result.output.lower()
+
+
+@pytest.mark.parametrize(
+    ("pack_yaml", "settings_model", "build_args", "expected_model"),
+    [
+        (
+            "name: test-pack\n"
+            "description: Test\n"
+            "llm: ollama\n"
+            "sources:\n"
+            "  - https://www.youtube.com/@channel\n"
+            "embedding_model: all-MiniLM-L6-v2\n"
+            "whisper_model: large\n",
+            "small",
+            ["--model", "medium"],
+            "medium",
+        ),
+        (
+            "name: test-pack\n"
+            "description: Test\n"
+            "llm: ollama\n"
+            "sources:\n"
+            "  - https://www.youtube.com/@channel\n"
+            "embedding_model: all-MiniLM-L6-v2\n"
+            "whisper_model: large\n",
+            "medium",
+            [],
+            "large",
+        ),
+        (
+            "name: test-pack\n"
+            "description: Test\n"
+            "llm: ollama\n"
+            "sources:\n"
+            "  - https://www.youtube.com/@channel\n"
+            "embedding_model: all-MiniLM-L6-v2\n",
+            "medium",
+            [],
+            "medium",
+        ),
+    ],
+)
+def test_build_whisper_settings_precedence_for_audio_sources(
+    monkeypatch,
+    tmp_path,
+    pack_yaml,
+    settings_model,
+    build_args,
+    expected_model,
+):
+    """build resolves whisper defaults as CLI > pack config > global settings > fallback."""
+    from brainpack.cli import app
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _save_global_settings(tmp_path, preferred_whisper_model=settings_model)
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(pack_yaml, encoding="utf-8")
+
+    runner = CliRunner()
+    audio_file = tmp_path / "audio.m4a"
+    audio_file.write_bytes(b"x" * 20_000)
+    episode = {"id": "vid123", "title": "Test Video", "url": "https://youtu.be/vid123"}
+    segments = [{"start": 0.0, "end": 5.0, "text": "Content"}]
+    mock_transcribe = MagicMock(return_value=segments)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli._youtube_build_issue", return_value=None), \
+         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=[episode]), \
+         patch("brainpack.cli.download_audio", return_value=audio_file), \
+         patch("brainpack.cli.transcribe_audio", mock_transcribe), \
+         patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
+         patch("brainpack.cli.embed_and_store", return_value=1), \
+         patch("brainpack.cli.is_audio_step_done", return_value=False), \
+         patch("brainpack.cli.get_audio_step", return_value={}), \
+         patch("brainpack.cli.mark_audio_step"), \
+         patch("brainpack.cli.mark_failed"):
+        result = runner.invoke(app, ["build", "test-pack", *build_args])
+
+    assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
+    _, kwargs = mock_transcribe.call_args
+    assert kwargs.get("model_size") == expected_model
+
+
+def test_phase_11_traceability_artifact_exists():
+    """Phase 11 leaves an explicit local traceability artifact instead of only plan prose."""
+    traceability = Path(
+        ".planning/phases/11-add-interactive-setup-settings-and-guided-pack-authoring-ux/11-TRACEABILITY.md"
+    )
+
+    assert traceability.exists()
+    content = traceability.read_text(encoding="utf-8")
+    assert "ONB-02" in content
+    assert "RUN-01" in content
+    assert "AUT-02" in content
+
+
 def test_query_exits_0_and_prints_answer(tmp_pack_root):
     """query command exits 0 and prints the answer."""
     from brainpack.cli import app
