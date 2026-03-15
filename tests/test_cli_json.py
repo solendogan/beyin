@@ -520,6 +520,51 @@ def test_status_json_does_not_load_interactive_prompts(tmp_path):
     assert _parse_output(result)["ok"] is True
 
 
+def test_status_json_ignores_saved_mode_preferences_and_stays_machine_safe(
+    monkeypatch,
+    tmp_path,
+):
+    """Saved human guidance preferences must not change the status --json contract."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from brainpack.cli import app
+    from brainpack.settings import BrainpackSettings, save_settings
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "ready-pack"
+    _write_pack(pack_dir, name="ready-pack")
+    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+    save_settings(
+        BrainpackSettings(
+            version=1,
+            setup_completed=True,
+            preferred_mode="local",
+            audio_enabled_by_default=False,
+            preferred_transcription_backend="faster-whisper",
+            preferred_whisper_model="medium",
+            preferred_local_provider="openai",
+        )
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ), patch(
+        "brainpack.interactive.load_prompt_backend",
+        side_effect=AssertionError("interactive backend should stay unloaded"),
+    ):
+        result = runner.invoke(app, ["status", "ready-pack", "--json"])
+
+    payload = _parse_output(result)
+
+    assert result.exit_code == 0
+    assert payload["ok"] is True
+    assert payload["meta"]["command"] == "status"
+    assert "Use with local model" not in result.output
+
+
 def test_query_json_returns_shared_answer_and_sources_payload(tmp_path):
     """query --json returns the shared retrieval payload inside the machine envelope."""
     from brainpack.cli import app

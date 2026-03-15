@@ -28,6 +28,54 @@ def tmp_pack_root(tmp_path):
     return packs_root, pack_dir
 
 
+class _PromptResult:
+    def __init__(self, value):
+        self._value = value
+
+    def execute(self):
+        if isinstance(self._value, BaseException):
+            raise self._value
+        return self._value
+
+
+class _FakePromptBackend:
+    def __init__(self, values):
+        self._values = iter(values)
+        self.calls = []
+
+    def _record(self, prompt_type, **kwargs):
+        self.calls.append((prompt_type, kwargs))
+        return _PromptResult(next(self._values))
+
+    def select(self, **kwargs):
+        return self._record("select", **kwargs)
+
+    def confirm(self, **kwargs):
+        return self._record("confirm", **kwargs)
+
+    def text(self, **kwargs):
+        return self._record("text", **kwargs)
+
+
+def _save_global_settings(home: Path, **overrides):
+    from brainpack.settings import BrainpackSettings, save_settings
+
+    save_settings(
+        BrainpackSettings(
+            version=1,
+            setup_completed=True,
+            preferred_mode=overrides.get("preferred_mode", "agent"),
+            audio_enabled_by_default=overrides.get("audio_enabled_by_default", True),
+            preferred_transcription_backend=overrides.get(
+                "preferred_transcription_backend",
+                "faster-whisper",
+            ),
+            preferred_whisper_model=overrides.get("preferred_whisper_model", "small"),
+            preferred_local_provider=overrides.get("preferred_local_provider", "ollama"),
+        )
+    )
+
+
 def _make_config(
     sources,
     embedding_model="all-MiniLM-L6-v2",
@@ -284,6 +332,219 @@ def test_explicit_subcommands_skip_the_initial_setup_gate(tmp_path):
 
     assert result.exit_code == 0
     assert "No packs installed." in result.output
+
+
+def test_first_interactive_run_completes_recommended_setup_once_and_persists_settings(
+    monkeypatch,
+    tmp_path,
+):
+    """First interactive no-arg use should run setup once, save defaults, and not repeat."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from brainpack.cli import app
+    from brainpack.settings import load_settings
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    backend = _FakePromptBackend(
+        [
+            "recommended",
+            "agent",
+            True,
+        ]
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli.is_interactive_session",
+        return_value=True,
+    ), patch(
+        "brainpack.interactive.load_prompt_backend",
+        return_value=backend,
+    ) as load_backend:
+        first = runner.invoke(app, [])
+        second = runner.invoke(app, [])
+
+    settings = load_settings()
+
+    assert first.exit_code == 0
+    assert settings.setup_completed is True
+    assert settings.preferred_mode == "agent"
+    assert first.output.count("Applied settings") == 1
+    assert first.output.count("Next step:") == 1
+    assert second.exit_code == 0
+    assert "Applied settings" not in second.output
+    assert load_backend.call_count == 1
+
+
+def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypatch, tmp_path):
+    """Custom setup should expose only the valid high-level runtime choices for this machine."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from brainpack.interactive import run_initial_setup_flow
+    from brainpack.settings import load_settings
+
+    backend = _FakePromptBackend(
+        [
+            "custom",
+            "both",
+            False,
+            "faster-whisper",
+            "medium",
+            "openai",
+            True,
+        ]
+    )
+
+    with patch("brainpack.settings.platform.system", return_value="Linux"), patch(
+        "brainpack.settings.platform.machine",
+        return_value="x86_64",
+    ):
+        completed = run_initial_setup_flow(prompt_backend=backend)
+
+    settings = load_settings()
+    backend_names = [
+        choice["value"]
+        for prompt_type, kwargs in backend.calls
+        if prompt_type == "select" and kwargs["message"].startswith("Transcription backend")
+        for choice in kwargs["choices"]
+    ]
+
+    assert completed is True
+    assert settings.setup_completed is True
+    assert settings.preferred_mode == "both"
+    assert settings.audio_enabled_by_default is False
+    assert settings.preferred_transcription_backend == "faster-whisper"
+    assert settings.preferred_whisper_model == "medium"
+    assert settings.preferred_local_provider == "openai"
+    assert backend_names == ["faster-whisper"]
+
+
+def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch, tmp_path):
+    """brainpack settings should reopen the editable flow and summarize the applied result."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from brainpack.cli import app
+    from brainpack.settings import load_settings
+
+    _save_global_settings(tmp_path, preferred_mode="agent")
+    runner = CliRunner()
+    backend = _FakePromptBackend(
+        [
+            "custom",
+            "local",
+            True,
+            "faster-whisper",
+            "large",
+            "openai",
+            True,
+        ]
+    )
+
+    with patch("brainpack.cli.is_interactive_session", return_value=True), patch(
+        "brainpack.interactive.load_prompt_backend",
+        return_value=backend,
+    ):
+        result = runner.invoke(app, ["settings"])
+
+    settings = load_settings()
+
+    assert result.exit_code == 0
+    assert settings.preferred_mode == "local"
+    assert settings.preferred_whisper_model == "large"
+    assert settings.preferred_local_provider == "openai"
+    assert result.output.count("Applied settings") == 1
+    assert result.output.count("Next step:") == 1
+
+
+def test_settings_command_requires_tty_and_keeps_prompt_backend_unloaded(
+    monkeypatch,
+    tmp_path,
+):
+    """Non-interactive settings edits should fail with guidance instead of prompting."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from brainpack.cli import app
+
+    runner = CliRunner()
+
+    with patch("brainpack.cli.is_interactive_session", return_value=False), patch(
+        "brainpack.interactive.load_prompt_backend",
+        side_effect=AssertionError("prompt backend should stay unloaded"),
+    ):
+        result = runner.invoke(app, ["settings"])
+
+    assert result.exit_code == 1
+    assert "TTY" in result.output
+    assert "brainpack settings" in result.output
+
+
+def test_saved_local_preference_moves_local_guidance_ahead_of_agent_copy(
+    monkeypatch,
+    tmp_path,
+):
+    """Human guidance can reflect a saved mode preference without changing command surfaces."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from brainpack.cli import app
+
+    _save_global_settings(tmp_path, preferred_mode="local")
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    assert result.output.index("Use with local model") < result.output.index("Use with agent")
+
+
+def test_cancelled_initial_setup_leaves_settings_missing(monkeypatch, tmp_path):
+    """Aborting first-run setup must not leave behind a partial settings file."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from brainpack.interactive import run_initial_setup_flow
+    from brainpack.settings import settings_path
+
+    backend = _FakePromptBackend(
+        [
+            "custom",
+            KeyboardInterrupt(),
+        ]
+    )
+
+    completed = run_initial_setup_flow(prompt_backend=backend)
+
+    assert completed is False
+    assert settings_path().exists() is False
+
+
+def test_cancelled_settings_edit_preserves_previous_settings(monkeypatch, tmp_path):
+    """Aborting a later settings edit should keep the prior settings file untouched."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from brainpack.interactive import run_settings_flow
+    from brainpack.settings import load_settings, settings_path
+
+    _save_global_settings(
+        tmp_path,
+        preferred_mode="agent",
+        preferred_whisper_model="small",
+        preferred_local_provider="ollama",
+    )
+    original = settings_path().read_text()
+    backend = _FakePromptBackend(
+        [
+            "custom",
+            "local",
+            KeyboardInterrupt(),
+        ]
+    )
+
+    completed = run_settings_flow(prompt_backend=backend)
+
+    assert completed is False
+    assert settings_path().read_text() == original
+    assert load_settings().preferred_mode == "agent"
 
 
 def test_plain_module_import_does_not_import_inquirerpy():

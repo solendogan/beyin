@@ -108,3 +108,52 @@ def test_save_settings_uses_atomic_replace_and_cleans_up_failed_temp_files(
 
     assert settings_path().read_text() == original
     assert sorted(path.name for path in settings_dir.iterdir()) == ["settings.json"]
+
+
+def test_available_setup_choices_only_exposes_valid_machine_backends():
+    """Setup choices should only include high-level runtime options valid on this machine."""
+    with patch("brainpack.settings.platform.system", return_value="Linux"), patch(
+        "brainpack.settings.platform.machine",
+        return_value="x86_64",
+    ):
+        from brainpack.settings import available_setup_choices
+
+        linux_choices = available_setup_choices()
+
+    assert linux_choices["setup_paths"] == ["recommended", "custom"]
+    assert linux_choices["preferred_modes"] == ["agent", "local", "both"]
+    assert linux_choices["transcription_backends"] == ["faster-whisper"]
+    assert linux_choices["local_providers"] == ["ollama", "openai"]
+
+    with patch("brainpack.settings.platform.system", return_value="Darwin"), patch(
+        "brainpack.settings.platform.machine",
+        return_value="arm64",
+    ):
+        from brainpack.settings import available_setup_choices
+
+        mac_choices = available_setup_choices()
+
+    assert mac_choices["transcription_backends"] == ["mlx-whisper", "faster-whisper"]
+    assert mac_choices["recommended"]["preferred_transcription_backend"] == "mlx-whisper"
+
+
+def test_describe_settings_summary_renders_applied_defaults_for_humans():
+    """Saved settings should be summarized in one human-readable applied block."""
+    from brainpack.settings import BrainpackSettings, describe_settings_summary
+
+    summary = describe_settings_summary(
+        BrainpackSettings(
+            version=1,
+            setup_completed=True,
+            preferred_mode="both",
+            audio_enabled_by_default=False,
+            preferred_transcription_backend="faster-whisper",
+            preferred_whisper_model="medium",
+            preferred_local_provider="openai",
+        )
+    )
+
+    assert "Use with agent and local model" in summary
+    assert "Audio/video defaults: disabled" in summary
+    assert "Transcription: faster-whisper / medium" in summary
+    assert "Local answers: openai" in summary
