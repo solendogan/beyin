@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: milestone
 current_phase: 11
 current_phase_name: add interactive setup settings and guided pack authoring ux
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-03-15T01:17:06.527Z"
+stopped_at: Completed 11-02-PLAN.md
+last_updated: "2026-03-15T01:30:14.846Z"
 last_activity: 2026-03-15
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 26
-  completed_plans: 23
-  percent: 93
+  completed_plans: 24
+  percent: 95
 ---
 
 # Project State
@@ -36,12 +36,12 @@ Last activity: 2026-03-15 — Completed Phase 11 Plan 01: global settings seam a
 **Current Phase:** 11
 **Current Phase Name:** add interactive setup settings and guided pack authoring ux
 **Total Phases:** 8
-**Current Plan:** 2
+**Current Plan:** 3
 **Total Plans in Phase:** 4
 **Status:** Ready to execute
 **Last Activity:** 2026-03-15
 **Last Activity Description:** Completed Phase 11 Plan 01: global settings seam and TTY-only setup foundation
-**Progress:** [█████████░] 93%
+**Progress:** [██████████] 95%
 
 Progress: [█████████░] 93%
 
@@ -87,6 +87,7 @@ Progress: [█████████░] 93%
 | Phase 10-update-agent-and-local-mode-onboarding P01 | 4 | 2 tasks | 4 files |
 | Phase 10-update-agent-and-local-mode-onboarding P02 | 2 | 2 tasks | 2 files |
 | Phase 11 P01 | 4 | 2 tasks | 8 files |
+| Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux P02 | 5 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -179,6 +180,9 @@ Recent decisions affecting current work:
 - [Phase 11]: Global setup state lives in ~/.brainpacks/settings.json and stays separate from pack.yaml, origin.json, and meta.json. — One machine-level JSON store keeps first-run settings distinct from pack data and matches Brainpack's existing sidecar-state pattern.
 - [Phase 11]: The CLI only considers first-run setup on the no-subcommand path when both stdin and stdout are TTYs. — This keeps explicit commands, JSON output, and MCP usage scriptable while still adding an interactive seam for later onboarding work.
 - [Phase 11]: InquirerPy stays behind load_prompt_backend() and normalize_prompt_abort() so normal imports, JSON, and MCP paths remain prompt-free. — Lazy prompt loading and one normalized abort seam let later setup/settings flows reuse the adapter without leaking interactive dependencies into non-interactive surfaces.
+- [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Initial setup uses the no-arg interactive path exactly once, then defers later edits to brainpack settings.
+- [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Setup and settings both end with one applied summary block and one next step: brainpack create.
+- [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Saved mode preference only reorders human guidance; JSON and MCP paths keep their existing payload contracts.
 
 ### Pending Todos
 
@@ -197,6 +201,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-15T01:15:47.393Z
-Stopped at: Completed 11-01-PLAN.md
+Last session: 2026-03-15T01:30:14.844Z
+Stopped at: Completed 11-02-PLAN.md
 Resume file: None
