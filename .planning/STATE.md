@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 11
 current_phase_name: add interactive setup settings and guided pack authoring ux
 current_plan: 4
-status: executing
-stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-03-15T01:43:52.138Z"
+status: verifying
+stopped_at: Completed 11-04-PLAN.md
+last_updated: "2026-03-15T01:57:41.128Z"
 last_activity: 2026-03-15
 progress:
   total_phases: 8
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 26
-  completed_plans: 25
-  percent: 98
+  completed_plans: 26
+  percent: 100
 ---
 
 # Project State
@@ -24,26 +24,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** Turn trusted creators' content into searchable expert memory — so users stop re-watching and start querying.
-**Current focus:** Phase 11 foundations — global settings storage and the TTY-only interactive seam are in place for later setup, settings, and guided authoring flows
+**Current focus:** Phase 11 is complete — interactive setup/settings, guided authoring, local text-like builds, and deterministic build defaults are all in place for milestone verification
 
 ## Current Position
 
 Phase: 11 (8 of 8 tracked phases)
-Plan: 3 of 4 in current phase
-Status: Ready to execute 11-04
-Last activity: 2026-03-15 — Completed Phase 11 Plan 03: guided authoring menu and shared authoring seam
+Plan: 4 of 4 in current phase
+Status: Phase 11 complete — ready for verification
+Last activity: 2026-03-15 — Completed Phase 11 Plan 04: local text-like builds and build-default precedence
 
 **Current Phase:** 11
 **Current Phase Name:** add interactive setup settings and guided pack authoring ux
 **Total Phases:** 8
 **Current Plan:** 4
 **Total Plans in Phase:** 4
-**Status:** Ready to execute
+**Status:** Phase 11 complete — ready for verification
 **Last Activity:** 2026-03-15
-**Last Activity Description:** Completed Phase 11 Plan 03: guided authoring menu and shared authoring seam
-**Progress:** [██████████] 98%
+**Last Activity Description:** Completed Phase 11 Plan 04: local text-like builds and build-default precedence
+**Progress:** [██████████] 100%
 
-Progress: [██████████] 98%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -89,6 +89,7 @@ Progress: [██████████] 98%
 | Phase 11 P01 | 4 | 2 tasks | 8 files |
 | Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux P02 | 5 | 2 tasks | 6 files |
 | Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux P03 | 5 | 2 tasks | 7 files |
+| Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux P04 | 12 | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -187,6 +188,8 @@ Recent decisions affecting current work:
 - [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: The no-arg TTY path now routes into a create/import/manage authoring menu after setup, while non-interactive home output stays unchanged.
 - [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Source intent is inferred from one source URL-or-path input, but pack.yaml-looking inputs are rejected from create/manage so the add boundary stays explicit.
 - [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Guided manage edits are staged in memory and written through the canonical config writer only after one final confirmation.
+- [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Build now ingests supported local text-like files through the existing article branch instead of a new parser stack.
+- [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: pack.yaml-style sources remain import-only and unsupported local files fail clearly instead of being treated as articles.
 
 ### Pending Todos
 
@@ -205,6 +208,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-15T01:43:52.136Z
-Stopped at: Completed 11-03-PLAN.md
+Last session: 2026-03-15T01:57:41.126Z
+Stopped at: Completed 11-04-PLAN.md
 Resume file: None

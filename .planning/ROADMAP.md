@@ -100,14 +100,14 @@ Phases execute in numeric order: 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11
 | 8. MCP Server Mode | OCL-02 | Completed |
 | 9. Make Agent Mode retrieval-first | OCL-02 (retrieval-first extension) | Completed |
 | 10. Update agent and local mode onboarding | ONB-01, PCK-05, AUT-01, AUT-02, OCL-02 | Completed |
-| 11. Add interactive setup, settings, and guided pack authoring UX | TBD | In Progress (3/4) |
+| 11. Add interactive setup, settings, and guided pack authoring UX | ONB-01, ONB-02, ONB-03, PCK-05, RUN-01, RUN-02, AUT-01, AUT-02 | Completed |
 
 ### Phase 11: Add interactive setup, settings, and guided pack authoring UX
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Add lightweight interactive setup, settings, and guided pack authoring on top of the existing CLI without breaking explicit, machine-safe command paths
+**Requirements**: ONB-01, ONB-02, ONB-03, PCK-05, RUN-01, RUN-02, AUT-01, AUT-02
 **Depends on:** Phase 10
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 11 to break down)
+- [x] TBD (run /gsd:plan-phase 11 to break down) (completed 2026-03-15)
