@@ -1,8 +1,19 @@
 """Article text extraction using trafilatura."""
 import json
+from pathlib import Path
 from typing import Optional, Tuple
 
 from trafilatura import extract, fetch_url
+
+_TEXT_LIKE_SUFFIXES = {
+    ".txt",
+    ".md",
+    ".markdown",
+    ".rst",
+    ".html",
+    ".htm",
+}
+_HTML_SUFFIXES = {".html", ".htm"}
 
 
 def fetch_article(url: str) -> Optional[Tuple[str, str]]:
@@ -37,3 +48,26 @@ def fetch_article(url: str) -> Optional[Tuple[str, str]]:
             pass  # keep URL as fallback title
 
     return text, title
+
+
+def load_text_like_source(path_like: str | Path) -> Tuple[str, str]:
+    """Load one narrow local text-like source and return extracted text plus title."""
+    path = Path(path_like).expanduser()
+    if not path.exists():
+        raise FileNotFoundError(f"Missing local source: {path}")
+    if not path.is_file():
+        raise ValueError(f"Unsupported local source type: {path}")
+
+    suffix = path.suffix.lower()
+    if suffix not in _TEXT_LIKE_SUFFIXES:
+        raise ValueError(f"Unsupported local source type: {path}")
+
+    raw_text = path.read_text(encoding="utf-8")
+    text = raw_text
+    if suffix in _HTML_SUFFIXES:
+        text = extract(raw_text, include_comments=False, include_tables=False) or raw_text
+
+    normalized = text.strip()
+    if not normalized:
+        raise ValueError(f"Local source is empty: {path}")
+    return normalized, path.stem

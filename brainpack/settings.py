@@ -15,6 +15,7 @@ _PREFERRED_MODES = ["agent", "local", "both"]
 _SETUP_PATHS = ["recommended", "custom"]
 _LOCAL_PROVIDERS = ["ollama", "openai"]
 _WHISPER_MODELS = ["small", "medium", "large"]
+DEFAULT_WHISPER_MODEL = "small"
 
 
 def _recommended_transcription_backend() -> str:
@@ -34,7 +35,7 @@ class BrainpackSettings:
     preferred_transcription_backend: str = field(
         default_factory=_recommended_transcription_backend
     )
-    preferred_whisper_model: str = "small"
+    preferred_whisper_model: str = DEFAULT_WHISPER_MODEL
     preferred_local_provider: str = "ollama"
 
 
@@ -121,6 +122,34 @@ def save_settings(settings: BrainpackSettings) -> None:
 def needs_initial_setup() -> bool:
     """Return True when Brainpack should consider the first-run setup path."""
     return not load_settings().setup_completed
+
+
+def resolve_build_defaults(
+    *,
+    cli_model: str | None,
+    cli_language: str | None,
+    pack_config: Any,
+    global_settings: BrainpackSettings | None = None,
+) -> dict[str, str | None]:
+    """Resolve build-time transcription defaults with one precedence order."""
+    settings = global_settings or load_settings()
+    pack_model = getattr(pack_config, "whisper_model", None)
+    pack_model_explicit = getattr(
+        pack_config,
+        "whisper_model_explicit",
+        bool(pack_model),
+    )
+
+    resolved_model = cli_model
+    if not resolved_model and pack_model_explicit and pack_model:
+        resolved_model = pack_model
+    if not resolved_model:
+        resolved_model = settings.preferred_whisper_model or DEFAULT_WHISPER_MODEL
+
+    return {
+        "model": resolved_model,
+        "language": cli_language,
+    }
 
 
 def describe_settings_summary(settings: BrainpackSettings) -> str:

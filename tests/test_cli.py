@@ -351,6 +351,7 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
             "recommended",
             "agent",
             True,
+            KeyboardInterrupt(),
         ]
     )
 
@@ -373,7 +374,8 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
     assert first.output.count("Next step:") == 1
     assert second.exit_code == 0
     assert "Applied settings" not in second.output
-    assert load_backend.call_count == 1
+    assert "Authoring menu cancelled." in second.output
+    assert load_backend.call_count == 2
 
 
 def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypatch, tmp_path):

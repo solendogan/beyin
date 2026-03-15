@@ -56,7 +56,7 @@ from brainpack.pack_state import (
 )
 from brainpack.machine_output import MachineExit, run_machine_command
 from brainpack.source_ids import artifact_stem, canonical_source_id
-from brainpack.settings import load_settings, needs_initial_setup
+from brainpack.settings import load_settings, needs_initial_setup, resolve_build_defaults
 
 app = typer.Typer(
     help=(
@@ -114,6 +114,12 @@ def fetch_article(*args, **kwargs):
     from brainpack.ingester import fetch_article as _fetch_article
 
     return _fetch_article(*args, **kwargs)
+
+
+def load_text_like_source(*args, **kwargs):
+    from brainpack.ingester import load_text_like_source as _load_text_like_source
+
+    return _load_text_like_source(*args, **kwargs)
 
 
 def run_query(*args, **kwargs):
@@ -1157,8 +1163,8 @@ def create() -> None:
 @app.command()
 def build(
     pack: str = typer.Argument(..., help="Pack name (directory under ~/.brainpacks/)"),
-    model: str = typer.Option(
-        "small",
+    model: Optional[str] = typer.Option(
+        None,
         "--model",
         "-m",
         help="Whisper model size: tiny/base/small/medium/large",
@@ -1175,13 +1181,17 @@ def build(
     config = load_config(pack_dir)
     state = load_state(pack_dir)
     current_pack_hash = pack_config_hash(pack_dir)
+    build_defaults = resolve_build_defaults(
+        cli_model=model,
+        cli_language=language,
+        pack_config=config,
+    )
 
     # SAF-01: enforce model provenance before any ChromaDB write
     check_model_provenance(state, config.embedding_model, pack_name=config.name)
     save_state(pack_dir, state)  # persist model registration on first build
 
-    # Rename to avoid collision with `model` parameter (Whisper model string)
-    model_size = model
+    model_size = build_defaults["model"]
     model_obj = load_model(config.embedding_model)
     collection = get_collection(pack_dir, config.name)
 
@@ -1200,21 +1210,49 @@ def build(
         effective_limit = source.limit if source.limit is not None else config.episode_limit
         source_type = detect_source_type(source_url)
 
-        if source_type == "article":
-            # Phase 1 path — unchanged
+        if source_type in {"article", "local_text", "local_file", "pack"}:
             if is_processed(state, source_url):
                 typer.echo(f"  [skip] {source_url}")
                 source_results.append({"title": source_url[:40], "status": "skipped", "new": 0, "skipped": 0})
                 continue
 
-            typer.echo(f"  [fetch] {source_url}")
-            result = fetch_article(source_url)
+            failure_reason = ""
+            if source_type == "article":
+                typer.echo(f"  [fetch] {source_url}")
+                result = fetch_article(source_url)
+                failure_reason = "trafilatura extraction returned None"
+                failure_message = f"Could not extract text from {source_url} — skipping"
+            elif source_type == "local_text":
+                typer.echo(f"  [load] {source_url}")
+                try:
+                    result = load_text_like_source(source_url)
+                except FileNotFoundError:
+                    result = None
+                    failure_reason = f"missing local source: {source_url}"
+                    failure_message = f"Missing local source: {source_url} — skipping"
+                except ValueError as exc:
+                    result = None
+                    failure_reason = str(exc)
+                    failure_message = f"{exc} — skipping"
+                else:
+                    failure_message = ""
+            elif source_type == "pack":
+                result = None
+                failure_reason = "pack config sources belong on brainpack add"
+                failure_message = (
+                    "Pack config sources belong on `brainpack add <path-or-url-or-id>`, not build sources."
+                )
+            else:
+                result = None
+                failure_reason = f"unsupported local source type: {source_url}"
+                failure_message = f"Unsupported local source type: {source_url} — skipping"
+
             if result is None:
                 typer.echo(
-                    f"  [warn] Could not extract text from {source_url} — skipping",
+                    f"  [warn] {failure_message}",
                     err=True,
                 )
-                mark_failed(state, source_url, reason="trafilatura extraction returned None")
+                mark_failed(state, source_url, reason=failure_reason)
                 save_state(pack_dir, state)
                 source_results.append({"title": source_url[:40], "status": "failed", "new": 0, "skipped": 0})
                 continue
@@ -1639,8 +1677,8 @@ def install(
 @app.command()
 def update(
     pack: str = typer.Argument(..., help="Pack name to update"),
-    model: str = typer.Option(
-        "small",
+    model: Optional[str] = typer.Option(
+        None,
         "--model",
         "-m",
         help="Whisper model size: tiny/base/small/medium/large",

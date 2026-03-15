@@ -11,12 +11,39 @@ _YOUTUBE_RE = re.compile(
     r"(youtube\.com/(watch|playlist|channel|@|c/|user/)|youtu\.be/)"
 )
 _RSS_HINTS_RE = re.compile(r"\.(rss|xml)$|/feed/?|/rss/?", re.IGNORECASE)
+_PACK_CONFIG_SUFFIXES = {".yaml", ".yml"}
+_TEXT_LIKE_SUFFIXES = {
+    ".txt",
+    ".md",
+    ".markdown",
+    ".rst",
+    ".html",
+    ".htm",
+}
 
 _MIN_AUDIO_BYTES = 10_000  # 10KB minimum for valid audio file
 
 
 def detect_source_type(url: str) -> str:
-    """Return 'youtube', 'podcast', or 'article'. Never raises."""
+    """Return a narrow source classification for build and authoring flows. Never raises."""
+    lowered = url.lower()
+    if url.startswith(("http://", "https://")):
+        if lowered.endswith(tuple(_PACK_CONFIG_SUFFIXES)) or "/pack.yaml" in lowered or "/pack.yml" in lowered:
+            return "pack"
+        if _YOUTUBE_RE.search(url):
+            return "youtube"
+        if _RSS_HINTS_RE.search(url):
+            return "podcast"
+        return "article"
+
+    candidate = Path(url).expanduser()
+    suffix = candidate.suffix.lower()
+    if candidate.name.lower() in {"pack.yaml", "pack.yml"} or suffix in _PACK_CONFIG_SUFFIXES:
+        return "pack"
+    if suffix in _TEXT_LIKE_SUFFIXES:
+        return "local_text"
+    if candidate.exists() and candidate.is_file():
+        return "local_file"
     if _YOUTUBE_RE.search(url):
         return "youtube"
     if _RSS_HINTS_RE.search(url):

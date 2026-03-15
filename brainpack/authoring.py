@@ -3,20 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from pathlib import Path
 
 from brainpack.config import PackConfig, SourceEntry
 from brainpack.downloader import detect_source_type
-
-_PACK_CONFIG_SUFFIXES = {".yaml", ".yml"}
-_TEXT_LIKE_SUFFIXES = {
-    ".txt",
-    ".md",
-    ".markdown",
-    ".rst",
-    ".html",
-    ".htm",
-}
 
 
 def infer_source_intent(source_input: str) -> dict[str, str]:
@@ -25,19 +14,15 @@ def infer_source_intent(source_input: str) -> dict[str, str]:
     if not source:
         raise ValueError("Source input cannot be empty.")
 
-    lowered = source.lower()
-    if source.startswith(("http://", "https://")):
-        if lowered.endswith(tuple(_PACK_CONFIG_SUFFIXES)) or "/pack.yaml" in lowered or "/pack.yml" in lowered:
-            return {"kind": "import", "source_type": "pack"}
-        return {"kind": "content", "source_type": detect_source_type(source)}
-
-    candidate = Path(source).expanduser()
-    suffix = candidate.suffix.lower()
-    if candidate.name.lower() in {"pack.yaml", "pack.yml"} or suffix in _PACK_CONFIG_SUFFIXES:
+    source_type = detect_source_type(source)
+    if source_type == "pack":
         return {"kind": "import", "source_type": "pack"}
-    if suffix in _TEXT_LIKE_SUFFIXES or (candidate.exists() and candidate.is_file()):
-        return {"kind": "content", "source_type": "article"}
-    return {"kind": "content", "source_type": detect_source_type(source)}
+    if source_type == "local_file":
+        raise ValueError(
+            "Unsupported local source type. Use a minimal text-like file such as .txt, .md, or .html."
+        )
+    normalized_type = "article" if source_type == "local_text" else source_type
+    return {"kind": "content", "source_type": normalized_type}
 
 
 def build_new_pack_config(

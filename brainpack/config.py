@@ -21,6 +21,7 @@ class PackConfig:
     sources: List[SourceEntry]
     embedding_model: str = "all-MiniLM-L6-v2"
     whisper_model: str = "small"
+    whisper_model_explicit: bool = True
     episode_limit: Optional[int] = 20
 
 
@@ -71,6 +72,7 @@ def _parse_config_from_raw(raw: dict) -> PackConfig:
         sources=sources,
         embedding_model=raw.get("embedding_model", "all-MiniLM-L6-v2"),
         whisper_model=raw.get("whisper_model", "small"),
+        whisper_model_explicit="whisper_model" in raw,
         episode_limit=episode_limit_raw,
     )
 
