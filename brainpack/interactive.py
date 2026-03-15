@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import importlib
+import re
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import typer
 
+from brainpack.authoring import (
+    add_source_to_pack,
+    build_new_pack_config,
+    update_pack_metadata,
+)
+from brainpack.config import load_config, write_config
 from brainpack.settings import (
     BrainpackSettings,
     available_setup_choices,
@@ -80,6 +88,24 @@ def _select(
         default=default,
         instruction=instruction,
     )
+
+
+def _text(
+    prompt_backend: Any,
+    message: str,
+    *,
+    default: str | None = None,
+    instruction: str | None = None,
+) -> str:
+    return str(
+        _prompt(
+            prompt_backend,
+            "text",
+            message=message,
+            default=default,
+            instruction=instruction,
+        )
+    ).strip()
 
 
 def _confirm(
@@ -222,6 +248,204 @@ def _run_settings_flow(
 
     save_settings(staged)
     _print_applied_summary(staged)
+    return True
+
+
+def run_authoring_menu(
+    *,
+    packs_dir: Path,
+    prompt_backend: Any | None = None,
+    import_handler: Callable[[str], Any] | None = None,
+) -> bool:
+    """Show the interactive create/import/manage chooser for human sessions."""
+    backend = prompt_backend
+    if backend is None:
+        require_interactive_session()
+        backend = load_prompt_backend()
+
+    try:
+        selection = _select(
+            backend,
+            "What do you want to do?",
+            choices=[
+                _choice("create", "Create new pack"),
+                _choice("import", "Import existing pack"),
+                _choice("manage", "Manage existing pack"),
+            ],
+            default="create",
+            instruction="Create authors a new pack. Add imports an existing pack.yaml.",
+        )
+    except InteractiveAbort:
+        typer.echo("Authoring menu cancelled.")
+        return False
+
+    if selection == "create":
+        return bool(run_create_flow(packs_dir=packs_dir, prompt_backend=backend))
+    if selection == "import":
+        return bool(
+            run_import_flow(
+                packs_dir=packs_dir,
+                prompt_backend=backend,
+                import_handler=import_handler,
+            )
+        )
+    return bool(run_manage_pack_flow(packs_dir=packs_dir, prompt_backend=backend))
+
+
+def run_create_flow(
+    *,
+    packs_dir: Path,
+    prompt_backend: Any | None = None,
+) -> bool:
+    """Run the guided new-pack authoring flow."""
+    backend = prompt_backend
+    if backend is None:
+        require_interactive_session()
+        backend = load_prompt_backend()
+
+    try:
+        source_input = _text(
+            backend,
+            "Source URL or local path",
+            instruction="Use a URL, feed, YouTube link, or a local text-like path.",
+        )
+        name = _text(backend, "Pack name")
+        description = _text(backend, "Short description")
+        config = build_new_pack_config(
+            name=name,
+            description=description,
+            source_input=source_input,
+        )
+        confirmed = _confirm(backend, "Create this pack", default=True)
+    except InteractiveAbort:
+        typer.echo("Pack creation cancelled. No files were written.")
+        return False
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        return False
+
+    if not name or not re.match(r"^[\w.-]+$", name):
+        typer.echo(
+            f"Error: Pack name '{name}' contains invalid characters. "
+            "Only alphanumerics, hyphens, underscores, and dots are allowed.",
+            err=True,
+        )
+        return False
+
+    pack_dir = packs_dir / config.name
+    if pack_dir.exists():
+        typer.echo(
+            f"Error: Pack '{config.name}' already exists.\n"
+            f"Choose a new name or run `brainpack update {config.name}`.",
+            err=True,
+        )
+        return False
+
+    if not confirmed:
+        typer.echo("Pack creation cancelled. No files were written.")
+        return False
+
+    write_config(config, pack_dir / "pack.yaml")
+    typer.echo(f"Created pack '{config.name}'.")
+    typer.echo(f"Source saved: {config.sources[0].url}")
+    typer.echo("")
+    typer.echo(f"Next step: brainpack build {config.name}")
+    typer.echo("Build indexes the source into local expert memory.")
+    return True
+
+
+def run_import_flow(
+    *,
+    packs_dir: Path,
+    prompt_backend: Any | None = None,
+    import_handler: Callable[[str], Any] | None = None,
+) -> bool:
+    """Prompt for a pack source and delegate to the explicit import command path."""
+    del packs_dir  # Reserved for future pack-aware import UX; direct add owns import semantics today.
+
+    backend = prompt_backend
+    if backend is None:
+        require_interactive_session()
+        backend = load_prompt_backend()
+    if import_handler is None:
+        raise RuntimeError("run_import_flow requires an import handler.")
+
+    try:
+        source = _text(
+            backend,
+            "Path, URL, or marketplace id for pack.yaml",
+            instruction="This uses the same import path as `brainpack add`.",
+        )
+    except InteractiveAbort:
+        typer.echo("Pack import cancelled.")
+        return False
+
+    import_handler(source)
+    return True
+
+
+def run_manage_pack_flow(
+    *,
+    packs_dir: Path,
+    prompt_backend: Any | None = None,
+) -> bool:
+    """Run the guided manage flow for basic metadata and source edits."""
+    backend = prompt_backend
+    if backend is None:
+        require_interactive_session()
+        backend = load_prompt_backend()
+
+    pack_choices = [
+        _choice(path.name)
+        for path in sorted(packs_dir.iterdir(), key=lambda item: item.name)
+        if path.is_dir() and (path / "pack.yaml").exists()
+    ] if packs_dir.exists() else []
+
+    if not pack_choices:
+        typer.echo("No packs installed yet. Create one with `brainpack create` first.")
+        return False
+
+    try:
+        pack_name = _select(
+            backend,
+            "Pack to manage",
+            choices=pack_choices,
+            default=pack_choices[0]["value"],
+        )
+        pack_dir = packs_dir / pack_name
+        current = load_config(pack_dir)
+        description = _text(
+            backend,
+            "Pack description",
+            default=current.description,
+        )
+        add_source = _confirm(backend, "Add another source", default=False)
+
+        staged = update_pack_metadata(current, description=description)
+        if add_source:
+            source_input = _text(
+                backend,
+                "New source URL or local path",
+                instruction="Local text-like paths stay authored as content sources.",
+            )
+            staged = add_source_to_pack(staged, source_input)
+
+        confirmed = _confirm(backend, "Apply pack changes", default=True)
+    except InteractiveAbort:
+        typer.echo("Pack changes cancelled. pack.yaml unchanged.")
+        return False
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        return False
+
+    if not confirmed:
+        typer.echo("Pack changes cancelled. pack.yaml unchanged.")
+        return False
+
+    write_config(staged, pack_dir / "pack.yaml")
+    typer.echo(f"Updated pack '{pack_name}'.")
+    typer.echo(f"Next step: brainpack build {pack_name}")
+    typer.echo("Rebuild after authoring changes so retrieval uses the latest sources.")
     return True
 
 

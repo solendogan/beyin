@@ -33,7 +33,13 @@ def config_to_raw(config: PackConfig) -> dict:
         "embedding_model": config.embedding_model,
         "whisper_model": config.whisper_model,
         "episode_limit": config.episode_limit,
-        "sources": [{"url": source.url} for source in config.sources],
+        "sources": [
+            {
+                **{"url": source.url},
+                **({"limit": source.limit} if source.limit is not None else {}),
+            }
+            for source in config.sources
+        ],
     }
 
 

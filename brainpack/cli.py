@@ -11,6 +11,7 @@ from typing import Optional
 import typer
 
 from brainpack import __version__
+from brainpack.authoring import build_new_pack_config
 from brainpack.chunker import chunk_text, count_tokens
 from brainpack.config import (
     PackConfig,
@@ -22,6 +23,8 @@ from brainpack.config import (
 from brainpack.interactive import (
     is_interactive_session,
     load_prompt_backend,
+    run_authoring_menu as interactive_run_authoring_menu,
+    run_create_flow as interactive_run_create_flow,
     run_initial_setup_flow as interactive_run_initial_setup_flow,
     run_settings_flow as interactive_run_settings_flow,
 )
@@ -287,12 +290,32 @@ def _run_initial_setup_flow() -> bool:
     return interactive_run_initial_setup_flow(prompt_backend=load_prompt_backend())
 
 
+def run_authoring_menu() -> bool:
+    """Run the TTY-only create/import/manage chooser for no-arg interactive sessions."""
+    return interactive_run_authoring_menu(
+        packs_dir=_PACKS_DIR,
+        prompt_backend=load_prompt_backend(),
+        import_handler=add,
+    )
+
+
+def run_create_flow() -> bool:
+    """Run the interactive create flow behind the direct `brainpack create` command."""
+    return interactive_run_create_flow(
+        packs_dir=_PACKS_DIR,
+        prompt_backend=load_prompt_backend(),
+    )
+
+
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
     """Render the home screen when Brainpack runs without a subcommand."""
     if ctx.invoked_subcommand is None:
         if needs_initial_setup() and is_interactive_session():
             if _run_initial_setup_flow():
+                return
+        if is_interactive_session():
+            if run_authoring_menu():
                 return
         _render_home_screen()
 
@@ -1030,25 +1053,9 @@ def _origin_display(origin: dict) -> str:
     return f"{origin_type}: {origin_source}"
 
 
-def _create_source_prompt(source_type: str) -> str:
-    """Return a source-type-specific wizard prompt."""
-    if source_type == "article":
-        return "Article URL"
-    if source_type == "youtube":
-        return "YouTube video or playlist URL"
-    return "Podcast feed URL"
-
-
-def _prompt_create_config() -> tuple[str, PackConfig]:
-    """Collect the narrow first-pass guided creation inputs."""
-    source_type = typer.prompt("Source type (article/youtube/podcast)").strip().lower()
-    if source_type not in {"article", "youtube", "podcast"}:
-        typer.echo(
-            "Error: Source type must be one of: article, youtube, podcast.",
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
+def _prompt_create_config() -> PackConfig:
+    """Collect the non-TTY fallback guided creation inputs."""
+    source_input = typer.prompt("Source URL or local path").strip()
     name = typer.prompt("Pack name").strip()
     if not re.match(r"^[\w.-]+$", name):
         typer.echo(
@@ -1059,14 +1066,15 @@ def _prompt_create_config() -> tuple[str, PackConfig]:
         raise typer.Exit(code=1)
 
     description = typer.prompt("Short description").strip()
-    source_url = typer.prompt(_create_source_prompt(source_type)).strip()
-    config = PackConfig(
-        name=name,
-        description=description,
-        llm="ollama",
-        sources=[SourceEntry(url=source_url)],
-    )
-    return source_type, config
+    try:
+        return build_new_pack_config(
+            name=name,
+            description=description,
+            source_input=source_input,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
 
 
 def _write_pack_yaml_from_source(
@@ -1120,7 +1128,12 @@ def _write_pack_yaml_from_source(
 @app.command()
 def create() -> None:
     """Guide the user through creating a new pack without hand-editing YAML."""
-    source_type, config = _prompt_create_config()
+    if is_interactive_session():
+        if not run_create_flow():
+            raise typer.Exit(code=1)
+        return
+
+    config = _prompt_create_config()
     pack_dir = _PACKS_DIR / config.name
     if pack_dir.exists():
         typer.echo(
@@ -1133,8 +1146,6 @@ def create() -> None:
     write_config(config, pack_dir / "pack.yaml")
 
     typer.echo(f"Created pack '{config.name}'.")
-    typer.echo(f"Source family: {source_type}")
-    typer.echo("One source family per pack keeps the first run simple.")
     typer.echo(f"Source saved: {config.sources[0].url}")
     typer.echo("")
     _render_next_step(
