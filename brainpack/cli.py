@@ -19,6 +19,12 @@ from brainpack.config import (
     load_config,
     write_config,
 )
+from brainpack.interactive import (
+    InteractiveAbort,
+    is_interactive_session,
+    load_prompt_backend,
+    require_interactive_session,
+)
 from brainpack.inventory import (
     human_guidance_command,
     inspect_pack,
@@ -47,6 +53,7 @@ from brainpack.pack_state import (
 )
 from brainpack.machine_output import MachineExit, run_machine_command
 from brainpack.source_ids import artifact_stem, canonical_source_id
+from brainpack.settings import needs_initial_setup
 
 app = typer.Typer(
     help=(
@@ -243,10 +250,22 @@ def _render_home_screen() -> None:
     typer.echo("  brainpack help")
 
 
+def _run_initial_setup_flow() -> bool:
+    """Placeholder seam for later setup work without changing current home behavior."""
+    try:
+        require_interactive_session()
+    except InteractiveAbort:
+        return False
+    return False
+
+
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
     """Render the home screen when Brainpack runs without a subcommand."""
     if ctx.invoked_subcommand is None:
+        if needs_initial_setup() and is_interactive_session():
+            if _run_initial_setup_flow():
+                return
         _render_home_screen()
 
 
