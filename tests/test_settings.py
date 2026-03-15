@@ -17,8 +17,9 @@ def test_load_settings_uses_defaults_when_file_is_missing(monkeypatch, tmp_path)
     assert settings.version == 1
     assert settings.setup_completed is False
     assert settings.preferred_mode == "agent"
-    assert settings.audio_enabled_by_default is True
+    assert settings.audio_enabled_by_default is False
     assert settings.preferred_transcription_backend in {"mlx-whisper", "faster-whisper"}
+    assert settings.preferred_local_provider == "none"
     assert settings_path() == tmp_path / ".brainpacks" / "settings.json"
 
 
@@ -123,7 +124,7 @@ def test_available_setup_choices_only_exposes_valid_machine_backends():
     assert linux_choices["setup_paths"] == ["recommended", "custom"]
     assert linux_choices["preferred_modes"] == ["agent", "local", "both"]
     assert linux_choices["transcription_backends"] == ["faster-whisper"]
-    assert linux_choices["local_providers"] == ["ollama", "openai"]
+    assert linux_choices["local_providers"] == ["none", "ollama", "openai"]
 
     with patch("brainpack.settings.platform.system", return_value="Darwin"), patch(
         "brainpack.settings.platform.machine",
@@ -154,6 +155,7 @@ def test_describe_settings_summary_renders_applied_defaults_for_humans():
     )
 
     assert "Use with agent and local model" in summary
-    assert "Audio/video defaults: disabled" in summary
-    assert "Transcription: faster-whisper / medium" in summary
+    assert "Agent mode: ready" in summary
+    assert "Audio/video defaults: off for now" in summary
+    assert "Transcription: configure when you enable audio/video" in summary
     assert "Local answers: openai" in summary

@@ -37,6 +37,11 @@ def chunk_text(
     if not sentences:
         return []
 
+    # Transcripts and lyrics have no punctuation — NLTK collapses them into one
+    # giant "sentence". Fall back to newline splitting in that case.
+    if len(sentences) == 1 and "\n" in text:
+        sentences = [line.strip() for line in text.splitlines() if line.strip()]
+
     step = window - overlap
     if step <= 0:
         step = 1  # defensive: prevent infinite loop

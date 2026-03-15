@@ -13,7 +13,7 @@ from typing import Any
 SETTINGS_VERSION = 1
 _PREFERRED_MODES = ["agent", "local", "both"]
 _SETUP_PATHS = ["recommended", "custom"]
-_LOCAL_PROVIDERS = ["ollama", "openai"]
+_LOCAL_PROVIDERS = ["none", "ollama", "openai"]
 _WHISPER_MODELS = ["small", "medium", "large"]
 DEFAULT_WHISPER_MODEL = "small"
 
@@ -31,12 +31,12 @@ class BrainpackSettings:
     version: int = SETTINGS_VERSION
     setup_completed: bool = False
     preferred_mode: str = "agent"
-    audio_enabled_by_default: bool = True
+    audio_enabled_by_default: bool = False
     preferred_transcription_backend: str = field(
         default_factory=_recommended_transcription_backend
     )
     preferred_whisper_model: str = DEFAULT_WHISPER_MODEL
-    preferred_local_provider: str = "ollama"
+    preferred_local_provider: str = "none"
 
 
 def settings_path() -> Path:
@@ -159,15 +159,29 @@ def describe_settings_summary(settings: BrainpackSettings) -> str:
         "local": "Use with local model",
         "both": "Use with agent and local model",
     }
-    audio_label = "enabled" if settings.audio_enabled_by_default else "disabled"
-    return "\n".join(
-        [
-            f"Mode: {mode_labels.get(settings.preferred_mode, settings.preferred_mode)}",
-            f"Audio/video defaults: {audio_label}",
-            (
-                "Transcription: "
-                f"{settings.preferred_transcription_backend} / {settings.preferred_whisper_model}"
-            ),
-            f"Local answers: {settings.preferred_local_provider}",
-        ]
+    provider_labels = {
+        "none": "skip for now",
+        "ollama": "ollama",
+        "openai": "openai",
+    }
+    audio_label = "enabled" if settings.audio_enabled_by_default else "off for now"
+    lines = [
+        f"Mode: {mode_labels.get(settings.preferred_mode, settings.preferred_mode)}",
+    ]
+    if settings.preferred_mode in {"agent", "both"}:
+        lines.append("Agent mode: ready")
+    lines.append(
+        f"Audio/video defaults: {audio_label}",
     )
+    if settings.audio_enabled_by_default:
+        lines.append(
+            "Transcription: "
+            f"{settings.preferred_transcription_backend} / {settings.preferred_whisper_model}"
+        )
+    else:
+        lines.append("Transcription: configure when you enable audio/video")
+    lines.append(
+        "Local answers: "
+        f"{provider_labels.get(settings.preferred_local_provider, settings.preferred_local_provider)}"
+    )
+    return "\n".join(lines)

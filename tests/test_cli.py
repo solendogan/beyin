@@ -292,6 +292,31 @@ def test_no_arg_tty_first_run_routes_to_the_setup_seam_before_home_screen():
     home_mock.assert_not_called()
 
 
+def test_no_arg_tty_declined_first_run_does_not_fall_through_to_authoring_or_home():
+    """Declining first-run setup should stop after setup instead of continuing onward."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+
+    with patch("brainpack.cli.needs_initial_setup", return_value=True), patch(
+        "brainpack.cli.is_interactive_session",
+        return_value=True,
+    ), patch(
+        "brainpack.cli._run_initial_setup_flow",
+        return_value=False,
+    ) as setup_mock, patch(
+        "brainpack.cli.run_authoring_menu",
+    ) as authoring_mock, patch(
+        "brainpack.cli._render_home_screen",
+    ) as home_mock:
+        result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    setup_mock.assert_called_once_with()
+    authoring_mock.assert_not_called()
+    home_mock.assert_not_called()
+
+
 def test_no_arg_non_tty_first_run_falls_back_to_current_home_screen():
     """Fresh non-TTY runs should not try to prompt and should keep the current guidance."""
     from brainpack.cli import app
@@ -370,10 +395,23 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
     assert first.exit_code == 0
     assert settings.setup_completed is True
     assert settings.preferred_mode == "agent"
+    assert "Brainpack v0.1.0" in first.output
+    assert "Start your first setup now" in first.output
+    first_select = next(
+        kwargs for prompt_type, kwargs in backend.calls if prompt_type == "select"
+    )
+    assert first_select["long_instruction"] == (
+        "Set up the agent-first path quickly, then configure optional local features later."
+    )
+    assert "Agent mode            ready" in first.output
+    assert "Audio/video defaults  off for now" in first.output
+    assert "Transcription         configure when you enable audio/video" in first.output
+    assert "Local answers         skip for now" in first.output
     assert first.output.count("Applied settings") == 1
     assert first.output.count("Next step:") == 1
     assert second.exit_code == 0
     assert "Applied settings" not in second.output
+    assert "Choose your next Brainpack action" in second.output
     assert "Authoring menu cancelled." in second.output
     assert load_backend.call_count == 2
 
@@ -390,8 +428,6 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
             "custom",
             "both",
             False,
-            "faster-whisper",
-            "medium",
             "openai",
             True,
         ]
@@ -407,7 +443,7 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
     backend_names = [
         choice["value"]
         for prompt_type, kwargs in backend.calls
-        if prompt_type == "select" and kwargs["message"].startswith("Transcription backend")
+        if prompt_type == "select" and kwargs["message"].startswith("Select a transcription backend")
         for choice in kwargs["choices"]
     ]
 
@@ -416,9 +452,9 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
     assert settings.preferred_mode == "both"
     assert settings.audio_enabled_by_default is False
     assert settings.preferred_transcription_backend == "faster-whisper"
-    assert settings.preferred_whisper_model == "medium"
+    assert settings.preferred_whisper_model == "small"
     assert settings.preferred_local_provider == "openai"
-    assert backend_names == ["faster-whisper"]
+    assert backend_names == []
 
 
 def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch, tmp_path):
@@ -454,8 +490,12 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
     assert settings.preferred_mode == "local"
     assert settings.preferred_whisper_model == "large"
     assert settings.preferred_local_provider == "openai"
+    assert "Update Brainpack settings" in result.output
+    assert "(" in result.output and ")" in result.output
+    assert "Review setup" in result.output
     assert result.output.count("Applied settings") == 1
     assert result.output.count("Next step:") == 1
+    assert "brainpack query" in result.output
 
 
 def test_settings_command_requires_tty_and_keeps_prompt_backend_unloaded(
@@ -568,6 +608,27 @@ def test_plain_module_import_does_not_import_inquirerpy():
         sys.modules.update(removed)
 
 
+def test_load_prompt_backend_returns_inquirer_module():
+    """Lazy prompt loading should expose the documented InquirerPy backend module."""
+    removed = {
+        name: sys.modules.pop(name)
+        for name in list(sys.modules)
+        if name == "InquirerPy" or name.startswith("InquirerPy.")
+    }
+
+    try:
+        from brainpack.interactive import load_prompt_backend
+
+        backend = load_prompt_backend()
+
+        assert backend.__name__ == "InquirerPy.inquirer"
+        assert hasattr(backend, "select")
+        assert hasattr(backend, "text")
+        assert hasattr(backend, "confirm")
+    finally:
+        sys.modules.update(removed)
+
+
 @pytest.mark.parametrize("exc_type", [KeyboardInterrupt, EOFError])
 def test_interactive_abort_normalizes_cancellation(exc_type):
     """Interactive cancellation should collapse into one reusable abort type."""
@@ -669,6 +730,9 @@ def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp
         result = runner.invoke(app, ["create"])
 
     assert result.exit_code == 0
+    assert "Create a new pack" in result.output
+    assert "Start with one source." in result.output
+    assert "Review pack" in result.output
 
     pack_dir = packs_root / "creator-pack"
     raw = yaml.safe_load((pack_dir / "pack.yaml").read_text())
