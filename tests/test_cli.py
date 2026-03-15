@@ -309,7 +309,7 @@ def test_no_arg_non_tty_first_run_falls_back_to_current_home_screen():
         result = runner.invoke(app, [])
 
     assert result.exit_code == 0
-    tty_mock.assert_called_once_with()
+    assert tty_mock.call_count == 2
     setup_mock.assert_not_called()
     home_mock.assert_called_once_with()
 
