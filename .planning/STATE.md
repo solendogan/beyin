@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-current_phase: 10
-current_phase_name: update-agent-and-local-mode-onboarding
+current_phase: 11
+current_phase_name: add interactive setup settings and guided pack authoring ux
 current_plan: 2
-status: completed
-stopped_at: Completed 10-02-PLAN.md
-last_updated: "2026-03-14T20:50:14.450Z"
-last_activity: 2026-03-14
+status: executing
+stopped_at: Completed 11-01-PLAN.md
+last_updated: "2026-03-15T01:17:06.527Z"
+last_activity: 2026-03-15
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 22
-  completed_plans: 22
-  percent: 100
+  total_phases: 8
+  completed_phases: 6
+  total_plans: 26
+  completed_plans: 23
+  percent: 93
 ---
 
 # Project State
@@ -24,26 +24,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** Turn trusted creators' content into searchable expert memory — so users stop re-watching and start querying.
-**Current focus:** Milestone complete — Phase 10 aligned CLI and long-form onboarding around the agent-first and local-mode split
+**Current focus:** Phase 11 foundations — global settings storage and the TTY-only interactive seam are in place for later setup, settings, and guided authoring flows
 
 ## Current Position
 
-Phase: 10 (7 of 7 tracked phases)
-Plan: 2 of 2 in current phase
-Status: Phase complete — 10-02 completed
-Last activity: 2026-03-14 — Completed Phase 10 onboarding alignment across CLI and long-form docs
+Phase: 11 (8 of 8 tracked phases)
+Plan: 2 of 4 in current phase
+Status: Ready to execute 11-02
+Last activity: 2026-03-15 — Completed Phase 11 Plan 01: global settings seam and TTY-only setup foundation
 
-**Current Phase:** 10
-**Current Phase Name:** update-agent-and-local-mode-onboarding
-**Total Phases:** 7
+**Current Phase:** 11
+**Current Phase Name:** add interactive setup settings and guided pack authoring ux
+**Total Phases:** 8
 **Current Plan:** 2
-**Total Plans in Phase:** 2
-**Status:** Milestone complete
-**Last Activity:** 2026-03-14
-**Last Activity Description:** Completed Phase 10: CLI and long-form docs now share the agent-first onboarding story and explicit local-mode path
-**Progress:** [██████████] 100%
+**Total Plans in Phase:** 4
+**Status:** Ready to execute
+**Last Activity:** 2026-03-15
+**Last Activity Description:** Completed Phase 11 Plan 01: global settings seam and TTY-only setup foundation
+**Progress:** [█████████░] 93%
 
-Progress: [██████████] 100%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -86,6 +86,7 @@ Progress: [██████████] 100%
 | Phase 07-machine-safe-cli-surface P04 | 14 | 2 tasks | 3 files |
 | Phase 10-update-agent-and-local-mode-onboarding P01 | 4 | 2 tasks | 4 files |
 | Phase 10-update-agent-and-local-mode-onboarding P02 | 2 | 2 tasks | 2 files |
+| Phase 11 P01 | 4 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,9 @@ Progress: [██████████] 100%
 - Phase 9 added: Make Agent Mode retrieval-first
 - Reason: MCP proved useful, but the real product value is retrieval/evidence quality for external agents rather than Brainpack's own local final-answer prose
 - Decision: Agent Mode is now the recommended default path; Local Mode remains available as the standalone/privacy-focused option
+- Phase 11 added: Add interactive setup, settings, and guided pack authoring UX
+- Reason: The current onboarding copy is clearer, but the next product gap is guided setup and pack authoring that actually reduces first-run friction for both agent-first and local users without requiring a full TUI rewrite
+- Decision: Use lightweight TTY-only interactive prompts for setup/settings/authoring flows, keep non-interactive and machine-safe CLI paths intact, and defer full terminal-app ambitions
 
 ### Decisions
 
@@ -172,6 +176,9 @@ Recent decisions affecting current work:
 - [Phase 10-update-agent-and-local-mode-onboarding]: Reframed both long-form docs around the same two-path story used by the CLI: Use with agent and Use with local model.
 - [Phase 10-update-agent-and-local-mode-onboarding]: Pointed the recommended path to the shipped brainpack mcp-server command instead of legacy attach-style or future-server concepts.
 - [Phase 10-update-agent-and-local-mode-onboarding]: Kept query and chat explicitly documented as the standalone local-mode path rather than treating them as deprecated.
+- [Phase 11]: Global setup state lives in ~/.brainpacks/settings.json and stays separate from pack.yaml, origin.json, and meta.json. — One machine-level JSON store keeps first-run settings distinct from pack data and matches Brainpack's existing sidecar-state pattern.
+- [Phase 11]: The CLI only considers first-run setup on the no-subcommand path when both stdin and stdout are TTYs. — This keeps explicit commands, JSON output, and MCP usage scriptable while still adding an interactive seam for later onboarding work.
+- [Phase 11]: InquirerPy stays behind load_prompt_backend() and normalize_prompt_abort() so normal imports, JSON, and MCP paths remain prompt-free. — Lazy prompt loading and one normalized abort seam let later setup/settings flows reuse the adapter without leaking interactive dependencies into non-interactive surfaces.
 
 ### Pending Todos
 
@@ -190,6 +197,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-14T20:50:14.449Z
-Stopped at: Completed 10-02-PLAN.md
+Last session: 2026-03-15T01:15:47.393Z
+Stopped at: Completed 11-01-PLAN.md
 Resume file: None
