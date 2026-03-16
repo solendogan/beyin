@@ -188,6 +188,7 @@ def test_write_config_preserves_source_limits_in_canonical_yaml(tmp_path):
     destination = tmp_path / "pack.yaml"
     write_config(
         PackConfig(
+            id="guided-pack",
             name="guided-pack",
             description="Guided pack",
             llm="ollama",
@@ -202,6 +203,6 @@ def test_write_config_preserves_source_limits_in_canonical_yaml(tmp_path):
     raw = yaml.safe_load(destination.read_text())
 
     assert raw["sources"] == [
-        {"url": "https://example.com/article"},
+        "https://example.com/article",
         {"url": str(tmp_path / "notes.md"), "limit": 5},
     ]

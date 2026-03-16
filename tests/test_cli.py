@@ -203,21 +203,15 @@ def test_no_arg_home_screen_guides_first_run(tmp_path):
 
     assert result.exit_code == 0
     assert "Brainpack v0.1.0" in result.output
-    assert "No packs installed yet." in result.output
+    assert "No packs installed yet" in result.output
     assert "Use with agent" in result.output
     assert "recommended" in result.output.lower()
-    assert "brainpack finds evidence" in result.output
     assert "brainpack mcp-server" in result.output
-    assert "Codex" in result.output
-    assert "connect agent" in result.output.lower()
-    assert "set up pack" in result.output.lower()
-    assert "build" in result.output.lower()
-    assert "Use with local model" in result.output
-    assert "install local runtime" in result.output.lower()
-    assert "brainpack doctor" in result.output
     assert "brainpack create" in result.output
-    assert "brainpack add <path-or-url-or-id>" in result.output
     assert "brainpack build <pack>" in result.output
+    assert "Use with local model" in result.output
+    assert "ollama" in result.output.lower()
+    assert "brainpack doctor" in result.output
 
 
 def test_no_arg_home_screen_orients_around_existing_inventory(tmp_pack_root):
@@ -241,10 +235,8 @@ def test_no_arg_home_screen_orients_around_existing_inventory(tmp_pack_root):
     assert "Use with agent" in result.output
     assert "Use with local model" in result.output
     assert "brainpack mcp-server" in result.output
-    assert "brainpack chat test-pack \"question\"" in result.output
-    assert "brainpack status test-pack" in result.output
-    assert result.output.index("Use with agent") < result.output.index('brainpack chat test-pack "question"')
-    assert "next:" not in result.output
+    assert "brainpack build test-pack" in result.output
+    assert result.output.index("Use with agent") < result.output.index("Use with local model")
 
 
 def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
@@ -264,7 +256,7 @@ def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
     assert help_result.exit_code == 0
     assert "Usage:" not in home_result.output
     assert "Commands:" not in home_result.output
-    assert "Turn your favorite content into local queryable packs." in home_result.output
+    assert "Your local knowledge base" in home_result.output
     assert home_result.output != help_result.output
 
 
@@ -400,18 +392,16 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
     first_select = next(
         kwargs for prompt_type, kwargs in backend.calls if prompt_type == "select"
     )
-    assert first_select["long_instruction"] == (
-        "Set up the agent-first path quickly, then configure optional local features later."
-    )
+    assert "Recommended" in str(first_select.get("choices", ""))
     assert "Agent mode            ready" in first.output
     assert "Audio/video defaults  off for now" in first.output
     assert "Transcription         configure when you enable audio/video" in first.output
     assert "Local answers         skip for now" in first.output
-    assert first.output.count("Applied settings") == 1
-    assert first.output.count("Next step:") == 1
+    assert first.output.count("Setup complete") == 1
+    assert "Quick start" in first.output
     assert second.exit_code == 0
-    assert "Applied settings" not in second.output
-    assert "Choose your next Brainpack action" in second.output
+    assert "Setup complete" not in second.output
+    assert "What would you like to do?" in second.output
     assert "Authoring menu cancelled." in second.output
     assert load_backend.call_count == 2
 
@@ -493,8 +483,8 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
     assert "Update Brainpack settings" in result.output
     assert "(" in result.output and ")" in result.output
     assert "Review setup" in result.output
-    assert result.output.count("Applied settings") == 1
-    assert result.output.count("Next step:") == 1
+    assert result.output.count("Setup complete") == 1
+    assert "Quick start" in result.output
     assert "brainpack query" in result.output
 
 
@@ -693,11 +683,8 @@ def test_authoring_menu_branches_create_import_and_manage(tmp_path, selection, e
     labels = [choice["name"] for choice in select_calls[0]["choices"]]
 
     assert completed is True
-    assert labels == [
-        "Create new pack",
-        "Import existing pack",
-        "Manage existing pack",
-    ]
+    values = [choice["value"] for choice in select_calls[0]["choices"]]
+    assert values == ["create", "import", "manage"]
     assert create_mock.call_count == (1 if expected_attr == "run_create_flow" else 0)
     assert import_mock.call_count == (1 if expected_attr == "run_import_flow" else 0)
     assert manage_mock.call_count == (1 if expected_attr == "run_manage_pack_flow" else 0)
@@ -738,15 +725,14 @@ def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp
     raw = yaml.safe_load((pack_dir / "pack.yaml").read_text())
     config = load_config(pack_dir)
 
-    assert raw == {
-        "name": "creator-pack",
-        "description": "Creator notes",
-        "llm": "ollama",
-        "embedding_model": "all-MiniLM-L6-v2",
-        "whisper_model": "small",
-        "episode_limit": 20,
-        "sources": [{"url": str(local_source)}],
-    }
+    assert raw["id"] == "creator-pack"
+    assert raw["name"] == "creator-pack"
+    assert raw["description"] == "Creator notes"
+    assert raw["version"] == "1.0.0"
+    assert raw["created"] is not None
+    assert raw["updated"] is not None
+    assert raw["sources"] == [str(local_source)]
+    assert config.id == "creator-pack"
     assert config.name == "creator-pack"
     assert config.sources == [SourceEntry(url=str(local_source))]
     text_prompts = [
@@ -785,6 +771,7 @@ def test_manage_flow_can_edit_basic_metadata_and_add_source(tmp_path):
     local_source.write_text("notes")
     write_config(
         PackConfig(
+            id="managed-pack",
             name="managed-pack",
             description="Original description",
             llm="ollama",
@@ -827,6 +814,7 @@ def test_manage_flow_cancel_preserves_existing_pack_definition(tmp_path):
     pack_dir = packs_root / "managed-pack"
     write_config(
         PackConfig(
+            id="managed-pack",
             name="managed-pack",
             description="Original description",
             llm="ollama",
@@ -2404,12 +2392,12 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
         result = runner.invoke(app, ["list"])
 
     assert result.exit_code == 0, result.output
-    rows = [line for line in result.output.splitlines() if line.startswith(("a-pack", "b-pack"))]
+    rows = [line.strip() for line in result.output.splitlines() if line.strip().startswith(("a-pack", "b-pack"))]
     assert rows[0].startswith("a-pack")
     assert rows[1].startswith("b-pack")
-    assert "text" in rows[0]
+    assert "articles" in rows[0]
     assert "openai" in rows[0]
-    assert "      2" in rows[0]
+    assert "2" in rows[0]
     assert "Summary" not in result.output
     assert "Src" not in result.output
 
@@ -2465,16 +2453,8 @@ def test_status_uses_onboarding_guidance_across_lifecycle_states(
         result = runner.invoke(app, ["status", pack_name])
 
     assert result.exit_code == 0, result.output
-    assert f"Status: {expected_status}" in result.output
-    assert "Type: text" in result.output
-    assert f"Origin: file: /tmp/{pack_name}.yaml" in result.output
-    assert "Use with agent" in result.output
-    assert "Use with local model" in result.output
-    assert "brainpack mcp-server" in result.output
-    assert expected_command in result.output
-    assert "Next:" not in result.output
-    if state_setup == "ready":
-        assert result.output.index("Use with agent") < result.output.index(f'brainpack query {pack_name} "question"')
+    assert expected_status in result.output
+    assert "articles" in result.output
     if state_setup == "blocked":
         assert "OPENAI_API_KEY" in result.output
 

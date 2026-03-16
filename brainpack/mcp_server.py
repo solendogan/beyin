@@ -2,12 +2,14 @@
 
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
+from pathlib import Path
 from typing import Any
 
 import typer
 from mcp.server.fastmcp import FastMCP
 
 from brainpack import __version__
+from brainpack.authoring import add_source_to_pack
 from brainpack.cli import (
     _doctor_payload,
     _evidence_payload,
@@ -18,6 +20,7 @@ from brainpack.cli import (
     add,
     build,
 )
+from brainpack.config import load_config, write_config
 from brainpack.machine_output import (
     build_error_envelope,
     build_success_envelope,
@@ -163,6 +166,21 @@ def brainpack_add(source: str) -> dict[str, Any]:
         command="add",
         action=lambda: add(source=source),
     )
+
+
+@app.tool()
+def brainpack_add_sources(pack: str, urls: list[str], model: str = "small", language: str | None = None) -> dict[str, Any]:
+    """Add one or more source URLs to an existing pack and rebuild it."""
+    def action() -> None:
+        pack_dir = Path.home() / ".brainpacks" / pack
+        config = load_config(pack_dir)
+        updated = config
+        for url in urls:
+            updated = add_source_to_pack(updated, url)
+        write_config(updated, pack_dir / "pack.yaml")
+        build(pack=pack, model=model, language=language)
+
+    return _command_tool_result(command="add_sources", pack=pack, action=action)
 
 
 def run_stdio_server() -> None:

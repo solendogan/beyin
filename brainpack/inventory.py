@@ -191,19 +191,19 @@ def summarize_pack(
 
     if blockers:
         status = "blocked"
-        next_action = f"brainpack doctor {config.name}"
+        next_action = f"brainpack doctor {config.id}"
     elif has_error:
         status = "error"
-        next_action = f"brainpack build {config.name}"
+        next_action = f"brainpack build {config.id}"
     elif is_new:
         status = "new"
-        next_action = f"brainpack build {config.name}"
+        next_action = f"brainpack build {config.id}"
     elif needs_build:
         status = "needs-build"
-        next_action = f"brainpack build {config.name}"
+        next_action = f"brainpack build {config.id}"
     else:
         status = "ready"
-        next_action = f'brainpack query {config.name} "question"'
+        next_action = f'brainpack query {config.id} "question"'
 
     build_date = _format_when(state.get("last_build_at"))
     update_date = _format_when(origin.get("last_updated_at") or origin.get("added_at"))

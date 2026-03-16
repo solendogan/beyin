@@ -39,6 +39,7 @@ def build_new_pack_config(
             "Existing pack imports belong on `brainpack add <path-or-url-or-id>`, not `brainpack create`."
         )
     return PackConfig(
+        id=name,
         name=name,
         description=description,
         llm=llm,

@@ -57,6 +57,7 @@ from brainpack.pack_state import (
 from brainpack.machine_output import MachineExit, run_machine_command
 from brainpack.source_ids import artifact_stem, canonical_source_id
 from brainpack.settings import load_settings, needs_initial_setup, resolve_build_defaults
+from brainpack.ui import bold, cyan, dim, green, red, render_header, render_rows, render_status, yellow
 
 app = typer.Typer(
     help=(
@@ -165,18 +166,55 @@ def _display_status(status: str) -> str:
     return status
 
 
+_DISPLAY_TYPE = {
+    "youtube": "video",
+    "podcast": "audio",
+    "text": "articles",
+    "local_text": "articles",
+    "article": "articles",
+}
+
+
+def _display_type(type_raw: str) -> str:
+    return _DISPLAY_TYPE.get(type_raw, type_raw)
+
+
+def _status_styled(status: str) -> str:
+    """Return a color-coded status label."""
+    label = _display_status(status)
+    if status == "ready":
+        return green(label)
+    if status in {"new", "needs-build", "blocked"}:
+        return yellow(label)
+    if status == "error":
+        return red(label)
+    return label
+
+
+def _col(text: str, width: int) -> str:
+    """Left-pad text to a fixed display width (ANSI-safe — no escape codes in text)."""
+    return text + " " * max(0, width - len(text))
+
+
 def _render_pack_table(summaries: list[dict], *, limit: Optional[int] = None) -> None:
     """Render the compact pack table used by list and the home screen."""
     rows = summaries if limit is None else summaries[:limit]
-    typer.echo(f"{'Pack':<20} {'Status':<12} {'Type':<8} {'Sources':>7}  {'Provider':<8}")
-    typer.echo(f"{'-'*20} {'-'*12} {'-'*8} {'-'*7}  {'-'*8}")
-    for summary in rows:
+    w_name, w_status, w_type, w_src, w_prov = 22, 13, 9, 7, 9
+    typer.echo(
+        f"  {bold(_col('Pack', w_name))}"
+        f"{dim(_col('Status', w_status))}"
+        f"{dim(_col('Type', w_type))}"
+        f"{dim('Sources'.rjust(w_src))}  "
+        f"{dim('Provider')}"
+    )
+    for s in rows:
+        raw_status = _display_status(s["status"])
         typer.echo(
-            f"{summary['name'][:20]:<20} "
-            f"{_display_status(summary['status']):<12} "
-            f"{summary['type']:<8} "
-            f"{summary['source_count']:>7}  "
-            f"{summary['provider']:<8}"
+            f"  {_col(s['name'][:w_name - 1], w_name)}"
+            f"{_status_styled(s['status'])}{' ' * max(0, w_status - len(raw_status))}"
+            f"{_col(_display_type(s['type']), w_type)}"
+            f"{str(s['source_count']).rjust(w_src)}  "
+            f"{dim(s['provider'])}"
         )
 
 
@@ -188,107 +226,82 @@ def _pack_label(summary: Optional[dict]) -> str:
 
 def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False) -> None:
     """Render the shared human onboarding guidance across home, status, and errors."""
+    def _echo(line: str = "") -> None:
+        typer.echo(line, err=err)
+
     preferred_mode = load_settings().preferred_mode
     pack_name = _pack_label(summary)
     status = summary.get("status") if summary else None
     lifecycle_command = human_guidance_command(summary) if summary else None
-    build_command = f"brainpack build {pack_name}"
-    doctor_command = f"brainpack doctor {pack_name}"
-    
-    def _render_agent_guidance() -> None:
-        heading = "Use with agent"
-        if preferred_mode != "local":
-            heading += " (recommended)"
-        typer.echo(heading, err=err)
-        typer.echo(
-            "  brainpack finds evidence for agents like Codex, Claude Code, or OpenClaw.",
-            err=err,
-        )
-        typer.echo("  1. Connect agent: brainpack mcp-server", err=err)
-        typer.echo("  2. Set up pack: brainpack create", err=err)
-        typer.echo("     or brainpack add <path-or-url-or-id>", err=err)
-        typer.echo(
-            "  3. Build: brainpack build <pack>"
-            if summary is None
-            else f"  3. Build: {build_command}",
-            err=err,
-        )
+    build_cmd = f"brainpack build {pack_name}" if summary else "brainpack build <pack>"
+    doctor_cmd = f"brainpack doctor {pack_name}" if summary else "brainpack doctor <pack>"
+
+    def _agent_block() -> None:
+        label = "Use with agent" + (" — recommended" if preferred_mode != "local" else "")
+        _echo(f"  {bold(label)}")
+        _echo(f"    {dim('1.')} brainpack mcp-server")
+        _echo(f"    {dim('2.')} brainpack create")
+        _echo(f"    {dim('3.')} {build_cmd}")
         if summary:
             if status == "blocked":
-                typer.echo(f"  Current pack unblock step: {lifecycle_command}", err=err)
+                _echo(f"    {yellow('!')}  Unblock: {lifecycle_command}")
             elif status in {"new", "needs-build", "error"}:
-                typer.echo(f"  Current pack build step: {lifecycle_command}", err=err)
-            else:
-                typer.echo(f"  Current pack is ready for agent use: {pack_name}", err=err)
+                _echo(f"    {dim('->')} Next: {lifecycle_command}")
+            elif status == "ready":
+                _echo(f"    {green('OK')} {pack_name} is ready for agent use")
 
-    def _render_local_guidance() -> None:
-        heading = "Use with local model"
-        if preferred_mode == "local":
-            heading += " (recommended)"
-        typer.echo(heading, err=err)
-        typer.echo("  1. Install local runtime (for example Ollama).", err=err)
-        typer.echo(
-            "  2. Run doctor: brainpack doctor <pack>"
-            if summary is None
-            else f"  2. Run doctor: {doctor_command}",
-            err=err,
-        )
-        typer.echo("  3. Set up pack: brainpack create", err=err)
-        typer.echo("     or brainpack add <path-or-url-or-id>", err=err)
-        typer.echo(
-            "  4. Build: brainpack build <pack>"
-            if summary is None
-            else f"  4. Build: {build_command}",
-            err=err,
-        )
+    def _local_block() -> None:
+        label = "Use with local model" + (" — recommended" if preferred_mode == "local" else "")
+        _echo(f"  {bold(label)}")
+        _echo(f"    {dim('1.')} Install Ollama (or another local runtime)")
+        _echo(f"    {dim('2.')} {doctor_cmd}")
+        _echo(f"    {dim('3.')} brainpack create")
+        _echo(f"    {dim('4.')} {build_cmd}")
         if summary and status == "ready":
-            typer.echo(f'  5. Ask locally: brainpack query {pack_name} "question"', err=err)
-            typer.echo(f'     or brainpack chat {pack_name} "question"', err=err)
+            _echo(f'    {dim("5.")} brainpack query {pack_name} "question"')
 
-    renderers = [_render_agent_guidance, _render_local_guidance]
+    renderers = [_agent_block, _local_block]
     if preferred_mode == "local":
-        renderers = [_render_local_guidance, _render_agent_guidance]
+        renderers = [_local_block, _agent_block]
 
-    for index, render in enumerate(renderers):
-        if index:
-            typer.echo("", err=err)
-        render()
+    for i, fn in enumerate(renderers):
+        if i:
+            _echo()
+        fn()
 
 
 def _render_home_screen() -> None:
     """Show the default introductory screen for no-argument CLI entry."""
     summaries = list_packs(_PACKS_DIR, _pack_readiness_details)
 
-    typer.echo(f"Brainpack v{__version__}")
-    typer.echo("Turn your favorite content into local queryable packs.")
+    for line in render_header(version=__version__, step="Your local knowledge base"):
+        typer.echo(line)
     typer.echo("")
 
     if not summaries:
-        typer.echo("No packs installed yet.")
+        for line in render_status(
+            "No packs installed yet",
+            ["Create your first pack to get started."],
+            tone="info",
+        ):
+            typer.echo(line)
         typer.echo("")
         _render_usage_guidance()
         typer.echo("")
-        typer.echo("More commands")
-        typer.echo("  brainpack list")
-        typer.echo("  brainpack help")
+        typer.echo(f"  {dim('brainpack list  ·  brainpack help')}")
         return
 
-    typer.echo("Installed packs")
+    typer.echo(f"  {bold('Installed packs')}")
+    typer.echo("")
     _render_pack_table(summaries, limit=6)
 
     if len(summaries) > 6:
-        typer.echo(f"...and {len(summaries) - 6} more")
+        typer.echo(f"  {dim(f'...and {len(summaries) - 6} more')}")
 
     typer.echo("")
-    primary = summaries[0]["name"]
     _render_usage_guidance(summaries[0])
     typer.echo("")
-    typer.echo("Main commands")
-    typer.echo(f'  brainpack chat {primary} "question"')
-    typer.echo(f"  brainpack status {primary}")
-    typer.echo("  brainpack list")
-    typer.echo("  brainpack create")
-    typer.echo("  brainpack help")
+    typer.echo(f"  {dim('More: brainpack list · brainpack create · brainpack help')}")
 
 
 def _run_initial_setup_flow() -> bool:
@@ -298,10 +311,12 @@ def _run_initial_setup_flow() -> bool:
 
 def run_authoring_menu() -> bool:
     """Run the TTY-only create/import/manage chooser for no-arg interactive sessions."""
+    summaries = list_packs(_PACKS_DIR, _pack_readiness_details)
     return interactive_run_authoring_menu(
         packs_dir=_PACKS_DIR,
         prompt_backend=load_prompt_backend(),
         import_handler=add,
+        pack_summaries=summaries,
     )
 
 
@@ -624,7 +639,7 @@ def _load_query_runtime(
             machine_command=machine_command,
         )
     model = load_model(config.embedding_model)
-    collection = get_collection(pack_dir, config.name)
+    collection = get_collection(pack_dir, config.id)
     return pack_dir, config, model, collection
 
 
@@ -694,7 +709,7 @@ def _load_evidence_runtime(
             machine_command=machine_command,
         )
     model = load_model(config.embedding_model)
-    collection = get_collection(pack_dir, config.name)
+    collection = get_collection(pack_dir, config.id)
     return pack_dir, config, model, collection
 
 
@@ -784,7 +799,7 @@ def _load_chat_runtime(
 
     config = summary["config"]
     model = load_model(config.embedding_model)
-    collection = get_collection(pack_dir, config.name)
+    collection = get_collection(pack_dir, config.id)
     return pack_dir, config, model, collection
 
 
@@ -1059,6 +1074,49 @@ def _origin_display(origin: dict) -> str:
     return f"{origin_type}: {origin_source}"
 
 
+def _source_rows(config, state: dict) -> list[tuple[str, str, str]]:
+    """Return (icon, label, detail) for each source in config."""
+    processed = state.get("processed", {})
+    audio_steps = state.get("audio_steps", {})
+    rows = []
+    for source in config.sources:
+        url = source.url
+        sid = canonical_source_id(url)
+        source_type = detect_source_type(url)
+
+        if sid in processed:
+            entry = processed[sid]
+            if entry.get("status") == "done":
+                rows.append((green("✓"), entry.get("title") or url, ""))
+            else:
+                reason = entry.get("reason", "failed")
+                rows.append((red("✗"), entry.get("title") or url, dim(reason[:50])))
+        elif sid in audio_steps:
+            entry = audio_steps[sid]
+            stages = entry.get("stages", {})
+            title = entry.get("title") or url
+            if stages.get("embedded"):
+                rows.append((green("✓"), title, ""))
+            elif stages.get("transcribed"):
+                rows.append((yellow("~"), title, dim("transcribed")))
+            elif stages.get("downloaded"):
+                rows.append((yellow("~"), title, dim("downloaded")))
+            else:
+                rows.append((dim("·"), url, dim("pending")))
+        elif source_type in {"youtube", "podcast"}:
+            total = len(audio_steps)
+            if total > 0:
+                embedded = sum(
+                    1 for e in audio_steps.values() if e.get("stages", {}).get("embedded")
+                )
+                rows.append((green("✓") if embedded == total else yellow("~"), url, dim(f"{embedded}/{total} episodes built")))
+            else:
+                rows.append((dim("·"), url, dim("not built")))
+        else:
+            rows.append((dim("·"), url, dim("not built")))
+    return rows
+
+
 def _prompt_create_config() -> PackConfig:
     """Collect the non-TTY fallback guided creation inputs."""
     source_input = typer.prompt("Source URL or local path").strip()
@@ -1115,9 +1173,9 @@ def _write_pack_yaml_from_source(
             typer.echo(f"Error: Invalid pack.yaml: {exc}", err=True)
             raise typer.Exit(code=1)
 
-        if not re.match(r"^[\w.-]+$", config.name):
+        if not re.match(r"^[\w.-]+$", config.id):
             typer.echo(
-                f"Error: Pack name '{config.name}' contains invalid characters. "
+                f"Error: Pack id '{config.id}' contains invalid characters. "
                 "Only alphanumerics, hyphens, underscores, and dots are allowed.",
                 err=True,
             )
@@ -1140,22 +1198,22 @@ def create() -> None:
         return
 
     config = _prompt_create_config()
-    pack_dir = _PACKS_DIR / config.name
+    pack_dir = _PACKS_DIR / config.id
     if pack_dir.exists():
         typer.echo(
-            f"Error: Pack '{config.name}' already exists.\n"
-            f"Choose a new name or run `brainpack update {config.name}`.",
+            f"Error: Pack '{config.id}' already exists.\n"
+            f"Choose a new name or run `brainpack update {config.id}`.",
             err=True,
         )
         raise typer.Exit(code=1)
 
     write_config(config, pack_dir / "pack.yaml")
 
-    typer.echo(f"Created pack '{config.name}'.")
+    typer.echo(f"Created pack '{config.id}'.")
     typer.echo(f"Source saved: {config.sources[0].url}")
     typer.echo("")
     _render_next_step(
-        f"brainpack build {config.name}",
+        f"brainpack build {config.id}",
         "Build indexes the source into local expert memory.",
     )
 
@@ -1188,12 +1246,12 @@ def build(
     )
 
     # SAF-01: enforce model provenance before any ChromaDB write
-    check_model_provenance(state, config.embedding_model, pack_name=config.name)
+    check_model_provenance(state, config.embedding_model, pack_name=config.id)
     save_state(pack_dir, state)  # persist model registration on first build
 
     model_size = build_defaults["model"]
     model_obj = load_model(config.embedding_model)
-    collection = get_collection(pack_dir, config.name)
+    collection = get_collection(pack_dir, config.id)
 
     audio_dir = pack_dir / "audio"
     transcripts_dir = pack_dir / "transcripts"
@@ -1591,33 +1649,51 @@ def status_command(
         )
 
     summary = _status_payload(pack)["pack"]
+    state = summary["state"]
+    config = summary["config"]
 
-    typer.echo(f"Pack: {summary['name']}")
-    typer.echo(f"Status: {_display_status(summary['status'])}")
-    typer.echo(f"Type: {summary['type']}")
-    typer.echo(f"Provider: {summary['provider']}")
-    typer.echo(f"Sources: {summary['source_count']}")
-    typer.echo(f"Origin: {_origin_display(summary.get('origin', {}))}")
-    typer.echo(f"Recent: {summary['recent_summary']}")
+    typer.echo()
+    typer.echo(f"  {bold(config.name)}  {dim(f'({config.id})')}  {_status_styled(summary['status'])}")
+    typer.echo()
+
+    info_rows: list[tuple[str, str]] = [
+        ("Type", _display_type(summary["type"])),
+        ("Version", config.version),
+    ]
+    build_date = (summary.get("last_build_at") or "")[:10]
+    if build_date:
+        info_rows.append(("Last built", build_date))
+    if config.tags:
+        info_rows.append(("Tags", ", ".join(config.tags)))
+    if config.contributors:
+        info_rows.append(("Contributors", ", ".join(config.contributors)))
+    for line in render_rows(info_rows):
+        typer.echo(line)
+
+    typer.echo()
+    source_count = summary["source_count"]
+    typer.echo(f"  {bold(f'Sources ({source_count})')}")
+    typer.echo()
+    source_rows = _source_rows(config, state)
+    w_label = min(max((len(label) for _, label, _ in source_rows), default=0), 55)
+    w_detail = 30
+    typer.echo(
+        f"    {dim(_col('Title / URL', w_label))}  {dim('Status')}"
+    )
+    for icon, label, detail in source_rows:
+        typer.echo(f"  {icon}  {_col(label[:w_label], w_label)}  {detail}".rstrip())
 
     if summary.get("blockers"):
-        typer.echo("Blockers:")
+        typer.echo()
         for blocker in summary["blockers"]:
-            typer.echo(f"  - {blocker}")
+            typer.echo(f"  {red('!')}  {blocker}")
 
     if summary.get("warnings"):
-        typer.echo("Warnings:")
+        typer.echo()
         for warning in summary["warnings"]:
-            typer.echo(f"  - {warning}")
+            typer.echo(f"  {yellow('!')}  {warning}")
 
-    last_update_summary = summary.get("last_update_summary", [])
-    if last_update_summary:
-        typer.echo("Last update summary:")
-        for line in last_update_summary:
-            typer.echo(f"  - {line}")
-
-    typer.echo("")
-    _render_usage_guidance(summary)
+    typer.echo()
 
 
 @app.command(name="add")
@@ -1638,11 +1714,11 @@ def add(
     _, config = _write_pack_yaml_from_source(resolved, destination_config)
     shutil.rmtree(destination_config.parent, ignore_errors=True)
 
-    dest_dir = _PACKS_DIR / config.name
+    dest_dir = _PACKS_DIR / config.id
     if dest_dir.exists():
         typer.echo(
-            f"Error: Pack '{config.name}' is already installed.\n"
-            f"Use `brainpack update {config.name}` to refresh it.",
+            f"Error: Pack '{config.id}' is already installed.\n"
+            f"Use `brainpack update {config.id}` to refresh it.",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -1661,8 +1737,8 @@ def add(
         },
     )
     typer.echo(
-        f"Pack '{config.name}' added to {dest_dir}/\n"
-        f"Run `brainpack build {config.name}` to ingest sources."
+        f"Pack '{config.id}' added to {dest_dir}/\n"
+        f"Run `brainpack build {config.id}` to ingest sources."
     )
 
 
@@ -1710,9 +1786,9 @@ def update(
         try:
             tmp_yaml = tmp_dir / "incoming.yaml"
             _, incoming_config = _write_pack_yaml_from_source(resolved, tmp_yaml)
-            if incoming_config.name != current_config.name:
+            if incoming_config.id != current_config.id:
                 typer.echo(
-                    f"Error: Incoming pack name '{incoming_config.name}' does not match installed pack '{current_config.name}'.",
+                    f"Error: Incoming pack id '{incoming_config.id}' does not match installed pack '{current_config.id}'.",
                     err=True,
                 )
                 raise typer.Exit(code=1)

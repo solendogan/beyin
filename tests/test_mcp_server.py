@@ -99,6 +99,7 @@ async def test_mcp_server_lists_expected_tools(mcp_app):
         "brainpack_chat",
         "brainpack_build",
         "brainpack_add",
+        "brainpack_add_sources",
     ]
 
 
