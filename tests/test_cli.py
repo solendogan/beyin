@@ -227,9 +227,8 @@ def test_no_arg_home_screen_orients_around_existing_inventory(tmp_pack_root):
 
     assert result.exit_code == 0
     assert "Installed packs" in result.output
-    assert "Pack" in result.output
+    assert "ID" in result.output
     assert "Status" in result.output
-    assert "Type" in result.output
     assert "test-pack" in result.output
     assert "needs-build" in result.output
     assert "Use with agent" in result.output
@@ -2395,8 +2394,7 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
     rows = [line.strip() for line in result.output.splitlines() if line.strip().startswith(("a-pack", "b-pack"))]
     assert rows[0].startswith("a-pack")
     assert rows[1].startswith("b-pack")
-    assert "articles" in rows[0]
-    assert "openai" in rows[0]
+    assert "2" in rows[0]
     assert "2" in rows[0]
     assert "Summary" not in result.output
     assert "Src" not in result.output

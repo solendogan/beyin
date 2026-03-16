@@ -199,22 +199,20 @@ def _col(text: str, width: int) -> str:
 def _render_pack_table(summaries: list[dict], *, limit: Optional[int] = None) -> None:
     """Render the compact pack table used by list and the home screen."""
     rows = summaries if limit is None else summaries[:limit]
-    w_name, w_status, w_type, w_src, w_prov = 22, 13, 9, 7, 9
+    w_id, w_name, w_status, w_src = 22, 28, 13, 7
     typer.echo(
-        f"  {bold(_col('Pack', w_name))}"
+        f"  {bold(_col('ID', w_id))}"
+        f"{dim(_col('Name', w_name))}"
         f"{dim(_col('Status', w_status))}"
-        f"{dim(_col('Type', w_type))}"
-        f"{dim('Sources'.rjust(w_src))}  "
-        f"{dim('Provider')}"
+        f"{dim('Sources'.rjust(w_src))}"
     )
     for s in rows:
         raw_status = _display_status(s["status"])
         typer.echo(
-            f"  {_col(s['name'][:w_name - 1], w_name)}"
+            f"  {_col(s['id'][:w_id - 1], w_id)}"
+            f"{_col(s['name'][:w_name - 1], w_name)}"
             f"{_status_styled(s['status'])}{' ' * max(0, w_status - len(raw_status))}"
-            f"{_col(_display_type(s['type']), w_type)}"
-            f"{str(s['source_count']).rjust(w_src)}  "
-            f"{dim(s['provider'])}"
+            f"{str(s['source_count']).rjust(w_src)}"
         )
 
 

@@ -217,6 +217,7 @@ def summarize_pack(
         recent_summary = "never-built"
 
     return {
+        "id": config.id,
         "name": config.name,
         "status": status,
         "type": _source_family(config),
