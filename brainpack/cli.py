@@ -334,6 +334,12 @@ def main(ctx: typer.Context) -> None:
             _run_initial_setup_flow()
             return
         if is_interactive_session():
+            # Inventory-first: show the home table when packs are already installed.
+            # Only route to the authoring menu on an empty inventory.
+            existing = list_packs(_PACKS_DIR, _pack_readiness_details)
+            if existing:
+                _render_home_screen()
+                return
             if run_authoring_menu():
                 return
         _render_home_screen()
@@ -1654,6 +1660,7 @@ def status_command(
     typer.echo(f"  {bold(config.name)}  {dim(f'({config.id})')}  {_status_styled(summary['status'])}")
     typer.echo()
 
+    # --- Pack facts and provenance (summary-first) ---
     info_rows: list[tuple[str, str]] = [
         ("Type", _display_type(summary["type"])),
         ("Version", config.version),
@@ -1665,22 +1672,20 @@ def status_command(
         info_rows.append(("Tags", ", ".join(config.tags)))
     if config.contributors:
         info_rows.append(("Contributors", ", ".join(config.contributors)))
+
+    # Provenance / origin
+    origin = summary.get("origin") or {}
+    if origin:
+        origin_source = origin.get("source") or origin.get("type") or "unknown"
+        info_rows.append(("Origin", origin_source))
+        last_update = (origin.get("last_updated_at") or origin.get("added_at") or "")[:10]
+        if last_update:
+            info_rows.append(("Last update", last_update))
+
     for line in render_rows(info_rows):
         typer.echo(line)
 
-    typer.echo()
-    source_count = summary["source_count"]
-    typer.echo(f"  {bold(f'Sources ({source_count})')}")
-    typer.echo()
-    source_rows = _source_rows(config, state)
-    w_label = min(max((len(label) for _, label, _ in source_rows), default=0), 55)
-    w_detail = 30
-    typer.echo(
-        f"    {dim(_col('Title / URL', w_label))}  {dim('Status')}"
-    )
-    for icon, label, detail in source_rows:
-        typer.echo(f"  {icon}  {_col(label[:w_label], w_label)}  {detail}".rstrip())
-
+    # --- Blockers and warnings (before sources so they scan immediately) ---
     if summary.get("blockers"):
         typer.echo()
         for blocker in summary["blockers"]:
@@ -1690,6 +1695,19 @@ def status_command(
         typer.echo()
         for warning in summary["warnings"]:
             typer.echo(f"  {yellow('!')}  {warning}")
+
+    # --- Sources (at the bottom — detail view) ---
+    typer.echo()
+    source_count = summary["source_count"]
+    typer.echo(f"  {bold(f'Sources ({source_count})')}")
+    typer.echo()
+    source_rows = _source_rows(config, state)
+    w_label = min(max((len(label) for _, label, _ in source_rows), default=0), 55)
+    typer.echo(
+        f"    {dim(_col('Title / URL', w_label))}  {dim('Status')}"
+    )
+    for icon, label, detail in source_rows:
+        typer.echo(f"  {icon}  {_col(label[:w_label], w_label)}  {detail}".rstrip())
 
     typer.echo()
 

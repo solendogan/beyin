@@ -630,12 +630,15 @@ def test_interactive_abort_normalizes_cancellation(exc_type):
         normalize_prompt_abort(_raise_abort)
 
 
-def test_no_arg_interactive_home_routes_to_authoring_menu_after_setup():
-    """Interactive no-arg use should hand off to the human authoring menu after setup."""
+def test_no_arg_interactive_home_routes_to_authoring_menu_after_setup(tmp_path):
+    """Interactive no-arg use with no packs installed routes to the authoring menu."""
     from brainpack.cli import app
 
+    packs_root = tmp_path / "brainpacks"
     runner = CliRunner()
-    with patch("brainpack.cli.needs_initial_setup", return_value=False), patch(
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli.needs_initial_setup", return_value=False
+    ), patch(
         "brainpack.cli.is_interactive_session",
         return_value=True,
     ), patch(
