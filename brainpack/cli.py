@@ -333,13 +333,13 @@ def run_create_flow() -> bool:
 def main(ctx: typer.Context) -> None:
     """Render the home screen when Brainpack runs without a subcommand."""
     if ctx.invoked_subcommand is None:
-        if needs_initial_setup() and is_interactive_session():
+        existing = list_packs(_PACKS_DIR, _pack_readiness_details)
+        if needs_initial_setup() and is_interactive_session() and not existing:
             _run_initial_setup_flow()
             return
         if is_interactive_session():
             # Inventory-first: show the home table when packs are already installed.
             # Only route to the authoring menu on an empty inventory.
-            existing = list_packs(_PACKS_DIR, _pack_readiness_details)
             if existing:
                 _render_home_screen()
                 return

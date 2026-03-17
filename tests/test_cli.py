@@ -273,7 +273,10 @@ def test_no_arg_tty_first_run_routes_to_the_setup_seam_before_home_screen():
         return_value=True,
     ) as setup_mock, patch(
         "brainpack.cli._render_home_screen"
-    ) as home_mock:
+    ) as home_mock, patch(
+        "brainpack.cli.list_packs",
+        return_value=[],
+    ):
         result = runner.invoke(app, [])
 
     assert result.exit_code == 0
@@ -299,7 +302,10 @@ def test_no_arg_tty_declined_first_run_does_not_fall_through_to_authoring_or_hom
         "brainpack.cli.run_authoring_menu",
     ) as authoring_mock, patch(
         "brainpack.cli._render_home_screen",
-    ) as home_mock:
+    ) as home_mock, patch(
+        "brainpack.cli.list_packs",
+        return_value=[],
+    ):
         result = runner.invoke(app, [])
 
     assert result.exit_code == 0
