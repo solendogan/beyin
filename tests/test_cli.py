@@ -2830,3 +2830,244 @@ def test_build_all_up_to_date(tmp_path):
 
     assert "0 new chunks" in result.output
     assert "up to date" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Phase 12 Plan 02: Inventory-first home/list/status rendering
+# ---------------------------------------------------------------------------
+
+
+def _write_ready_pack(pack_dir, *, name: str = "demo-pack", llm: str = "ollama") -> None:
+    """Write a minimal ready-state pack to disk."""
+    from brainpack.inventory import pack_config_hash
+    from brainpack.pack_state import save_state
+
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    (pack_dir / "pack.yaml").write_text(
+        f"name: {name}\n"
+        "description: Demo pack\n"
+        f"llm: {llm}\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+            "audio_steps": {},
+            "last_build_at": "2026-03-13T10:00:00+00:00",
+            "last_built_pack_hash": pack_config_hash(pack_dir),
+        },
+    )
+
+
+def test_no_arg_tty_with_installed_packs_shows_home_table_not_authoring_menu(tmp_path):
+    """TTY with installed packs: inventory table shown directly, authoring menu bypassed."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    _write_ready_pack(packs_root / "demo-pack", name="demo-pack")
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli.needs_initial_setup", return_value=False
+    ), patch(
+        "brainpack.cli.is_interactive_session", return_value=True
+    ), patch(
+        "brainpack.cli.run_authoring_menu",
+        side_effect=AssertionError("authoring menu should not be called when packs exist"),
+    ):
+        result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    assert "Installed packs" in result.output
+    assert "demo-pack" in result.output
+
+
+def test_no_arg_tty_empty_inventory_still_routes_to_authoring_menu(tmp_path):
+    """TTY with no packs should still show the authoring menu for first-pack creation."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    runner = CliRunner()
+
+    menu_called = []
+
+    def fake_authoring_menu():
+        menu_called.append(True)
+        return True
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli.needs_initial_setup", return_value=False
+    ), patch(
+        "brainpack.cli.is_interactive_session", return_value=True
+    ), patch(
+        "brainpack.cli.run_authoring_menu", side_effect=fake_authoring_menu
+    ):
+        result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    assert menu_called == [True]
+
+
+def test_list_human_output_stays_compact_without_coaching_blocks(tmp_path):
+    """list shows a compact table without appending 'Use with agent' coaching sections."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    _write_ready_pack(packs_root / "demo-pack", name="demo-pack")
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli._check_ollama_reachable", return_value=True
+    ):
+        result = runner.invoke(app, ["list"])
+
+    assert result.exit_code == 0
+    assert "demo-pack" in result.output
+    assert "Use with agent" not in result.output
+    assert "Use with local model" not in result.output
+    assert "brainpack mcp-server" not in result.output
+
+
+def test_status_renders_provenance_and_build_recap_before_source_rows(tmp_path):
+    """status: provenance/build-recap sections must appear before the Sources section."""
+    from brainpack.cli import app
+    from brainpack.inventory import save_pack_origin
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "demo-pack"
+    _write_ready_pack(pack_dir, name="demo-pack")
+    save_pack_origin(
+        pack_dir,
+        {
+            "type": "file",
+            "source": "/tmp/demo-pack.yaml",
+            "added_at": "2026-03-11T09:00:00+00:00",
+            "last_updated_at": "2026-03-12T09:00:00+00:00",
+        },
+    )
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli._check_ollama_reachable", return_value=True
+    ):
+        result = runner.invoke(app, ["status", "demo-pack"])
+
+    assert result.exit_code == 0
+    output = result.output
+    # Origin/provenance and last-built recap must both appear before the Sources section
+    assert "Origin" in output or "origin" in output or "/tmp/demo-pack.yaml" in output
+    assert "Last built" in output or "2026-03-13" in output
+    sources_pos = output.find("Sources")
+    origin_pos = output.find("/tmp/demo-pack.yaml") if "/tmp/demo-pack.yaml" in output else output.find("origin")
+    built_pos = output.find("2026-03-13")
+    if sources_pos >= 0 and origin_pos >= 0:
+        assert origin_pos < sources_pos, "Origin/provenance should appear before Sources section"
+    if sources_pos >= 0 and built_pos >= 0:
+        assert built_pos < sources_pos, "Build recap date should appear before Sources section"
+
+
+def test_status_ready_pack_does_not_show_next_step_coaching(tmp_path):
+    """status on a ready pack must not show 'Use with agent' or 'Use with local model' coaching."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    _write_ready_pack(packs_root / "ready-pack", name="ready-pack")
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli._check_ollama_reachable", return_value=True
+    ):
+        result = runner.invoke(app, ["status", "ready-pack"])
+
+    assert result.exit_code == 0
+    assert "Use with agent" not in result.output
+    assert "Use with local model" not in result.output
+    # Ready packs: no coaching copy about next steps
+    assert "brainpack mcp-server" not in result.output
+    assert "brainpack create" not in result.output
+
+
+def test_status_blocked_pack_shows_blockers_inline_without_coaching(tmp_path):
+    """status on a blocked pack shows blocker text inline without appending the full coaching block."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "blocked-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: blocked-pack\n"
+        "description: Blocked\n"
+        "llm: openai\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ", {}, clear=True
+    ):
+        result = runner.invoke(app, ["status", "blocked-pack"])
+
+    assert result.exit_code == 0
+    # Blocker text must be present inline
+    assert "OPENAI_API_KEY" in result.output
+    # But coaching copy (Use with agent/local model blocks) must not be appended
+    assert "Use with agent" not in result.output
+    assert "Use with local model" not in result.output
+
+
+def test_list_json_stays_stable_and_prompt_free_for_installed_packs(tmp_path):
+    """list --json stays single-document, prompt-free, and structurally unchanged after inventory-first changes."""
+    from brainpack.cli import app
+    from brainpack.machine_output import CLI_SCHEMA_VERSION
+
+    packs_root = tmp_path / "brainpacks"
+    _write_ready_pack(packs_root / "demo-pack", name="demo-pack")
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli._check_ollama_reachable", return_value=True
+    ), patch(
+        "brainpack.cli.load_prompt_backend",
+        side_effect=AssertionError("interactive backend must stay unloaded"),
+    ):
+        result = runner.invoke(app, ["list", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert payload["meta"]["schema"] == CLI_SCHEMA_VERSION
+    assert payload["meta"]["command"] == "list"
+    assert len(payload["data"]["packs"]) == 1
+    assert payload["data"]["packs"][0]["name"] == "demo-pack"
+
+
+def test_status_json_stays_stable_and_prompt_free_after_rendering_changes(tmp_path):
+    """status --json stays single-document, prompt-free after human-rendering changes."""
+    from brainpack.cli import app
+    from brainpack.machine_output import CLI_SCHEMA_VERSION
+
+    packs_root = tmp_path / "brainpacks"
+    _write_ready_pack(packs_root / "demo-pack", name="demo-pack", llm="openai")
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False
+    ), patch(
+        "brainpack.cli.load_prompt_backend",
+        side_effect=AssertionError("interactive backend must stay unloaded"),
+    ):
+        result = runner.invoke(app, ["status", "demo-pack", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert payload["meta"]["schema"] == CLI_SCHEMA_VERSION
+    assert payload["meta"]["command"] == "status"
+    assert payload["data"]["pack"]["name"] == "demo-pack"
+    assert "Use with agent" not in result.output
