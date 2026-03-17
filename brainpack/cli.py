@@ -21,6 +21,10 @@ from brainpack.config import (
     write_config,
 )
 from brainpack.interactive import (
+    InteractiveAbort,
+    _confirm,
+    _select,
+    _text,
     is_interactive_session,
     load_prompt_backend,
     run_authoring_menu as interactive_run_authoring_menu,
@@ -57,7 +61,7 @@ from brainpack.pack_state import (
 from brainpack.lifecycle import remove_installed_pack, reset_pack_runtime
 from brainpack.machine_output import MachineExit, run_machine_command
 from brainpack.source_ids import artifact_stem, canonical_source_id
-from brainpack.settings import load_settings, needs_initial_setup, resolve_build_defaults
+from brainpack.settings import load_settings, needs_initial_setup, resolve_build_defaults, save_settings
 from brainpack.build_report import BuildReport
 from brainpack.ui import bold, cyan, dim, green, red, render_header, render_rows, render_status, yellow
 
@@ -348,16 +352,142 @@ def main(ctx: typer.Context) -> None:
         _render_home_screen()
 
 
+def _settings_display_rows(settings) -> list[tuple[str, str]]:
+    """Return label/value rows for the current settings table."""
+    audio_val = "yes" if settings.audio_enabled_by_default else "no"
+    return [
+        ("LLM model", settings.preferred_llm_model),
+        ("Whisper model", settings.preferred_whisper_model),
+        ("Transcription", settings.preferred_transcription_backend),
+        ("Audio enabled", audio_val),
+        ("Mode", settings.preferred_mode),
+    ]
+
+
 @app.command(name="settings")
 def settings_command() -> None:
-    """Edit the global Brainpack defaults used by interactive setup and guidance."""
-    if not is_interactive_session():
-        typer.echo("Error: `brainpack settings` requires a TTY session.", err=True)
-        typer.echo("Run `brainpack settings` from an interactive terminal.", err=True)
-        raise typer.Exit(code=1)
+    """Show current settings and edit them interactively in a terminal."""
+    from brainpack.settings import BrainpackSettings
 
-    if not interactive_run_settings_flow(prompt_backend=load_prompt_backend()):
-        raise typer.Exit(code=1)
+    current = load_settings()
+
+    # Always show current settings as a table
+    for line in render_header(version=__version__, step="Brainpack Settings"):
+        typer.echo(line)
+    typer.echo("")
+    for line in render_rows(_settings_display_rows(current)):
+        typer.echo(line)
+    typer.echo("")
+
+    if not is_interactive_session():
+        _hint = dim("Run 'brainpack settings' in a terminal to edit.")
+        typer.echo(f"  {_hint}")
+        return
+
+    # TTY: inline edit menu loop
+    backend = load_prompt_backend()
+
+    # Work on a mutable copy of the settings fields
+    staged = BrainpackSettings(
+        version=current.version,
+        setup_completed=current.setup_completed,
+        preferred_mode=current.preferred_mode,
+        audio_enabled_by_default=current.audio_enabled_by_default,
+        preferred_transcription_backend=current.preferred_transcription_backend,
+        preferred_whisper_model=current.preferred_whisper_model,
+        preferred_llm_model=current.preferred_llm_model,
+        preferred_local_provider=current.preferred_local_provider,
+    )
+
+    _DIVIDER = {"value": "__divider__", "name": "──────────────────────"}
+    _SAVE = {"value": "__save__", "name": "Save and exit"}
+    _EXIT = {"value": "__exit__", "name": "Exit without saving"}
+
+    try:
+        while True:
+            audio_val = "yes" if staged.audio_enabled_by_default else "no"
+            choices = [
+                {"value": "llm_model", "name": f"LLM model             ({staged.preferred_llm_model})"},
+                {"value": "whisper_model", "name": f"Whisper model         ({staged.preferred_whisper_model})"},
+                {"value": "transcription", "name": f"Transcription backend ({staged.preferred_transcription_backend})"},
+                {"value": "audio", "name": f"Audio enabled         ({audio_val})"},
+                {"value": "mode", "name": f"Mode                  ({staged.preferred_mode})"},
+                _DIVIDER,
+                _SAVE,
+                _EXIT,
+            ]
+            selection = _select(
+                backend,
+                "What would you like to change?",
+                choices=choices,
+            )
+
+            if selection == "__save__":
+                save_settings(staged)
+                typer.echo(f"  {green('OK')} {bold('Settings saved.')}")
+                return
+
+            if selection == "__exit__" or selection == "__divider__":
+                typer.echo("  Settings unchanged.")
+                return
+
+            if selection == "llm_model":
+                new_val = _text(
+                    backend,
+                    "LLM model",
+                    default=staged.preferred_llm_model,
+                )
+                staged.preferred_llm_model = new_val or staged.preferred_llm_model
+
+            elif selection == "whisper_model":
+                new_val = _select(
+                    backend,
+                    "Whisper model",
+                    choices=[
+                        {"value": "small", "name": "small"},
+                        {"value": "medium", "name": "medium"},
+                        {"value": "large", "name": "large"},
+                    ],
+                    default=staged.preferred_whisper_model,
+                )
+                staged.preferred_whisper_model = new_val
+
+            elif selection == "transcription":
+                new_val = _select(
+                    backend,
+                    "Transcription backend",
+                    choices=[
+                        {"value": "mlx-whisper", "name": "mlx-whisper"},
+                        {"value": "faster-whisper", "name": "faster-whisper"},
+                    ],
+                    default=staged.preferred_transcription_backend,
+                )
+                staged.preferred_transcription_backend = new_val
+
+            elif selection == "audio":
+                new_val = _confirm(
+                    backend,
+                    "Audio enabled by default",
+                    default=staged.audio_enabled_by_default,
+                )
+                staged.audio_enabled_by_default = new_val
+
+            elif selection == "mode":
+                new_val = _select(
+                    backend,
+                    "Mode",
+                    choices=[
+                        {"value": "agent", "name": "agent"},
+                        {"value": "local", "name": "local"},
+                        {"value": "both", "name": "both"},
+                    ],
+                    default=staged.preferred_mode,
+                )
+                staged.preferred_mode = new_val
+
+    except InteractiveAbort:
+        typer.echo("  Settings unchanged.")
+        return
 
 
 @app.command()

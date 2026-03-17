@@ -453,23 +453,24 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
 
 
 def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch, tmp_path):
-    """brainpack settings should reopen the editable flow and summarize the applied result."""
+    """brainpack settings should show the inline edit menu and persist saved changes."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
     from brainpack.cli import app
     from brainpack.settings import load_settings
 
-    _save_global_settings(tmp_path, preferred_mode="agent")
+    _save_global_settings(tmp_path, preferred_mode="agent", preferred_whisper_model="small")
     runner = CliRunner()
+    # Sequence: menu → "mode", edit mode → "local",
+    #           menu → "whisper_model", edit whisper → "large",
+    #           menu → "__save__"
     backend = _FakePromptBackend(
         [
-            "custom",
+            "mode",
             "local",
-            True,
-            "faster-whisper",
+            "whisper_model",
             "large",
-            "openai",
-            True,
+            "__save__",
         ]
     )
 
@@ -484,24 +485,21 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
     assert result.exit_code == 0
     assert settings.preferred_mode == "local"
     assert settings.preferred_whisper_model == "large"
-    assert settings.preferred_local_provider == "openai"
-    assert "Update Brainpack settings" in result.output
-    assert "(" in result.output and ")" in result.output
-    assert "Review setup" in result.output
-    assert result.output.count("Setup complete") == 1
-    assert "Quick start" in result.output
-    assert "brainpack query" in result.output
+    # Settings table is always shown
+    assert "Brainpack Settings" in result.output
+    assert "Settings saved" in result.output
 
 
-def test_settings_command_requires_tty_and_keeps_prompt_backend_unloaded(
+def test_settings_command_shows_table_in_non_tty(
     monkeypatch,
     tmp_path,
 ):
-    """Non-interactive settings edits should fail with guidance instead of prompting."""
+    """Non-interactive settings invocation shows the current settings table and exits cleanly."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
     from brainpack.cli import app
 
+    _save_global_settings(tmp_path, preferred_mode="local")
     runner = CliRunner()
 
     with patch("brainpack.cli.is_interactive_session", return_value=False), patch(
@@ -510,8 +508,9 @@ def test_settings_command_requires_tty_and_keeps_prompt_backend_unloaded(
     ):
         result = runner.invoke(app, ["settings"])
 
-    assert result.exit_code == 1
-    assert "TTY" in result.output
+    assert result.exit_code == 0
+    assert "Brainpack Settings" in result.output
+    assert "Mode" in result.output
     assert "brainpack settings" in result.output
 
 
@@ -1013,7 +1012,7 @@ def test_build_local_path_reads_text_without_remote_fetch(tmp_path):
     mock_fetch.assert_not_called()
     mock_mark.assert_called_once()
     mock_fail.assert_not_called()
-    assert "embed" in result.output.lower()
+    assert "done" in result.output.lower()
 
 
 def test_build_local_path_missing_file_fails_clearly(tmp_path):
@@ -1857,7 +1856,7 @@ class TestAudioBuild:
              patch("brainpack.cli.mark_audio_step"), \
              patch("brainpack.cli.mark_failed"):
 
-            result = runner.invoke(app, ["build", "test-pack"])
+            result = runner.invoke(app, ["build", "test-pack", "--verbose"])
 
         assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
         assert "[embed]" in result.output
