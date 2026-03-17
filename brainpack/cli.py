@@ -924,6 +924,7 @@ def _query_payload(
         collection=collection,
         model=model,
         llm_provider=config.llm,
+        llm_model=load_settings().preferred_llm_model,
     )
     return _build_retrieval_payload(question, result, machine=machine)
 
@@ -944,6 +945,7 @@ def _chat_one_shot_payload(
         collection=collection,
         model=model,
         llm_provider=config.llm,
+        llm_model=load_settings().preferred_llm_model,
     )
     return _build_retrieval_payload(question, result, machine=machine)
 
@@ -1543,6 +1545,7 @@ def chat(
         return
 
     _, config, model, collection = _load_chat_runtime(pack)
+    llm_model = load_settings().preferred_llm_model
 
     def _ask(prompt_text: str, history: list[dict[str, str]] | None = None) -> dict:
         return run_query(
@@ -1550,6 +1553,7 @@ def chat(
             collection=collection,
             model=model,
             llm_provider=config.llm,
+            llm_model=llm_model,
             history=list(history) if history else None,
         )
 

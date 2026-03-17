@@ -16,6 +16,7 @@ _SETUP_PATHS = ["recommended", "custom"]
 _LOCAL_PROVIDERS = ["none", "ollama", "openai"]
 _WHISPER_MODELS = ["small", "medium", "large"]
 DEFAULT_WHISPER_MODEL = "small"
+DEFAULT_LLM_MODEL = "llama3.2"
 
 
 def _recommended_transcription_backend() -> str:
@@ -36,6 +37,7 @@ class BrainpackSettings:
         default_factory=_recommended_transcription_backend
     )
     preferred_whisper_model: str = DEFAULT_WHISPER_MODEL
+    preferred_llm_model: str = DEFAULT_LLM_MODEL
     preferred_local_provider: str = "none"
 
 
