@@ -198,6 +198,6 @@ def check_model_provenance(
         raise typer.BadParameter(
             f"Embedding model mismatch: pack '{pack_name}' was built with "
             f"'{recorded}' but pack.yaml now specifies '{current_model}'. "
-            f"Delete ~/.brainpacks/{pack_name}/chroma/ to rebuild from scratch, "
+            f"Run `brainpack build {pack_name} --reset` to rebuild from scratch, "
             f"or revert pack.yaml to use '{recorded}'."
         )

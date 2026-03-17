@@ -54,6 +54,7 @@ from brainpack.pack_state import (
     mark_processed,
     save_state,
 )
+from brainpack.lifecycle import remove_installed_pack, reset_pack_runtime
 from brainpack.machine_output import MachineExit, run_machine_command
 from brainpack.source_ids import artifact_stem, canonical_source_id
 from brainpack.settings import load_settings, needs_initial_setup, resolve_build_defaults
@@ -300,6 +301,7 @@ def _render_home_screen() -> None:
     typer.echo("")
     _render_usage_guidance(summaries[0])
     typer.echo("")
+    typer.echo(f"  {dim('Manage: brainpack status <pack>  ·  brainpack update <pack>  ·  brainpack remove <pack>')}")
     typer.echo(f"  {dim('More: brainpack list · brainpack create · brainpack help')}")
 
 
@@ -1238,9 +1240,16 @@ def build(
         "-l",
         help="Whisper language code (e.g. 'tr' for Turkish). Default: auto-detect",
     ),
+    reset: bool = typer.Option(
+        False,
+        "--reset",
+        help="Clear generated runtime artifacts before rebuilding. Preserves pack.yaml and origin.json.",
+    ),
 ):
     """Build or incrementally update a pack from its pack.yaml sources."""
     pack_dir = _resolve_pack_dir(pack)
+    if reset:
+        reset_pack_runtime(pack_dir)
     config = load_config(pack_dir)
     state = load_state(pack_dir)
     current_pack_hash = pack_config_hash(pack_dir)
@@ -1705,6 +1714,14 @@ def status_command(
     for icon, label, detail in source_rows:
         typer.echo(f"  {icon}  {_col(label[:w_label], w_label)}  {detail}".rstrip())
 
+    # --- Lifecycle management (factual affordances) ---
+    typer.echo()
+    typer.echo(f"  {dim('Manage:')}")
+    typer.echo(f"    {dim('brainpack status')} {pack}             {dim('— refresh this view')}")
+    typer.echo(f"    {dim('brainpack update')} {pack}             {dim('— pull latest changes and rebuild')}")
+    typer.echo(f"    {dim('brainpack build')} {pack} {dim('--reset')}   {dim('— clear runtime and rebuild from scratch')}")
+    typer.echo(f"    {dim('brainpack remove')} {pack}             {dim('— permanently delete this pack')}")
+
     typer.echo()
 
 
@@ -1822,8 +1839,62 @@ def update(
             save_pack_origin(pack_dir, origin)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+    else:
+        typer.echo(f"No remembered origin for '{pack}' — rebuilding installed pack without remote refresh.")
 
     build(pack=pack, model=model, language=language)
+
+
+@app.command(name="remove")
+def remove_command(
+    pack: str = typer.Argument(..., help="Pack name to permanently remove"),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Skip confirmation and remove without prompting.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Alias for --yes. Skip confirmation and remove without prompting.",
+    ),
+) -> None:
+    """Permanently remove one installed pack and all its data."""
+    pack_dir = _resolve_pack_dir(pack)
+
+    bypass = yes or force
+    if not bypass:
+        if not is_interactive_session():
+            typer.echo(
+                f"Error: `brainpack remove {pack}` requires --yes in non-interactive use.",
+                err=True,
+            )
+            typer.echo(
+                f"Run: brainpack remove {pack} --yes",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        # Interactive TTY: use InquirerPy confirmation
+        from brainpack.interactive import _confirm, InteractiveAbort
+        try:
+            backend = load_prompt_backend()
+            confirmed = _confirm(
+                backend,
+                f"Permanently remove pack '{pack}' and all its data?",
+                default=False,
+                instruction="This action cannot be undone.",
+            )
+        except InteractiveAbort:
+            typer.echo("Remove cancelled.")
+            return
+        if not confirmed:
+            typer.echo("Remove cancelled.")
+            return
+
+    remove_installed_pack(pack_dir)
+    typer.echo(f"Pack '{pack}' removed.")
 
 
 @app.command(name="mcp-server")

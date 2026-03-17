@@ -3642,6 +3642,7 @@ def test_update_with_remembered_origin_fetches_and_rebuilds(tmp_path):
     }))
 
     mock_config = _make_config([SourceEntry(url="https://example.com/article")])
+    mock_config.id = "test-pack"  # must match the installed pack id
     runner = CliRunner()
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
