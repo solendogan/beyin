@@ -3423,3 +3423,333 @@ def test_build_clean_success_exits_0_and_shows_summary(tmp_path):
     assert "Status" in output
     # Verdict line
     assert "complete" in output.lower() or "success" in output.lower() or "2 new" in output.lower()
+
+
+# ---------------------------------------------------------------------------
+# Phase 12-04: Remove / Reset / Update lifecycle flows and discovery  (RED)
+# ---------------------------------------------------------------------------
+
+
+def test_remove_command_exists_and_deletes_only_target_pack(tmp_path):
+    """brainpack remove <pack> is a first-class command that deletes only the target installed pack."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    other_dir = packs_root / "other-pack"
+    pack_dir.mkdir(parents=True)
+    other_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    (other_dir / "pack.yaml").write_text(
+        "name: other-pack\ndescription: Other\nllm: ollama\nsources:\n"
+        "  - https://example.com/other\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["remove", "test-pack", "--yes"])
+
+    assert result.exit_code == 0
+    assert not pack_dir.exists(), "target pack should be deleted"
+    assert other_dir.exists(), "other packs must not be touched"
+
+
+def test_remove_command_uses_explicit_destructive_wording(tmp_path):
+    """brainpack remove output must include explicit destructive wording."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["remove", "test-pack", "--yes"])
+
+    assert result.exit_code == 0
+    output = result.output.lower()
+    assert "removed" in output or "deleted" in output
+
+
+def test_remove_command_requires_yes_or_force_in_non_interactive_use(tmp_path):
+    """brainpack remove in non-interactive use (no TTY) must require --yes/--force to proceed."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    runner = CliRunner()
+
+    # Non-interactive with no --yes should abort without deleting
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.is_interactive_session", return_value=False):
+        result = runner.invoke(app, ["remove", "test-pack"])
+
+    assert result.exit_code != 0 or pack_dir.exists(), (
+        "remove without --yes in non-interactive session should abort or keep the pack"
+    )
+
+
+def test_remove_nonexistent_pack_fails_with_clear_message(tmp_path):
+    """brainpack remove on a missing pack should exit non-zero with a clear message."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    packs_root.mkdir(parents=True)
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["remove", "ghost-pack", "--yes"])
+
+    assert result.exit_code != 0
+    assert "ghost-pack" in result.output.lower() or "ghost-pack" in (result.stderr or "").lower()
+
+
+def test_build_reset_flag_clears_runtime_artifacts_before_rebuild(tmp_path):
+    """brainpack build <pack> --reset clears runtime artifacts and then runs the normal build path."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    # Create runtime artifacts that should be cleared
+    chroma_dir = pack_dir / "chroma"
+    chroma_dir.mkdir()
+    (chroma_dir / "data.bin").write_bytes(b"chroma")
+    meta_file = pack_dir / "meta.json"
+    meta_file.write_text('{"schema_version": 2}')
+
+    mock_config = _make_config([SourceEntry(url="https://example.com/article")])
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.detect_source_type", return_value="article"), \
+         patch("brainpack.cli.is_processed", return_value=False), \
+         patch("brainpack.cli.fetch_article", return_value=("Article text", "Article Title")), \
+         patch("brainpack.cli.chunk_text", return_value=["chunk"]), \
+         patch("brainpack.cli.embed_and_store", return_value=1), \
+         patch("brainpack.cli.mark_processed"), \
+         patch("brainpack.cli.mark_failed"):
+        result = runner.invoke(app, ["build", "test-pack", "--reset"])
+
+    assert result.exit_code == 0, f"exit {result.exit_code}: {result.output}"
+    assert not chroma_dir.exists(), "--reset should have removed the chroma directory"
+
+
+def test_build_reset_preserves_pack_yaml_and_origin_json(tmp_path):
+    """brainpack build <pack> --reset must not remove pack.yaml or origin.json."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    pack_yaml_text = (
+        "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    (pack_dir / "pack.yaml").write_text(pack_yaml_text)
+    origin_text = '{"source": "https://example.com/pack.yaml"}'
+    (pack_dir / "origin.json").write_text(origin_text)
+
+    mock_config = _make_config([SourceEntry(url="https://example.com/article")])
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.detect_source_type", return_value="article"), \
+         patch("brainpack.cli.is_processed", return_value=False), \
+         patch("brainpack.cli.fetch_article", return_value=("Article text", "Article Title")), \
+         patch("brainpack.cli.chunk_text", return_value=["chunk"]), \
+         patch("brainpack.cli.embed_and_store", return_value=1), \
+         patch("brainpack.cli.mark_processed"), \
+         patch("brainpack.cli.mark_failed"):
+        result = runner.invoke(app, ["build", "test-pack", "--reset"])
+
+    assert result.exit_code == 0, f"exit {result.exit_code}: {result.output}"
+    assert (pack_dir / "pack.yaml").read_text() == pack_yaml_text, "pack.yaml must survive --reset"
+    assert (pack_dir / "origin.json").read_text() == origin_text, "origin.json must survive --reset"
+
+
+def test_model_mismatch_remediation_points_to_build_reset(tmp_path):
+    """Embedding model mismatch error message must point to `brainpack build <pack> --reset`."""
+    from brainpack.pack_state import check_model_provenance
+
+    state = {"embedding_model": "all-MiniLM-L6-v2"}
+    import typer as _typer
+
+    with pytest.raises(_typer.BadParameter) as exc_info:
+        check_model_provenance(state, "paraphrase-multilingual-MiniLM-L12-v2", "my-pack")
+
+    message = str(exc_info.value)
+    assert "build" in message.lower() and "reset" in message.lower(), (
+        f"Mismatch remediation should mention `build --reset`, got: {message!r}"
+    )
+    # Must not advise manual chroma directory deletion
+    assert "delete" not in message.lower() and "chroma/" not in message, (
+        f"Mismatch should not instruct manual deletion, got: {message!r}"
+    )
+
+
+def test_update_with_remembered_origin_fetches_and_rebuilds(tmp_path):
+    """brainpack update refreshes pack.yaml from origin and then rebuilds when origin is stored."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    import json as _json
+    (pack_dir / "origin.json").write_text(_json.dumps({
+        "source": "https://example.com/pack.yaml",
+        "type": "url",
+        "resolved": "https://example.com/pack.yaml",
+    }))
+
+    mock_config = _make_config([SourceEntry(url="https://example.com/article")])
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_pack_origin", return_value={
+             "source": "https://example.com/pack.yaml",
+             "type": "url",
+             "resolved": "https://example.com/pack.yaml",
+         }), \
+         patch("brainpack.cli.resolve_pack_origin", return_value={
+             "source": "https://example.com/pack.yaml",
+             "type": "url",
+             "resolved": "https://example.com/pack.yaml",
+         }) as mock_resolve, \
+         patch("brainpack.cli._write_pack_yaml_from_source", return_value=(None, mock_config)), \
+         patch("brainpack.cli.summarize_pack_changes", return_value=[]), \
+         patch("brainpack.cli.save_pack_origin"), \
+         patch("brainpack.cli.build") as mock_build:
+        result = runner.invoke(app, ["update", "test-pack"])
+
+    mock_resolve.assert_called_once()
+    mock_build.assert_called_once()
+
+
+def test_update_without_remembered_origin_says_no_remote_refresh(tmp_path):
+    """brainpack update with no stored origin communicates that no remote refresh occurred."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    mock_config = _make_config([SourceEntry(url="https://example.com/article")])
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_pack_origin", return_value={}), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.detect_source_type", return_value="article"), \
+         patch("brainpack.cli.is_processed", return_value=False), \
+         patch("brainpack.cli.fetch_article", return_value=("Article text", "Article Title")), \
+         patch("brainpack.cli.chunk_text", return_value=["chunk"]), \
+         patch("brainpack.cli.embed_and_store", return_value=1), \
+         patch("brainpack.cli.mark_processed"), \
+         patch("brainpack.cli.mark_failed"):
+        result = runner.invoke(app, ["update", "test-pack"])
+
+    assert result.exit_code == 0
+    output = result.output.lower()
+    # Should communicate that no remote refresh occurred
+    assert (
+        "no origin" in output
+        or "no remote" in output
+        or "local rebuild" in output
+        or "rebuild only" in output
+        or "without remote refresh" in output
+        or "no refresh" in output
+    ), f"Expected a note about no remote refresh, got: {result.output!r}"
+
+
+def test_status_command_exposes_lifecycle_management_lines(tmp_pack_root):
+    """brainpack status should expose explicit lifecycle management commands in its output."""
+    from brainpack.cli import app
+
+    packs_root, pack_dir = tmp_pack_root
+    _mark_pack_ready(pack_dir)
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True):
+        result = runner.invoke(app, ["status", "test-pack"])
+
+    assert result.exit_code == 0
+    output = result.output
+    # Lifecycle management commands should appear on pack-specific status
+    assert "brainpack build test-pack --reset" in output or "build test-pack --reset" in output
+    assert "brainpack update test-pack" in output or "update test-pack" in output
+    assert "brainpack remove test-pack" in output or "remove test-pack" in output
+
+
+def test_home_screen_with_packs_exposes_lifecycle_management_lines(tmp_pack_root):
+    """Home screen with installed packs should expose explicit lifecycle management commands."""
+    from brainpack.cli import app
+
+    packs_root, pack_dir = tmp_pack_root
+    _mark_pack_ready(pack_dir)
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._check_ollama_reachable", return_value=True):
+        result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    output = result.output
+    # At least one lifecycle management affordance should be visible
+    has_status = "brainpack status" in output
+    has_update = "brainpack update" in output
+    has_remove = "brainpack remove" in output
+    has_reset = "brainpack build" in output and "--reset" in output
+    assert has_status or has_update or has_remove or has_reset, (
+        f"Home screen should expose at least one lifecycle management command, got: {output!r}"
+    )
