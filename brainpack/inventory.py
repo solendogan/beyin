@@ -239,10 +239,13 @@ def inspect_pack(
 ) -> Dict[str, Any]:
     """Return a detailed pack inspection record."""
     summary = summarize_pack(pack_dir, readiness_fn)
+    state = summary.get("state", {})
     origin = summary.get("origin", {})
     summary["origin_type"] = origin.get("type", "none")
     summary["origin_source"] = origin.get("source", "")
-    summary["last_build_at"] = summary.get("state", {}).get("last_build_at")
+    summary["last_build_at"] = state.get("last_build_at")
+    summary["last_build_result"] = state.get("last_build_result")
+    summary["last_build_summary"] = state.get("last_build_summary")
     summary["last_update_at"] = origin.get("last_updated_at") or origin.get("added_at")
     summary["last_update_summary"] = origin.get("last_update_summary", [])
     return summary

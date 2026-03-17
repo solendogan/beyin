@@ -16,6 +16,8 @@ def _default_state() -> Dict[str, Any]:
         "embedding_model": None,
         "processed": {},
         "audio_steps": {},
+        "last_build_result": None,
+        "last_build_summary": None,
     }
 
 
@@ -66,6 +68,16 @@ def _upgrade_state(state: Dict[str, Any]) -> Dict[str, Any]:
     upgraded["schema_version"] = _STATE_SCHEMA_VERSION
     upgraded["processed"] = _upgrade_processed(upgraded.get("processed", {}))
     upgraded["audio_steps"] = _upgrade_audio_steps(upgraded.get("audio_steps", {}))
+    upgraded["last_build_result"] = (
+        None
+        if upgraded.get("last_build_result") is None
+        else str(upgraded.get("last_build_result"))
+    )
+    upgraded["last_build_summary"] = (
+        None
+        if upgraded.get("last_build_summary") is None
+        else str(upgraded.get("last_build_summary"))
+    )
     return upgraded
 
 
