@@ -119,12 +119,14 @@ class BuildReport:
 
     def render_table(self) -> str:
         """Return the compact summary table as a string."""
-        header = f"{'Source':<40} {'Status':<10} {'New':>6} {'Skipped':>8}"
-        sep = f"{'-'*40} {'-'*10} {'-'*6} {'-'*8}"
+        header = f"{'Source':<40} {'Status':<10} {'New(chunks)':>11} {'Skipped(chunks)':>15}"
+        sep = f"{'-'*40} {'-'*10} {'-'*11} {'-'*15}"
         rows = []
         for e in self.events:
             title_col = e.title[:40]
-            rows.append(f"{title_col:<40} {e.status:<10} {e.new:>6} {e.skipped:>8}")
+            new_col = "-" if e.status == "skipped" else str(e.new)
+            skipped_col = "-" if e.status == "skipped" else str(e.skipped)
+            rows.append(f"{title_col:<40} {e.status:<10} {new_col:>11} {skipped_col:>15}")
         return "\n".join([header, sep] + rows)
 
     def render_verdict(self) -> str:

@@ -1694,9 +1694,6 @@ def status_command(
     if origin:
         origin_source = origin.get("source") or origin.get("type") or "unknown"
         info_rows.append(("Origin", origin_source))
-        last_update = (origin.get("last_updated_at") or origin.get("added_at") or "")[:10]
-        if last_update:
-            info_rows.append(("Last update", last_update))
 
     for line in render_rows(info_rows):
         typer.echo(line)
