@@ -281,7 +281,7 @@ def _render_home_screen() -> None:
 
     for line in render_header(version=__version__, step="Your local knowledge base"):
         typer.echo(line)
-    typer.echo(f"  Your local knowledge base. Query your content with an agent or local model.")
+    typer.echo(f"  {dim('Query your content with an agent or local model.')}")
     typer.echo("")
 
     # Settings section
