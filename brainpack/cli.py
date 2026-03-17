@@ -277,36 +277,51 @@ def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False)
 def _render_home_screen() -> None:
     """Show the default introductory screen for no-argument CLI entry."""
     summaries = list_packs(_PACKS_DIR, _pack_readiness_details)
+    settings = load_settings()
 
     for line in render_header(version=__version__, step="Your local knowledge base"):
         typer.echo(line)
+    typer.echo(f"  Your local knowledge base. Query your content with an agent or local model.")
     typer.echo("")
 
-    if not summaries:
-        for line in render_status(
-            "No packs installed yet",
-            ["Create your first pack to get started."],
-            tone="info",
-        ):
-            typer.echo(line)
-        typer.echo("")
-        _render_usage_guidance()
-        typer.echo("")
-        typer.echo(f"  {dim('brainpack list  ·  brainpack help')}")
-        return
+    # Settings section
+    typer.echo(f"  {bold('Settings')}")
+    typer.echo(f"  {dim('─' * 38)}")
+    audio_val = "enabled" if settings.audio_enabled_by_default else "disabled"
+    settings_rows = [
+        ("LLM model", settings.preferred_llm_model),
+        ("Whisper model", settings.preferred_whisper_model),
+        ("Transcription", settings.preferred_transcription_backend),
+        ("Audio", audio_val),
+    ]
+    for line in render_rows(settings_rows):
+        typer.echo(line)
+    typer.echo("")
 
+    # Packs section
     typer.echo(f"  {bold('Installed packs')}")
+    typer.echo(f"  {dim('─' * 38)}")
+    if not summaries:
+        typer.echo(f"  {dim('No packs installed yet.')}")
+    else:
+        _render_pack_table(summaries, limit=6)
+        if len(summaries) > 6:
+            typer.echo(f"  {dim(f'...and {len(summaries) - 6} more')}")
     typer.echo("")
-    _render_pack_table(summaries, limit=6)
 
-    if len(summaries) > 6:
-        typer.echo(f"  {dim(f'...and {len(summaries) - 6} more')}")
-
-    typer.echo("")
-    _render_usage_guidance(summaries[0])
-    typer.echo("")
-    typer.echo(f"  {dim('Manage: brainpack status <pack>  ·  brainpack update <pack>  ·  brainpack remove <pack>')}")
-    typer.echo(f"  {dim('More: brainpack list · brainpack create · brainpack help')}")
+    # Footer
+    _footer = (
+        dim("Run 'brainpack help' for all commands")
+        + "  "
+        + dim("·")
+        + "  "
+        + dim("brainpack settings")
+        + "  "
+        + dim("·")
+        + "  "
+        + dim("brainpack create")
+    )
+    typer.echo(f"  {_footer}")
 
 
 def _run_initial_setup_flow() -> bool:

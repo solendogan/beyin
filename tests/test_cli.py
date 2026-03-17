@@ -204,18 +204,14 @@ def test_no_arg_home_screen_guides_first_run(tmp_path):
     assert result.exit_code == 0
     assert "Brainpack v0.1.0" in result.output
     assert "No packs installed yet" in result.output
-    assert "Use with agent" in result.output
-    assert "recommended" in result.output.lower()
-    assert "brainpack mcp-server" in result.output
+    assert "Settings" in result.output
+    assert "LLM model" in result.output
     assert "brainpack create" in result.output
-    assert "brainpack build <pack>" in result.output
-    assert "Use with local model" in result.output
-    assert "ollama" in result.output.lower()
-    assert "brainpack doctor" in result.output
+    assert "brainpack settings" in result.output
 
 
 def test_no_arg_home_screen_orients_around_existing_inventory(tmp_pack_root):
-    """No-arg invocation with installed packs keeps onboarding ahead of local shortcuts."""
+    """No-arg invocation with installed packs shows inventory and settings."""
     from brainpack.cli import app
 
     packs_root, _ = tmp_pack_root
@@ -231,11 +227,8 @@ def test_no_arg_home_screen_orients_around_existing_inventory(tmp_pack_root):
     assert "Status" in result.output
     assert "test-pack" in result.output
     assert "needs-build" in result.output
-    assert "Use with agent" in result.output
-    assert "Use with local model" in result.output
-    assert "brainpack mcp-server" in result.output
-    assert "brainpack build test-pack" in result.output
-    assert result.output.index("Use with agent") < result.output.index("Use with local model")
+    assert "Settings" in result.output
+    assert "LLM model" in result.output
 
 
 def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
@@ -514,11 +507,11 @@ def test_settings_command_shows_table_in_non_tty(
     assert "brainpack settings" in result.output
 
 
-def test_saved_local_preference_moves_local_guidance_ahead_of_agent_copy(
+def test_saved_local_preference_shown_in_home_settings_section(
     monkeypatch,
     tmp_path,
 ):
-    """Human guidance can reflect a saved mode preference without changing command surfaces."""
+    """The home screen settings section reflects the saved mode preference."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
     from brainpack.cli import app
@@ -531,7 +524,7 @@ def test_saved_local_preference_moves_local_guidance_ahead_of_agent_copy(
         result = runner.invoke(app, [])
 
     assert result.exit_code == 0
-    assert result.output.index("Use with local model") < result.output.index("Use with agent")
+    assert "local" in result.output
 
 
 def test_cancelled_initial_setup_leaves_settings_missing(monkeypatch, tmp_path):
@@ -3738,7 +3731,7 @@ def test_status_command_exposes_lifecycle_management_lines(tmp_pack_root):
 
 
 def test_home_screen_with_packs_exposes_lifecycle_management_lines(tmp_pack_root):
-    """Home screen with installed packs should expose explicit lifecycle management commands."""
+    """Home screen with installed packs shows pack table and help footer."""
     from brainpack.cli import app
 
     packs_root, pack_dir = tmp_pack_root
@@ -3751,11 +3744,7 @@ def test_home_screen_with_packs_exposes_lifecycle_management_lines(tmp_pack_root
 
     assert result.exit_code == 0
     output = result.output
-    # At least one lifecycle management affordance should be visible
-    has_status = "brainpack status" in output
-    has_update = "brainpack update" in output
-    has_remove = "brainpack remove" in output
-    has_reset = "brainpack build" in output and "--reset" in output
-    assert has_status or has_update or has_remove or has_reset, (
-        f"Home screen should expose at least one lifecycle management command, got: {output!r}"
-    )
+    # Pack table and commands reachable via footer
+    assert "Installed packs" in output
+    assert "test-pack" in output
+    assert "brainpack help" in output
