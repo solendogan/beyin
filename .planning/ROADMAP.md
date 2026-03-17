@@ -89,7 +89,7 @@ Milestone `v1.1` turns Brainpack from a developer-shaped CLI into an onboarding-
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11
+Phases execute in numeric order: 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 
 | Phase | Requirements | Status |
 |-------|--------------|--------|
@@ -101,6 +101,7 @@ Phases execute in numeric order: 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11
 | 9. Make Agent Mode retrieval-first | OCL-02 (retrieval-first extension) | Completed |
 | 10. Update agent and local mode onboarding | ONB-01, PCK-05, AUT-01, AUT-02, OCL-02 | Completed |
 | 11. Add interactive setup, settings, and guided pack authoring UX | ONB-01, ONB-02, ONB-03, PCK-05, RUN-01, RUN-02, AUT-01, AUT-02 | Completed |
+| 12. CLI and UX polish — status visibility, build output, pack lifecycle improvements | PCK-05, RUN-01 | In Progress |
 
 ### Phase 11: Add interactive setup, settings, and guided pack authoring UX
 
@@ -111,3 +112,13 @@ Phases execute in numeric order: 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11
 
 Plans:
 - [x] TBD (run /gsd:plan-phase 11 to break down) (completed 2026-03-15)
+
+### Phase 12: CLI and UX polish — status visibility, build output, pack lifecycle improvements
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 11
+**Plans:** 1/4 plans executed
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 12 to break down)

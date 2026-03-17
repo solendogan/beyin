@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-current_phase: 11
-current_phase_name: add interactive setup settings and guided pack authoring ux
-current_plan: 4
-status: verifying
-stopped_at: Completed 11-04-PLAN.md
-last_updated: "2026-03-15T01:57:41.128Z"
-last_activity: 2026-03-15
+current_phase: 12
+current_phase_name: cli and ux polish status visibility build output pack lifecycle improvements
+current_plan: 2
+status: executing
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-03-17T15:59:11.470Z"
+last_activity: 2026-03-17
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 7
-  total_plans: 26
-  completed_plans: 26
-  percent: 100
+  total_plans: 30
+  completed_plans: 27
+  percent: 90
 ---
 
 # Project State
@@ -24,26 +24,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** Turn trusted creators' content into searchable expert memory — so users stop re-watching and start querying.
-**Current focus:** Phase 11 is complete — interactive setup/settings, guided authoring, local text-like builds, and deterministic build defaults are all in place for milestone verification
+**Current focus:** Phase 12 is underway — lifecycle recap state and reset/remove helper foundations are in place for upcoming status, build-output, and lifecycle CLI polish
 
 ## Current Position
 
-Phase: 11 (8 of 8 tracked phases)
-Plan: 4 of 4 in current phase
-Status: Phase 11 complete — ready for verification
-Last activity: 2026-03-15 — Completed Phase 11 Plan 04: local text-like builds and build-default precedence
+Phase: 12 (9 of 9 tracked phases)
+Plan: 2 of 4 in current phase
+Status: Ready to execute
+Last activity: 2026-03-17 — Completed Phase 12 Plan 01: lifecycle recap state and reset/remove helper foundation
 
-**Current Phase:** 11
-**Current Phase Name:** add interactive setup settings and guided pack authoring ux
-**Total Phases:** 8
-**Current Plan:** 4
+**Current Phase:** 12
+**Current Phase Name:** cli and ux polish status visibility build output pack lifecycle improvements
+**Total Phases:** 9
+**Current Plan:** 2
 **Total Plans in Phase:** 4
-**Status:** Phase 11 complete — ready for verification
-**Last Activity:** 2026-03-15
-**Last Activity Description:** Completed Phase 11 Plan 04: local text-like builds and build-default precedence
-**Progress:** [██████████] 100%
+**Status:** Ready to execute
+**Last Activity:** 2026-03-17
+**Last Activity Description:** Completed Phase 12 Plan 01: lifecycle recap state and reset/remove helper foundation
+**Progress:** [█████████░] 90%
 
-Progress: [██████████] 100%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -90,6 +90,7 @@ Progress: [██████████] 100%
 | Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux P02 | 5 | 2 tasks | 6 files |
 | Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux P03 | 5 | 2 tasks | 7 files |
 | Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux P04 | 12 | 2 tasks | 11 files |
+| Phase 12-cli-and-ux-polish-status-visibility-build-output-pack-lifecycle-improvements P01 | 2 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,7 @@ Progress: [██████████] 100%
 - Reason: MCP proved useful, but the real product value is retrieval/evidence quality for external agents rather than Brainpack's own local final-answer prose
 - Decision: Agent Mode is now the recommended default path; Local Mode remains available as the standalone/privacy-focused option
 - Phase 11 added: Add interactive setup, settings, and guided pack authoring UX
+- Phase 12 added: CLI and UX polish — status visibility, build output, pack lifecycle improvements
 - Reason: The current onboarding copy is clearer, but the next product gap is guided setup and pack authoring that actually reduces first-run friction for both agent-first and local users without requiring a full TUI rewrite
 - Decision: Use lightweight TTY-only interactive prompts for setup/settings/authoring flows, keep non-interactive and machine-safe CLI paths intact, and defer full terminal-app ambitions
 
@@ -190,6 +192,8 @@ Recent decisions affecting current work:
 - [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Guided manage edits are staged in memory and written through the canonical config writer only after one final confirmation.
 - [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: Build now ingests supported local text-like files through the existing article branch instead of a new parser stack.
 - [Phase 11-add-interactive-setup-settings-and-guided-pack-authoring-ux]: pack.yaml-style sources remain import-only and unsupported local files fail clearly instead of being treated as articles.
+- [Phase 12]: Persist last-build recap data in meta.json and expose it only to human-oriented inspection surfaces.
+- [Phase 12]: Scope runtime reset to generated artifacts only so pack.yaml and origin.json survive rebuild/reset flows.
 
 ### Pending Todos
 
@@ -208,6 +212,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-15T01:57:41.126Z
-Stopped at: Completed 11-04-PLAN.md
+Last session: 2026-03-17T15:59:11.468Z
+Stopped at: Completed 12-01-PLAN.md
 Resume file: None
