@@ -6,7 +6,7 @@ import shutil
 import tempfile
 import urllib.request
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
@@ -1851,6 +1851,54 @@ def update(
         typer.echo(f"No remembered origin for '{pack}' — rebuilding installed pack without remote refresh.")
 
     build(pack=pack, model=model, language=language)
+
+
+@app.command(name="add-source")
+def add_source_command(
+    pack: str = typer.Argument(..., help="Pack name to add sources to"),
+    urls: List[str] = typer.Argument(..., help="One or more URLs to add (YouTube, playlist, article, podcast)"),
+    build_after: bool = typer.Option(
+        False,
+        "--build",
+        "-b",
+        help="Run build immediately after adding sources.",
+    ),
+) -> None:
+    """Add one or more source URLs to an existing pack's pack.yaml."""
+    from brainpack.config import SourceEntry, write_config
+    pack_dir = _resolve_pack_dir(pack)
+    previous = load_config(pack_dir)
+
+    existing_urls = {s.url for s in previous.sources}
+    added = []
+    skipped = []
+    for url in urls:
+        if url in existing_urls:
+            skipped.append(url)
+        else:
+            added.append(url)
+
+    if not added:
+        typer.echo("All provided URLs are already in this pack.")
+        for u in skipped:
+            typer.echo(f"  already present: {u}")
+        return
+
+    new_sources = list(previous.sources) + [SourceEntry(url=u) for u in added]
+    from dataclasses import replace as _dc_replace
+    updated_config = _dc_replace(previous, sources=new_sources)
+    write_config(updated_config, pack_dir / "pack.yaml", previous=previous)
+
+    typer.echo(f"Added {len(added)} source(s) to '{pack}':")
+    for url in added:
+        source_type = detect_source_type(url)
+        typer.echo(f"  + [{source_type}] {url}")
+    if skipped:
+        typer.echo(f"Skipped {len(skipped)} already-present source(s).")
+
+    if build_after:
+        typer.echo("")
+        build(pack=pack, model=None, language=None, reset=False, verbose=False)
 
 
 @app.command(name="remove")
