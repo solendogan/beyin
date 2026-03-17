@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: cli and ux polish status visibility build output pack lifecycle improvements
 current_plan: 4
-status: executing
-stopped_at: Completed 12-03-PLAN.md
-last_updated: "2026-03-17T16:20:42.782Z"
+status: verifying
+stopped_at: Completed 12-04-PLAN.md
+last_updated: "2026-03-17T16:31:41.798Z"
 last_activity: 2026-03-17
 progress:
   total_phases: 9
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 30
-  completed_plans: 29
-  percent: 97
+  completed_plans: 30
+  percent: 100
 ---
 
 # Project State
@@ -38,10 +38,10 @@ Last activity: 2026-03-17 — Completed Phase 12 Plan 01: lifecycle recap state 
 **Total Phases:** 9
 **Current Plan:** 4
 **Total Plans in Phase:** 4
-**Status:** Ready to execute
+**Status:** Phase complete — ready for verification
 **Last Activity:** 2026-03-17
 **Last Activity Description:** Completed Phase 12 Plan 01: lifecycle recap state and reset/remove helper foundation
-**Progress:** [██████████] 97%
+**Progress:** [██████████] 100%
 
 Progress: [█████████░] 90%
 
@@ -93,6 +93,7 @@ Progress: [█████████░] 90%
 | Phase 12-cli-and-ux-polish-status-visibility-build-output-pack-lifecycle-improvements P01 | 2 | 2 tasks | 5 files |
 | Phase 12-cli-and-ux-polish-status-visibility-build-output-pack-lifecycle-improvements P02 | 5 | 2 tasks | 2 files |
 | Phase 12-cli-and-ux-polish-status-visibility-build-output-pack-lifecycle-improvements P03 | 14 | 2 tasks | 5 files |
+| Phase 12-cli-and-ux-polish-status-visibility-build-output-pack-lifecycle-improvements P04 | 8 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -201,6 +202,7 @@ Recent decisions affecting current work:
 - [Phase 12]: BuildReport seam accumulates events during build loop; cli.py only appends and calls render — human-output-only, no JSON contract changes
 - [Phase 12]: All builds exit non-zero when any source fails or is blocked (not just blocked audio sources)
 - [Phase 12]: last_build_result and last_build_summary persisted for every build outcome (success/mixed/blocked)
+- [Phase Phase 12]: remove is first-class with --yes/--force bypass; build --reset delegates to reset_pack_runtime() then reuses build path; model-mismatch remediation points to build --reset; update communicates rebuild-only when no origin is stored
 
 ### Pending Todos
 
@@ -219,6 +221,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-17T16:20:42.780Z
-Stopped at: Completed 12-03-PLAN.md
+Last session: 2026-03-17T16:31:41.795Z
+Stopped at: Completed 12-04-PLAN.md
 Resume file: None
