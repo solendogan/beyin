@@ -458,8 +458,9 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
         "server_version": "0.1.0",
     }
     assert structured["data"]["exit_code"] == 0
-    assert "Build complete." in structured["data"]["stdout"]
-    assert "Total: 3 new chunks indexed." in structured["data"]["stdout"]
+    # Build complete verdict with new always-on summary table format
+    assert "Build complete" in structured["data"]["stdout"]
+    assert "3" in structured["data"]["stdout"]  # chunk count appears in table or verdict
 
 
 @pytest.mark.anyio

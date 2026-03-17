@@ -1042,7 +1042,8 @@ def test_build_local_path_missing_file_fails_clearly(tmp_path):
          patch("brainpack.cli.mark_failed") as mock_fail:
         result = runner.invoke(app, ["build", "missing-local-pack"])
 
-    assert result.exit_code == 0, f"Exit code {result.exit_code}, output: {result.output}"
+    # Failed sources exit non-zero (plan 12-03 spec: unresolved failures return non-zero)
+    assert result.exit_code == 1, f"Exit code {result.exit_code}, output: {result.output}"
     mock_fetch.assert_not_called()
     mock_chunk.assert_not_called()
     mock_embed.assert_not_called()
@@ -1084,7 +1085,8 @@ def test_build_local_path_unsupported_suffix_fails_clearly(tmp_path):
          patch("brainpack.cli.mark_failed") as mock_fail:
         result = runner.invoke(app, ["build", "binary-pack"])
 
-    assert result.exit_code == 0, f"Exit code {result.exit_code}, output: {result.output}"
+    # Failed sources exit non-zero (plan 12-03 spec: unresolved failures return non-zero)
+    assert result.exit_code == 1, f"Exit code {result.exit_code}, output: {result.output}"
     mock_fetch.assert_not_called()
     mock_chunk.assert_not_called()
     mock_embed.assert_not_called()

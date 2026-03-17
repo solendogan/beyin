@@ -57,6 +57,7 @@ from brainpack.pack_state import (
 from brainpack.machine_output import MachineExit, run_machine_command
 from brainpack.source_ids import artifact_stem, canonical_source_id
 from brainpack.settings import load_settings, needs_initial_setup, resolve_build_defaults
+from brainpack.build_report import BuildReport
 from brainpack.ui import bold, cyan, dim, green, red, render_header, render_rows, render_status, yellow
 
 app = typer.Typer(
@@ -1262,9 +1263,7 @@ def build(
     audio_dir.mkdir(exist_ok=True)
     transcripts_dir.mkdir(exist_ok=True)
 
-    total_new = 0
-    source_results: list[dict] = []
-    blocked_sources = 0
+    report = BuildReport()
     youtube_issue = _youtube_build_issue()
     ffmpeg_available = _check_ffmpeg_available()
     for source in config.sources:
@@ -1275,7 +1274,7 @@ def build(
         if source_type in {"article", "local_text", "local_file", "pack"}:
             if is_processed(state, source_url):
                 typer.echo(f"  [skip] {source_url}")
-                source_results.append({"title": source_url[:40], "status": "skipped", "new": 0, "skipped": 0})
+                report.record(source_url[:40], "skipped", skipped=1)
                 continue
 
             failure_reason = ""
@@ -1316,33 +1315,30 @@ def build(
                 )
                 mark_failed(state, source_url, reason=failure_reason)
                 save_state(pack_dir, state)
-                source_results.append({"title": source_url[:40], "status": "failed", "new": 0, "skipped": 0})
+                report.record(source_url[:40], "failed", failure_reason=failure_reason)
                 continue
 
             text, title = result
             chunks = chunk_text(text)
             metadatas = [{"url": source_url, "title": title} for _ in chunks]
             new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_url)
-            total_new += new_count
             mark_processed(state, source_url, title)
             save_state(pack_dir, state)
             typer.echo(f"  [embed] {title} — {new_count} chunks")
-            source_results.append({"title": title, "status": "done", "new": new_count, "skipped": 0})
+            report.record(title, "done", new=new_count)
 
         else:  # youtube or podcast
             if source_type == "youtube" and youtube_issue:
                 typer.echo(f"  [warn] {youtube_issue}", err=True)
-                source_results.append({"title": source_url[:40], "status": "blocked", "new": 0, "skipped": 0})
-                blocked_sources += 1
+                report.record(source_url[:40], "blocked", failure_reason=youtube_issue)
                 continue
             if not ffmpeg_available:
-                typer.echo(
-                    "  [warn] ffmpeg is required for audio builds. "
-                    "Install: brew install ffmpeg or visit https://ffmpeg.org/download.html",
-                    err=True,
+                ffmpeg_reason = (
+                    "ffmpeg is required for audio builds. "
+                    "Install: brew install ffmpeg or visit https://ffmpeg.org/download.html"
                 )
-                source_results.append({"title": source_url[:40], "status": "blocked", "new": 0, "skipped": 0})
-                blocked_sources += 1
+                typer.echo(f"  [warn] {ffmpeg_reason}", err=True)
+                report.record(source_url[:40], "blocked", failure_reason=ffmpeg_reason)
                 continue
             if source_type == "youtube":
                 episodes = list_youtube_episodes(source_url, effective_limit)
@@ -1362,7 +1358,7 @@ def build(
                 # Skip if fully embedded already
                 if is_audio_step_done(state, episode_url, "embedded", source_id=source_id):
                     typer.echo(f"  [skip] {episode_title}")
-                    source_results.append({"title": episode_title, "status": "skipped", "new": 0, "skipped": 1})
+                    report.record(episode_title, "skipped", skipped=1)
                     continue
 
                 # Step 1: download
@@ -1397,7 +1393,7 @@ def build(
                         )
                         mark_failed(state, episode_url, "download failed after retry", source_id=source_id)
                         save_state(pack_dir, state)
-                        source_results.append({"title": episode_title, "status": "failed", "new": 0, "skipped": 0})
+                        report.record(episode_title, "failed", failure_reason="download failed after retry")
                         continue
 
                     audio_path = _canonical_audio_path(audio_dir, source_id, audio_path)
@@ -1419,7 +1415,7 @@ def build(
                         )
                         mark_failed(state, episode_url, "transcription returned empty", source_id=source_id)
                         save_state(pack_dir, state)
-                        source_results.append({"title": episode_title, "status": "failed", "new": 0, "skipped": 0})
+                        report.record(episode_title, "failed", failure_reason="transcription returned empty")
                         continue
                     _save_transcript_segments(transcript_path, segments)
                     mark_audio_step(state, episode_url, "transcribed", source_id=source_id)
@@ -1430,7 +1426,7 @@ def build(
                         f"  [warn] Stored transcript missing for {episode_title} — re-run build",
                         err=True,
                     )
-                    source_results.append({"title": episode_title, "status": "failed", "new": 0, "skipped": 0})
+                    report.record(episode_title, "failed", failure_reason="stored transcript missing")
                     continue
 
                 # Step 3: chunk + embed
@@ -1441,30 +1437,30 @@ def build(
                     metadata.update(chunk_range)
                     metadatas.append(metadata)
                 new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_id)
-                total_new += new_count
                 mark_audio_step(state, episode_url, "embedded", source_id=source_id)
                 save_state(pack_dir, state)
                 typer.echo(f"  [embed] {episode_title} — {new_count} chunks")
-                source_results.append({"title": episode_title, "status": "done", "new": new_count, "skipped": 0})
+                report.record(episode_title, "done", new=new_count)
 
-    if blocked_sources and total_new == 0:
-        typer.echo("\nBuild complete with blocked sources. 0 new chunks indexed.")
-    elif total_new == 0:
-        typer.echo("\nBuild complete. 0 new chunks — all sources up to date.")
-    else:
-        typer.echo("\nBuild complete.")
-        typer.echo(f"{'Source':<40} {'Status':<10} {'New':>6} {'Skipped':>8}")
-        typer.echo(f"{'-'*40} {'-'*10} {'-'*6} {'-'*8}")
-        for r in source_results:
-            title_col = r["title"][:40]
-            typer.echo(f"{title_col:<40} {r['status']:<10} {r['new']:>6} {r['skipped']:>8}")
-        typer.echo(f"\nTotal: {total_new} new chunks indexed.")
-    had_failures = any(result["status"] in {"failed", "blocked"} for result in source_results)
-    if not had_failures:
+    # --- Final output: always print compact summary table + verdict ---
+    typer.echo("")
+    typer.echo(report.render_table())
+    typer.echo("")
+    typer.echo(report.render_verdict())
+    issues_recap = report.render_issues_recap()
+    if issues_recap:
+        typer.echo("")
+        typer.echo(issues_recap)
+
+    # --- Persist recap state for later status inspection ---
+    state["last_build_result"] = report.result
+    state["last_build_summary"] = report.summary_line
+    if not report.had_issues:
         state["last_build_at"] = utc_now_iso()
         state["last_built_pack_hash"] = current_pack_hash
-        save_state(pack_dir, state)
-    if blocked_sources:
+    save_state(pack_dir, state)
+
+    if report.had_issues:
         raise typer.Exit(code=1)
 
 
