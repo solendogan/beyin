@@ -1245,6 +1245,12 @@ def build(
         "--reset",
         help="Clear generated runtime artifacts before rebuilding. Preserves pack.yaml and origin.json.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show per-episode download, transcribe, and embed lines.",
+    ),
 ):
     """Build or incrementally update a pack from its pack.yaml sources."""
     pack_dir = _resolve_pack_dir(pack)
@@ -1333,7 +1339,8 @@ def build(
             new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_url)
             mark_processed(state, source_url, title)
             save_state(pack_dir, state)
-            typer.echo(f"  [embed] {title} — {new_count} chunks")
+            if verbose:
+                typer.echo(f"  [embed] {title} — {new_count} chunks")
             report.record(title, "done", new=new_count)
 
         else:  # youtube or podcast
@@ -1381,17 +1388,19 @@ def build(
                         audio_path = None  # force re-download
 
                 if audio_path is None:
-                    typer.echo(f"  [download] {episode_title}")
+                    if verbose:
+                        typer.echo(f"  [download] {episode_title}")
                     if source_type == "youtube":
-                        audio_path = download_audio(episode_url, audio_dir, episode_title)
+                        audio_path = download_audio(episode_url, audio_dir, episode_title, verbose=verbose)
                     else:
                         audio_path = download_podcast_audio(episode_url, audio_dir, episode_title)
 
                     if audio_path is None:
                         # Retry once
-                        typer.echo(f"  [download] retrying {episode_title}...")
+                        if verbose:
+                            typer.echo(f"  [download] retrying {episode_title}...")
                         if source_type == "youtube":
-                            audio_path = download_audio(episode_url, audio_dir, episode_title)
+                            audio_path = download_audio(episode_url, audio_dir, episode_title, verbose=verbose)
                         else:
                             audio_path = download_podcast_audio(episode_url, audio_dir, episode_title)
 
@@ -1415,8 +1424,9 @@ def build(
                 if is_audio_step_done(state, episode_url, "transcribed", source_id=source_id):
                     segments = _load_transcript_segments(transcript_path, legacy_transcript_path)
                 else:
-                    typer.echo(f"  [transcribe] Episode {idx}/{total}: {episode_title}")
-                    segments = transcribe_audio(audio_path, model_size=model_size, language=language)
+                    if verbose:
+                        typer.echo(f"  [transcribe] Episode {idx}/{total}: {episode_title}")
+                    segments = transcribe_audio(audio_path, model_size=model_size, language=language, verbose=verbose)
                     if not segments:
                         typer.echo(
                             f"  [warn] Transcription failed for {episode_title} — skipping",
@@ -1448,7 +1458,8 @@ def build(
                 new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_id)
                 mark_audio_step(state, episode_url, "embedded", source_id=source_id)
                 save_state(pack_dir, state)
-                typer.echo(f"  [embed] {episode_title} — {new_count} chunks")
+                if verbose:
+                    typer.echo(f"  [embed] {episode_title} — {new_count} chunks")
                 report.record(episode_title, "done", new=new_count)
 
     # --- Final output: always print compact summary table + verdict ---

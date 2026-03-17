@@ -2254,7 +2254,7 @@ def test_build_mixed_pack_keeps_articles_when_audio_is_blocked(tmp_path):
          patch("brainpack.cli.embed_and_store", return_value=1), \
          patch("brainpack.cli._check_ffmpeg_available", return_value=False), \
          patch("brainpack.cli._youtube_build_issue", return_value=None):
-        result = runner.invoke(app, ["build", "test-pack"])
+        result = runner.invoke(app, ["build", "test-pack", "--verbose"])
 
     assert result.exit_code == 1
     assert "[embed] Article Title" in result.output
@@ -3388,7 +3388,7 @@ def test_build_audio_shows_episode_progress_with_counter(tmp_path):
     stack.enter_context(patch("brainpack.cli._chunk_transcript_segments", return_value=(["chunk"], [{}])))
 
     with stack:
-        result = runner.invoke(app, ["build", "testpack"])
+        result = runner.invoke(app, ["build", "testpack", "--verbose"])
 
     output = result.output
     # Episode-level progress with counter should appear

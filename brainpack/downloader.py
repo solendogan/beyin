@@ -86,7 +86,7 @@ def list_youtube_episodes(url: str, limit: Optional[int]) -> list[dict]:
         return []
 
 
-def download_audio(video_url: str, out_dir: Path, title: str = "") -> Optional[Path]:
+def download_audio(video_url: str, out_dir: Path, title: str = "", verbose: bool = False) -> Optional[Path]:
     """
     Download audio-only from a YouTube URL to out_dir.
     Checks file size > 10KB (partial download guard).
@@ -98,7 +98,7 @@ def download_audio(video_url: str, out_dir: Path, title: str = "") -> Optional[P
         "outtmpl": str(out_dir / "%(id)s.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
-        "progress_hooks": [_make_progress_hook(title)],
+        "progress_hooks": [_make_progress_hook(title)] if verbose else [],
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

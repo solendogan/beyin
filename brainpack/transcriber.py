@@ -22,6 +22,7 @@ def transcribe_audio(
     audio_path: Path,
     model_size: str = "small",
     language: Optional[str] = None,
+    verbose: bool = False,
 ) -> list[dict]:
     """
     Transcribe audio file. Returns list of segment dicts:
@@ -32,8 +33,8 @@ def transcribe_audio(
     """
     try:
         if _is_apple_silicon():
-            return _transcribe_mlx(audio_path, model_size, language)
-        return _transcribe_faster(audio_path, model_size, language)
+            return _transcribe_mlx(audio_path, model_size, language, verbose=verbose)
+        return _transcribe_faster(audio_path, model_size, language, verbose=verbose)
     except Exception:
         return []
 
@@ -42,6 +43,7 @@ def _transcribe_faster(
     audio_path: Path,
     model_size: str,
     language: Optional[str],
+    verbose: bool = False,
 ) -> list[dict]:
     """faster-whisper backend — Linux / non-Apple-Silicon."""
     from faster_whisper import WhisperModel  # lazy import
@@ -58,7 +60,8 @@ def _transcribe_faster(
     )
     result = []
     for seg in segments:
-        typer.echo(f"  [transcribe] [{seg.start:.1f}s] {seg.text.strip()}")
+        if verbose:
+            typer.echo(f"  [transcribe] [{seg.start:.1f}s] {seg.text.strip()}")
         result.append({"start": seg.start, "end": seg.end, "text": seg.text.strip()})
     return result
 
@@ -67,6 +70,7 @@ def _transcribe_mlx(
     audio_path: Path,
     model_size: str,
     language: Optional[str],
+    verbose: bool = False,
 ) -> list[dict]:
     """mlx-whisper backend — Apple Silicon only. Must only be called after _is_apple_silicon() check."""
     import mlx_whisper  # lazy import — NOT available on Linux
@@ -77,7 +81,7 @@ def _transcribe_mlx(
         language=language,                    # None = auto-detect
         condition_on_previous_text=False,     # TRN-02 mitigation: no native VAD in mlx-whisper
         word_timestamps=False,               # segment-level sufficient (TRN-04)
-        verbose=True,                        # per-segment output to stdout
+        verbose=verbose,                     # per-segment output to stdout
     )
     return [
         {"start": seg["start"], "end": seg["end"], "text": seg["text"].strip()}
