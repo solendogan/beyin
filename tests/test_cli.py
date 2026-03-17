@@ -3074,3 +3074,350 @@ def test_status_json_stays_stable_and_prompt_free_after_rendering_changes(tmp_pa
     assert payload["meta"]["command"] == "status"
     assert payload["data"]["pack"]["name"] == "demo-pack"
     assert "Use with agent" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# Phase 12 Plan 03: Build output polish — concise progress, always-on summary table,
+# mixed-result verdicts, and persisted recap state.
+# ---------------------------------------------------------------------------
+from contextlib import ExitStack
+
+
+def _p12_article_patches(packs_root, mock_config, *,
+                          fetch_side_effects=None,
+                          fetch_return=None,
+                          is_processed_return=False,
+                          embed_return=1,
+                          detect_side_effects=None,
+                          save_state_mock=True,
+                          extra=None):
+    """Build an ExitStack of CLI patches for article-based build tests (Phase 12)."""
+    stack = ExitStack()
+    stack.enter_context(patch("brainpack.cli._PACKS_DIR", packs_root))
+    stack.enter_context(patch("brainpack.cli.load_config", return_value=mock_config))
+    stack.enter_context(patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}))
+    stack.enter_context(patch("brainpack.cli.check_model_provenance"))
+    if save_state_mock:
+        stack.enter_context(patch("brainpack.cli.save_state"))
+    stack.enter_context(patch("brainpack.cli.load_model", return_value=MagicMock()))
+    stack.enter_context(patch("brainpack.cli.get_collection", return_value=MagicMock()))
+    if detect_side_effects:
+        stack.enter_context(patch("brainpack.cli.detect_source_type", side_effect=detect_side_effects))
+    else:
+        stack.enter_context(patch("brainpack.cli.detect_source_type", return_value="article"))
+    stack.enter_context(patch("brainpack.cli.is_processed", return_value=is_processed_return))
+    if fetch_side_effects is not None:
+        stack.enter_context(patch("brainpack.cli.fetch_article", side_effect=fetch_side_effects))
+    else:
+        stack.enter_context(patch("brainpack.cli.fetch_article", return_value=fetch_return))
+    stack.enter_context(patch("brainpack.cli.chunk_text", return_value=["chunk"]))
+    stack.enter_context(patch("brainpack.cli.embed_and_store", return_value=embed_return))
+    stack.enter_context(patch("brainpack.cli.mark_processed"))
+    stack.enter_context(patch("brainpack.cli.mark_failed"))
+    if extra:
+        for name, kwargs in extra.items():
+            stack.enter_context(patch(name, **kwargs))
+    return stack
+
+
+def test_build_always_prints_summary_table_for_zero_new_run(tmp_path):
+    """build must print a compact summary table even when all sources are already up-to-date."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    mock_config = _make_config([SourceEntry(url="https://example.com/article")])
+
+    with _p12_article_patches(packs_root, mock_config, is_processed_return=True):
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    assert result.exit_code == 0
+    output = result.output
+    # Even for all-up-to-date builds, a summary table must appear
+    assert "Source" in output or "Status" in output
+    # And the result line should mention the count
+    assert "0 new" in output or "up to date" in output
+
+
+def test_build_mixed_result_prints_completed_with_issues_verdict(tmp_path):
+    """build with a mix of success and failure sources must print 'completed with issues' verdict."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://example.com/good\n"
+        "  - https://example.com/bad\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    mock_config = _make_config([
+        SourceEntry(url="https://example.com/good"),
+        SourceEntry(url="https://example.com/bad"),
+    ])
+
+    with _p12_article_patches(
+        packs_root, mock_config,
+        fetch_side_effects=[("Article text", "Good Article"), None],
+        embed_return=1,
+    ):
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    output = result.output
+    # Must show a clear "completed with issues" verdict (not just silent partial success)
+    assert "issue" in output.lower() or "warning" in output.lower() or "failed" in output.lower()
+    # Must still show the successful count
+    assert "1" in output
+    # Exit code should be non-zero because there were unresolved failures
+    assert result.exit_code != 0
+
+
+def test_build_blocked_result_prints_completed_with_issues_and_exit_nonzero(tmp_path):
+    """build with blocked audio source exits non-zero and prints an explicit verdict."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "  - https://youtube.com/@channel\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    mock_config = _make_config([
+        SourceEntry(url="https://example.com/article"),
+        SourceEntry(url="https://youtube.com/@channel"),
+    ])
+
+    with _p12_article_patches(
+        packs_root, mock_config,
+        fetch_return=("Text", "Title"),
+        detect_side_effects=["article", "youtube"],
+        embed_return=2,
+        extra={
+            "brainpack.cli._check_ffmpeg_available": {"return_value": False},
+            "brainpack.cli._youtube_build_issue": {"return_value": None},
+        },
+    ):
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    output = result.output
+    assert result.exit_code != 0
+    # Blocked verdict must be explicit, not just a warning line
+    assert "issue" in output.lower() or "blocked" in output.lower() or "completed with" in output.lower()
+    # Successful work must still be visible in final output
+    assert "Title" in output or "2" in output
+
+
+def test_build_blocker_warnings_repeated_in_final_recap(tmp_path):
+    """build repeats warning/blocker lines in a short recap at the end, not just inline."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://example.com/good\n"
+        "  - https://example.com/bad\n"
+        "  - https://example.com/also-bad\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    mock_config = _make_config([
+        SourceEntry(url="https://example.com/good"),
+        SourceEntry(url="https://example.com/bad"),
+        SourceEntry(url="https://example.com/also-bad"),
+    ])
+
+    with _p12_article_patches(
+        packs_root, mock_config,
+        fetch_side_effects=[("Article text", "Good Article"), None, None],
+        embed_return=1,
+    ):
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    output = result.output
+    # The failed sources must appear somewhere in the output (inline or recap)
+    # Count how many times "bad" or "failed" appears — recap at end means it should appear at least twice
+    # (once inline, once in recap)
+    failed_mentions = output.lower().count("fail") + output.lower().count("bad")
+    assert failed_mentions >= 2, (
+        f"Expected failed sources to appear multiple times (inline + recap), "
+        f"got {failed_mentions} in: {output!r}"
+    )
+
+
+def test_build_persists_last_build_recap_for_mixed_result(tmp_path):
+    """build persists last_build_result and last_build_summary into state for mixed outcomes."""
+    from brainpack.cli import app
+    from brainpack.pack_state import load_state
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://example.com/good\n"
+        "  - https://example.com/bad\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    mock_config = _make_config([
+        SourceEntry(url="https://example.com/good"),
+        SourceEntry(url="https://example.com/bad"),
+    ])
+
+    # Don't mock save_state — we need real disk writes to verify persistence
+    with _p12_article_patches(
+        packs_root, mock_config,
+        fetch_side_effects=[("Article text", "Good Article"), None],
+        embed_return=1,
+        save_state_mock=False,
+        extra={"brainpack.cli._youtube_build_issue": {"return_value": None}},
+    ):
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    # Load actual state from disk (not mocked) to verify persistence
+    final_state = load_state(pack_dir)
+    assert final_state.get("last_build_result") in ("mixed", "failed", "completed_with_issues"), (
+        f"Expected a non-None recap result, got: {final_state.get('last_build_result')!r}"
+    )
+    assert final_state.get("last_build_summary") is not None, (
+        "last_build_summary must be persisted for mixed builds"
+    )
+
+
+def test_build_persists_last_build_recap_for_clean_success(tmp_path):
+    """build persists last_build_result='success' into state for clean builds."""
+    from brainpack.cli import app
+    from brainpack.pack_state import load_state
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    mock_config = _make_config([SourceEntry(url="https://example.com/article")])
+
+    # Don't mock save_state — we need real disk writes to verify persistence
+    with _p12_article_patches(
+        packs_root, mock_config,
+        fetch_return=("Article text", "Good Article"),
+        embed_return=2,
+        save_state_mock=False,
+        extra={"brainpack.cli._youtube_build_issue": {"return_value": None}},
+    ):
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    assert result.exit_code == 0
+    final_state = load_state(pack_dir)
+    assert final_state.get("last_build_result") in ("success", "ok", "done"), (
+        f"Expected success result, got: {final_state.get('last_build_result')!r}"
+    )
+    assert final_state.get("last_build_summary") is not None
+
+
+def test_build_audio_shows_episode_progress_with_counter(tmp_path):
+    """build shows 'Episode N/Total' counter for each audio episode being processed."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "testpack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: testpack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://youtube.com/watch?v=abc\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    audio_file = tmp_path / "audio.mp3"
+    audio_file.write_bytes(b"x" * 11_000)
+
+    episodes = [
+        {"url": "https://youtube.com/watch?v=1", "title": "Ep 1", "id": "1"},
+        {"url": "https://youtube.com/watch?v=2", "title": "Ep 2", "id": "2"},
+    ]
+    mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
+
+    stack = ExitStack()
+    stack.enter_context(patch("brainpack.cli._PACKS_DIR", packs_root))
+    stack.enter_context(patch("brainpack.cli.load_config", return_value=mock_config))
+    stack.enter_context(patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}))
+    stack.enter_context(patch("brainpack.cli.check_model_provenance"))
+    stack.enter_context(patch("brainpack.cli.save_state"))
+    stack.enter_context(patch("brainpack.cli.load_model", return_value=MagicMock()))
+    stack.enter_context(patch("brainpack.cli.get_collection", return_value=MagicMock()))
+    stack.enter_context(patch("brainpack.cli.detect_source_type", return_value="youtube"))
+    stack.enter_context(patch("brainpack.cli.check_deno_available", return_value=True))
+    stack.enter_context(patch("brainpack.cli._youtube_build_issue", return_value=None))
+    stack.enter_context(patch("brainpack.cli._check_ffmpeg_available", return_value=True))
+    stack.enter_context(patch("brainpack.cli.list_youtube_episodes", return_value=episodes))
+    stack.enter_context(patch("brainpack.cli.is_audio_step_done", return_value=False))
+    stack.enter_context(patch("brainpack.cli.get_audio_step", return_value={}))
+    stack.enter_context(patch("brainpack.cli.download_audio", return_value=audio_file))
+    stack.enter_context(patch("brainpack.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]))
+    stack.enter_context(patch("brainpack.cli.embed_and_store", return_value=3))
+    stack.enter_context(patch("brainpack.cli.mark_audio_step"))
+    stack.enter_context(patch("brainpack.cli._canonical_audio_path", return_value=audio_file))
+    stack.enter_context(patch("brainpack.cli._save_transcript_segments"))
+    stack.enter_context(patch("brainpack.cli._chunk_transcript_segments", return_value=(["chunk"], [{}])))
+
+    with stack:
+        result = runner.invoke(app, ["build", "testpack"])
+
+    output = result.output
+    # Episode-level progress with counter should appear
+    assert "1/2" in output or "Episode 1" in output, (
+        f"Expected episode progress counter, got: {output!r}"
+    )
+    assert "2/2" in output or "Episode 2" in output, (
+        f"Expected episode 2 progress, got: {output!r}"
+    )
+
+
+def test_build_clean_success_exits_0_and_shows_summary(tmp_path):
+    """Clean build (no failures) exits 0 and always shows a final summary table."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    mock_config = _make_config([SourceEntry(url="https://example.com/article")])
+
+    with _p12_article_patches(
+        packs_root, mock_config,
+        fetch_return=("Article text", "Article Title"),
+        embed_return=2,
+    ):
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    assert result.exit_code == 0
+    output = result.output
+    # Always-on summary table: header must appear
+    assert "Source" in output
+    assert "Status" in output
+    # Verdict line
+    assert "complete" in output.lower() or "success" in output.lower() or "2 new" in output.lower()

@@ -111,3 +111,43 @@ def test_machine_inventory_payloads_do_not_expand_with_build_recap_fields(tmp_pa
         "last_update_at",
         "last_update_summary",
     }
+
+
+def test_inspect_pack_recap_is_visible_after_blocked_build(tmp_path):
+    """inspect_pack surfaces last_build_result='blocked' written by a blocked build run."""
+    from brainpack.inventory import inspect_pack
+    from brainpack.pack_state import save_state
+
+    pack_dir = tmp_path / "test-pack"
+    _write_pack(pack_dir)
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+            "audio_steps": {},
+            "last_build_at": "2026-03-17T10:00:00+00:00",
+            "last_built_pack_hash": "abc123",
+            "last_build_result": "blocked",
+            "last_build_summary": "Blocked: 1 source, ffmpeg missing",
+        },
+    )
+
+    summary = inspect_pack(pack_dir, lambda _cfg: {"blockers": [], "warnings": []})
+
+    assert summary["last_build_result"] == "blocked"
+    assert "ffmpeg" in (summary["last_build_summary"] or "")
+
+
+def test_inspect_pack_recap_is_none_when_build_not_run(tmp_path):
+    """inspect_pack returns None for last_build_result when the pack has never been built."""
+    from brainpack.inventory import inspect_pack
+
+    pack_dir = tmp_path / "test-pack"
+    _write_pack(pack_dir)
+    # No save_state call — fresh pack
+
+    summary = inspect_pack(pack_dir, lambda _cfg: {"blockers": [], "warnings": []})
+
+    assert summary["last_build_result"] is None
+    assert summary["last_build_summary"] is None
