@@ -10,6 +10,8 @@ def test_load_state_empty(tmp_pack_dir):
     state = load_state(tmp_pack_dir)
     assert state["embedding_model"] is None
     assert state["processed"] == {}
+    assert state["last_build_result"] is None
+    assert state["last_build_summary"] is None
 
 
 def test_save_and_load_state_roundtrip(tmp_pack_dir):
@@ -28,6 +30,67 @@ def test_save_and_load_state_roundtrip(tmp_pack_dir):
 
     reloaded = load_state(tmp_pack_dir)
     assert reloaded["embedding_model"] == "all-MiniLM-L6-v2"
+
+
+def test_load_state_upgrades_legacy_meta_with_build_recap_fields(tmp_pack_dir):
+    """load_state adds missing build recap fields without dropping existing records."""
+    from brainpack.pack_state import load_state
+
+    (tmp_pack_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "embedding_model": "all-MiniLM-L6-v2",
+                "processed": {
+                    "https://example.com/article": {
+                        "title": "Example Article",
+                        "status": "done",
+                    }
+                },
+                "audio_steps": {
+                    "https://example.com/audio.mp3": {
+                        "title": "Episode 1",
+                        "downloaded": True,
+                    }
+                },
+                "last_build_at": "2026-03-17T10:00:00+00:00",
+                "last_built_pack_hash": "abc123",
+            }
+        )
+    )
+
+    state = load_state(tmp_pack_dir)
+
+    assert state["last_build_result"] is None
+    assert state["last_build_summary"] is None
+    assert len(state["processed"]) == 1
+    processed_entry = next(iter(state["processed"].values()))
+    assert processed_entry["title"] == "Example Article"
+    assert processed_entry["status"] == "done"
+    audio_entry = next(iter(state["audio_steps"].values()))
+    assert audio_entry["title"] == "Episode 1"
+    assert audio_entry["stages"] == {"downloaded": True}
+
+
+def test_save_state_round_trips_build_recap_fields(tmp_pack_dir):
+    """save_state persists last-build recap fields as human-readable JSON."""
+    from brainpack.pack_state import load_state, save_state
+
+    state = load_state(tmp_pack_dir)
+    state["embedding_model"] = "all-MiniLM-L6-v2"
+    state["last_build_at"] = "2026-03-17T10:00:00+00:00"
+    state["last_built_pack_hash"] = "abc123"
+    state["last_build_result"] = "mixed"
+    state["last_build_summary"] = "Completed with issues: 2 indexed, 1 failed"
+
+    save_state(tmp_pack_dir, state)
+
+    raw = json.loads((tmp_pack_dir / "meta.json").read_text())
+    assert raw["last_build_result"] == "mixed"
+    assert raw["last_build_summary"] == "Completed with issues: 2 indexed, 1 failed"
+
+    reloaded = load_state(tmp_pack_dir)
+    assert reloaded["last_build_result"] == "mixed"
+    assert reloaded["last_build_summary"] == "Completed with issues: 2 indexed, 1 failed"
 
 
 class TestCanonicalSourceIds:
@@ -242,3 +305,50 @@ class TestAudioSteps:
         # get_audio_step must not raise
         result = get_audio_step(state, "https://example.com/ep")
         assert result == {}
+
+
+def test_reset_pack_runtime_only_clears_generated_artifacts(tmp_pack_dir):
+    """reset_pack_runtime removes runtime artifacts but preserves config and provenance files."""
+    from brainpack.lifecycle import reset_pack_runtime
+
+    chroma_dir = tmp_pack_dir / "chroma"
+    audio_dir = tmp_pack_dir / "audio"
+    transcripts_dir = tmp_pack_dir / "transcripts"
+    chroma_dir.mkdir()
+    audio_dir.mkdir()
+    transcripts_dir.mkdir()
+    (chroma_dir / "index.sqlite3").write_text("db")
+    (audio_dir / "episode.mp3").write_text("audio")
+    (transcripts_dir / "episode.json").write_text("transcript")
+    (tmp_pack_dir / "meta.json").write_text(json.dumps({"last_build_result": "blocked"}))
+    (tmp_pack_dir / "origin.json").write_text(json.dumps({"type": "file"}))
+    untouched = tmp_pack_dir / "notes.txt"
+    untouched.write_text("keep me")
+
+    reset_pack_runtime(tmp_pack_dir)
+
+    assert not chroma_dir.exists()
+    assert not audio_dir.exists()
+    assert not transcripts_dir.exists()
+    assert not (tmp_pack_dir / "meta.json").exists()
+    assert (tmp_pack_dir / "pack.yaml").exists()
+    assert (tmp_pack_dir / "origin.json").exists()
+    assert untouched.exists()
+
+
+def test_remove_installed_pack_only_removes_target_pack(tmp_path):
+    """remove_installed_pack deletes the target pack directory without touching siblings."""
+    from brainpack.lifecycle import remove_installed_pack
+
+    packs_root = tmp_path / "brainpacks"
+    target_pack = packs_root / "target-pack"
+    sibling_pack = packs_root / "sibling-pack"
+    target_pack.mkdir(parents=True)
+    sibling_pack.mkdir(parents=True)
+    (target_pack / "pack.yaml").write_text("name: target-pack\nllm: ollama\nsources: []\n")
+    (sibling_pack / "pack.yaml").write_text("name: sibling-pack\nllm: ollama\nsources: []\n")
+
+    remove_installed_pack(target_pack)
+
+    assert not target_pack.exists()
+    assert sibling_pack.exists()
