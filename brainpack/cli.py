@@ -1804,23 +1804,13 @@ def status_command(
     config = summary["config"]
 
     term_w = min(shutil.get_terminal_size((80, 24)).columns, 100)
-    box_w = term_w  # package box spans full terminal width
 
-    # ── Package box ───────────────────────────────────────────────────────────
+    # ── Package header ────────────────────────────────────────────────────────
     typer.echo()
-    typer.echo(box_top("Package", box_w))
-
-    # Header row: name left, id + status right
     status_text = _status_styled(summary["status"])
-    id_status = f"{dim(config.id)}  {status_text}"
-    name_str = config.name
-    content_w = box_w - 2  # between the two │ chars
-    gap = max(1, content_w - 2 - len(name_str) - _visible_len(id_status))
-    typer.echo(box_row(f" {bold(name_str)}{' ' * gap}{id_status} ", box_w))
+    typer.echo(f"  {bold(config.name)}  {dim(f'({config.id})')}  {status_text}")
+    typer.echo()
 
-    typer.echo(box_sep(box_w))
-
-    # Metadata rows
     info_rows: list[tuple[str, str]] = [("Type", _display_type(summary["type"])), ("Version", config.version)]
     build_date = (summary.get("last_build_at") or "")[:10]
     if build_date:
@@ -1835,22 +1825,18 @@ def status_command(
 
     label_w = max(len(label) for label, _ in info_rows)
     for label, value in info_rows:
-        row_content = f" {dim(label.ljust(label_w))}  {value} "
-        typer.echo(box_row(row_content, box_w))
+        typer.echo(f"  {dim(label.ljust(label_w))}  {value}")
 
-    # Blockers / warnings inside box
     if summary.get("blockers"):
-        typer.echo(box_sep(box_w))
+        typer.echo()
         for blocker in summary["blockers"]:
-            typer.echo(box_row(f" {red('!')}  {blocker} ", box_w))
+            typer.echo(f"  {red('!')}  {blocker}")
     if summary.get("warnings"):
-        typer.echo(box_sep(box_w))
+        typer.echo()
         for warning in summary["warnings"]:
-            typer.echo(box_row(f" {yellow('!')}  {warning} ", box_w))
+            typer.echo(f"  {yellow('!')}  {warning}")
 
-    typer.echo(box_bottom(box_w))
-
-    # ── Sources table ─────────────────────────────────────────────────────────
+    # ── Sources table (borderless) ────────────────────────────────────────────
     processed_state = state.get("processed", {})
     audio_steps = state.get("audio_steps", {})
     playlist_titles_state = state.get("playlist_titles", {})
@@ -1858,97 +1844,83 @@ def status_command(
 
     source_count = summary["source_count"]
     typer.echo()
-    typer.echo(f"Sources ({source_count})")
+    typer.echo(f"  {bold(f'Sources ({source_count})')}")
     typer.echo()
 
     W_NUM = 2
     W_STATUS = 10
-    W_TITLE = term_w - W_NUM - W_STATUS - 7  # 7 = 3 borders + 2 padding each col
+    W_TITLE = max(20, term_w - W_NUM - W_STATUS - 8)
+    _CONT = " " * (2 + W_NUM + 2 + W_STATUS + 2)  # indent for continuation lines
 
-    def _ep_status_text(stages: dict) -> str:
+    def _ansi_col(text: str, width: int) -> str:
+        return text + " " * max(0, width - _visible_len(text))
+
+    def _srow(num: str, status: str, title: str) -> str:
+        return f"  {_ansi_col(num, W_NUM)}  {_ansi_col(status, W_STATUS)}  {title}"
+
+    def _ep_status(stages: dict) -> str:
         if stages.get("embedded"):
             return green("ready")
         if stages.get("transcribed") or stages.get("downloaded"):
             return yellow("partial")
         return dim("pending")
 
-    def _trow(num: str, status: str, title_line: str) -> str:
-        return tbl_row([num, status, title_line], [W_NUM, W_STATUS, W_TITLE])
-
-    def _trow_cont(title_line: str) -> str:
-        return tbl_row(["", "", title_line], [W_NUM, W_STATUS, W_TITLE])
-
-    typer.echo(tbl_top([W_NUM, W_STATUS, W_TITLE]))
-    typer.echo(tbl_row([dim("#"), dim("Status"), dim("Title")], [W_NUM, W_STATUS, W_TITLE]))
+    # Header + separator
+    typer.echo(_srow(dim("#"), dim("Status"), dim("Title")))
+    typer.echo("  " + dim("─" * (term_w - 2)))
 
     sources = config.sources
     for i, source in enumerate(sources, start=1):
         url = source.url
         sid = canonical_source_id(url)
         source_type = detect_source_type(url)
-        typer.echo(tbl_sep([W_NUM, W_STATUS, W_TITLE]))
 
         if sid in processed_state:
             entry = processed_state[sid]
-            is_done = entry.get("status") == "done"
-            status_cell = green("ready") if is_done else red("failed")
+            status_cell = green("ready") if entry.get("status") == "done" else red("failed")
             title = entry.get("title") or url
-            title_lines = wrap_text(title, W_TITLE)
-            url_lines = wrap_text(url, W_TITLE)
-            typer.echo(_trow(str(i), status_cell, title_lines[0]))
-            for line in title_lines[1:]:
-                typer.echo(_trow_cont(line))
-            for line in url_lines:
-                typer.echo(_trow_cont(dim(line)))
+            for j, line in enumerate(wrap_text(title, W_TITLE)):
+                typer.echo(_srow(str(i) if j == 0 else "", status_cell if j == 0 else "", line))
+            for line in wrap_text(url, W_TITLE):
+                typer.echo(_CONT + dim(line))
 
         elif sid in audio_steps:
             entry = audio_steps[sid]
-            status_cell = _ep_status_text(entry.get("stages", {}))
+            status_cell = _ep_status(entry.get("stages", {}))
             title = entry.get("title") or url
-            title_lines = wrap_text(title, W_TITLE)
-            url_lines = wrap_text(url, W_TITLE)
-            typer.echo(_trow(str(i), status_cell, title_lines[0]))
-            for line in title_lines[1:]:
-                typer.echo(_trow_cont(line))
-            for line in url_lines:
-                typer.echo(_trow_cont(dim(line)))
+            for j, line in enumerate(wrap_text(title, W_TITLE)):
+                typer.echo(_srow(str(i) if j == 0 else "", status_cell if j == 0 else "", line))
+            for line in wrap_text(url, W_TITLE):
+                typer.echo(_CONT + dim(line))
 
         elif source_type in {"youtube", "podcast"} and audio_steps:
             embedded = sum(1 for e in audio_steps.values() if e.get("stages", {}).get("embedded"))
             total = len(audio_steps)
             pl_status = green(f"{embedded}/{total} ready") if embedded == total else yellow(f"{embedded}/{total} ready")
             real_title = playlist_titles_state.get(url) or _PLAYLIST_LABEL.get(source_type, "Playlist")
-            title_lines = wrap_text(real_title, W_TITLE)
-            url_lines = wrap_text(url, W_TITLE)
-            typer.echo(_trow(str(i), pl_status, title_lines[0]))
-            for line in title_lines[1:]:
-                typer.echo(_trow_cont(line))
-            for line in url_lines:
-                typer.echo(_trow_cont(dim(line)))
-            # Episodes as sub-rows
-            typer.echo(tbl_sep([W_NUM, W_STATUS, W_TITLE]))
-            for j, ep in enumerate(sorted(audio_steps.values(), key=lambda e: e.get("title") or ""), start=1):
-                ep_status = _ep_status_text(ep.get("stages", {}))
-                ep_title = ep.get("title") or ""
-                ep_url = ep.get("url") or ""
-                ep_prefix = f"{j}. "
-                ep_cont_indent = "   "
-                first_title_w = W_TITLE - len(ep_prefix)
-                ep_title_lines = wrap_text(ep_title, first_title_w)
-                ep_url_lines = wrap_text(ep_url, W_TITLE - len(ep_cont_indent))
-                typer.echo(_trow("", ep_status, ep_prefix + ep_title_lines[0]))
-                for line in ep_title_lines[1:]:
-                    typer.echo(_trow_cont(ep_cont_indent + line))
-                for line in ep_url_lines:
-                    typer.echo(_trow_cont(dim(ep_cont_indent + line)))
+            for j, line in enumerate(wrap_text(real_title, W_TITLE)):
+                typer.echo(_srow(str(i) if j == 0 else "", pl_status if j == 0 else "", line))
+            for line in wrap_text(url, W_TITLE):
+                typer.echo(_CONT + dim(line))
+            typer.echo()
+            for k, ep in enumerate(sorted(audio_steps.values(), key=lambda e: e.get("title") or ""), start=1):
+                ep_status = _ep_status(ep.get("stages", {}))
+                ep_prefix = f"{k}. "
+                ep_indent = " " * len(ep_prefix)
+                ep_title_lines = wrap_text(ep.get("title") or "", W_TITLE - len(ep_prefix))
+                for j, line in enumerate(ep_title_lines):
+                    prefix = ep_prefix if j == 0 else ep_indent
+                    typer.echo(_srow("", ep_status if j == 0 else "", prefix + line))
+                for line in wrap_text(ep.get("url") or "", W_TITLE - len(ep_indent)):
+                    typer.echo(_CONT + dim(ep_indent + line))
 
         else:
-            url_lines = wrap_text(url, W_TITLE)
-            typer.echo(_trow(str(i), dim("pending"), url_lines[0]))
-            for line in url_lines[1:]:
-                typer.echo(_trow_cont(line))
+            for j, line in enumerate(wrap_text(url, W_TITLE)):
+                typer.echo(_srow(str(i) if j == 0 else "", dim("pending") if j == 0 else "", line))
 
-    typer.echo(tbl_bottom([W_NUM, W_STATUS, W_TITLE]))
+        if i < len(sources):
+            typer.echo()
+
     typer.echo()
 
 
