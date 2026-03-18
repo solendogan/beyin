@@ -8,21 +8,24 @@
 
 ## Comparison Table
 
-| Run | Bi-encoder | Reranker | Hit@1 | Hit@3 | Hit@5 | Hit@8 | MRR | Latency (mean) |
-|-----|-----------|----------|-------|-------|-------|-------|-----|----------------|
-| baseline | all-MiniLM-L6-v2 | — | 62% | 75% | 83% | 92% | 0.705 | 16.8ms |
-| larger-n | all-MiniLM-L6-v2 | — | 62% | 71% | 79% | 92% | 0.701 | 16.8ms |
-| rerank-marco | all-MiniLM-L6-v2 | ms-marco-MiniLM-L-6-v2 | 71% | 79% | 83% | 83% | 0.760 | 92.8ms |
-| rerank-bge | all-MiniLM-L6-v2 | BAAI/bge-reranker-base | 62% | 75% | 79% | 92% | 0.717 | 186.4ms |
-| **multilingual-biencoder** | **paraphrase-multilingual-mpnet-base-v2** | **—** | **83%** | **96%** | **100%** | **100%** | **0.892** | **99.6ms** |
-| multilingual-plus-bge | paraphrase-multilingual-mpnet-base-v2 | BAAI/bge-reranker-base | 71% | 92% | 96% | 96% | 0.821 | 118.6ms |
+| Run | Whisper | Bi-encoder | Reranker | Hit@1 | Hit@3 | Hit@5 | Hit@8 | MRR | Latency (mean) |
+|-----|---------|-----------|----------|-------|-------|-------|-------|-----|----------------|
+| baseline | small | all-MiniLM-L6-v2 | — | 62% | 75% | 83% | 92% | 0.705 | 16.8ms |
+| larger-n | small | all-MiniLM-L6-v2 | — | 62% | 71% | 79% | 92% | 0.701 | 16.8ms |
+| rerank-marco | small | all-MiniLM-L6-v2 | ms-marco-MiniLM-L-6-v2 | 71% | 79% | 83% | 83% | 0.760 | 92.8ms |
+| rerank-bge | small | all-MiniLM-L6-v2 | BAAI/bge-reranker-base | 62% | 75% | 79% | 92% | 0.717 | 186.4ms |
+| multilingual-biencoder† | small | paraphrase-multilingual-mpnet-base-v2 | — | 83% | 96% | 100% | 100% | 0.892 | 99.6ms |
+| multilingual-plus-bge† | small | paraphrase-multilingual-mpnet-base-v2 | BAAI/bge-reranker-base | 71% | 92% | 96% | 96% | 0.821 | 118.6ms |
+| **medium-whisper-multilingual** | **medium** | **paraphrase-multilingual-mpnet-base-v2** | **—** | **83%** | **92%** | **96%** | **100%** | **0.885** | **19.5ms** |
 
-## By Language — Baseline vs Best
+† In-memory re-index test (not a full rebuild — latency includes re-embedding overhead)
 
-| Language | Queries | Baseline Hit@1 | Baseline Hit@8 | Multilingual Hit@1 | Multilingual Hit@8 |
-|----------|---------|---------------|----------------|-------------------|-------------------|
-| Turkish | 16 | 62% | 88% | 81% | 100% |
-| English | 8 | 62% | 100% | 88% | 100% |
+## By Language — Baseline vs Final
+
+| Language | Queries | Baseline Hit@1 | Baseline Hit@8 | Final Hit@1 | Final Hit@8 |
+|----------|---------|---------------|----------------|-------------|-------------|
+| Turkish | 16 | 62% | 88% | 88% | 100% |
+| English | 8 | 62% | 100% | 75% | 100% |
 | **Total** | **24** | **62%** | **92%** | **83%** | **100%** |
 
 ---
@@ -86,10 +89,15 @@ and improves both Turkish and English retrieval quality simultaneously.
 
 ## Note on Transcription Quality
 
-These benchmarks measure retrieval quality against **existing transcripts**
-built with `whisper-small`. The multilingual bi-encoder partially compensates
-for transcription noise (garbled technical terms, code-switching errors), but
-improving transcription quality with `whisper-medium` or `whisper-large` is an
-orthogonal improvement that would raise the ceiling further — especially for
-content that mixes Turkish with English technical terms (framework names, APIs,
-programming concepts).
+The final run (`medium-whisper-multilingual`) uses a full rebuild with
+`whisper-medium` + `paraphrase-multilingual-mpnet-base-v2`. Retrieval metrics
+are nearly identical to the in-memory multilingual test (MRR 0.885 vs 0.892),
+suggesting the multilingual embedding model is robust enough to compensate for
+whisper-small transcription noise at the **retrieval** level.
+
+However, whisper-medium produces significantly cleaner transcripts — technical
+terms, code-switching, and proper nouns are transcribed more accurately. This
+matters for **answer quality**: the LLM reads the raw transcript text to form
+its response, so cleaner transcripts lead to better, more precise answers even
+when retrieval ranks are identical. This improvement is real but not captured
+by Hit@k or MRR metrics.
