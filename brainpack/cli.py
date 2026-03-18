@@ -63,7 +63,11 @@ from brainpack.machine_output import MachineExit, run_machine_command
 from brainpack.source_ids import artifact_stem, canonical_source_id
 from brainpack.settings import load_settings, needs_initial_setup, resolve_build_defaults, save_settings
 from brainpack.build_report import BuildReport
-from brainpack.ui import bold, cyan, dim, green, red, render_header, render_rows, render_status, yellow
+from brainpack.ui import (
+    bold, box_bottom, box_row, box_sep, box_top, cyan, dim, green, red,
+    render_header, render_rows, render_status, render_table, tbl_bottom,
+    tbl_row, tbl_sep, tbl_top, visible_len as _visible_len, wrap_text, yellow,
+)
 
 app = typer.Typer(
     help=(
@@ -203,23 +207,43 @@ def _col(text: str, width: int) -> str:
 
 
 def _render_pack_table(summaries: list[dict], *, limit: Optional[int] = None) -> None:
-    """Render the compact pack table used by list and the home screen."""
+    """Render the pack list table — borderless, aligned columns."""
+    import shutil
     rows = summaries if limit is None else summaries[:limit]
-    w_id, w_name, w_status, w_src = 22, 28, 13, 7
-    typer.echo(
-        f"  {bold(_col('ID', w_id))}"
-        f"{dim(_col('Name', w_name))}"
-        f"{dim(_col('Status', w_status))}"
-        f"{dim('Sources'.rjust(w_src))}"
-    )
-    for s in rows:
-        raw_status = _display_status(s["status"])
-        typer.echo(
-            f"  {_col(s['id'][:w_id - 1], w_id)}"
-            f"{_col(s['name'][:w_name - 1], w_name)}"
-            f"{_status_styled(s['status'])}{' ' * max(0, w_status - len(raw_status))}"
-            f"{str(s['source_count']).rjust(w_src)}"
+    if not rows:
+        return
+
+    term_w = min(shutil.get_terminal_size((80, 24)).columns, 100)
+    W_ID = min(max(len(s["id"]) for s in rows), 24)
+    W_STATUS = 11  # fits "needs-build"
+    W_SRCS = 7
+    W_DESC = max(10, term_w - W_ID - W_STATUS - W_SRCS - 8)
+
+    def _ansi_col(text: str, width: int) -> str:
+        return text + " " * max(0, width - _visible_len(text))
+
+    def _row(pack_id: str, status: str, srcs: str, desc: str) -> str:
+        srcs_padded = " " * max(0, W_SRCS - _visible_len(srcs)) + srcs
+        return (
+            f"  {_ansi_col(pack_id, W_ID)}  "
+            f"{_ansi_col(status, W_STATUS)}  "
+            f"{srcs_padded}  {desc}"
         )
+
+    typer.echo()
+    typer.echo(_row(dim("ID"), dim("Status"), dim("Sources"), dim("Description")))
+    typer.echo("  " + dim("─" * (term_w - 2)))
+
+    for s in rows:
+        status_cell = _status_styled(s["status"])
+        srcs = str(s["source_count"])
+        desc = s.get("description") or s.get("name") or ""
+        desc_lines = wrap_text(desc, W_DESC)
+        typer.echo(_row(s["id"], status_cell, srcs, desc_lines[0]))
+        for line in desc_lines[1:]:
+            typer.echo(_row("", "", "", line))
+
+    typer.echo()
 
 
 def _pack_label(summary: Optional[dict]) -> str:
@@ -233,7 +257,6 @@ def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False)
     def _echo(line: str = "") -> None:
         typer.echo(line, err=err)
 
-    preferred_mode = load_settings().preferred_mode
     pack_name = _pack_label(summary)
     status = summary.get("status") if summary else None
     lifecycle_command = human_guidance_command(summary) if summary else None
@@ -241,8 +264,7 @@ def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False)
     doctor_cmd = f"brainpack doctor {pack_name}" if summary else "brainpack doctor <pack>"
 
     def _agent_block() -> None:
-        label = "Use with agent" + (" — recommended" if preferred_mode != "local" else "")
-        _echo(f"  {bold(label)}")
+        _echo(f"  {bold('Use with agent')}")
         _echo(f"    {dim('1.')} brainpack mcp-server")
         _echo(f"    {dim('2.')} brainpack create")
         _echo(f"    {dim('3.')} {build_cmd}")
@@ -255,8 +277,7 @@ def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False)
                 _echo(f"    {green('OK')} {pack_name} is ready for agent use")
 
     def _local_block() -> None:
-        label = "Use with local model" + (" — recommended" if preferred_mode == "local" else "")
-        _echo(f"  {bold(label)}")
+        _echo(f"  {bold('Use with local model')}")
         _echo(f"    {dim('1.')} Install Ollama (or another local runtime)")
         _echo(f"    {dim('2.')} {doctor_cmd}")
         _echo(f"    {dim('3.')} brainpack create")
@@ -264,11 +285,7 @@ def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False)
         if summary and status == "ready":
             _echo(f'    {dim("5.")} brainpack query {pack_name} "question"')
 
-    renderers = [_agent_block, _local_block]
-    if preferred_mode == "local":
-        renderers = [_local_block, _agent_block]
-
-    for i, fn in enumerate(renderers):
+    for i, fn in enumerate([_agent_block, _local_block]):
         if i:
             _echo()
         fn()
@@ -287,12 +304,10 @@ def _render_home_screen() -> None:
     # Settings section
     typer.echo(f"  {bold('Settings')}")
     typer.echo(f"  {dim('─' * 38)}")
-    audio_val = "enabled" if settings.audio_enabled_by_default else "disabled"
     settings_rows = [
-        ("LLM model", settings.preferred_llm_model),
-        ("Whisper model", settings.preferred_whisper_model),
         ("Transcription", settings.preferred_transcription_backend),
-        ("Audio", audio_val),
+        ("Whisper model", settings.preferred_whisper_model),
+        ("LLM model", settings.preferred_llm_model),
     ]
     for line in render_rows(settings_rows):
         typer.echo(line)
@@ -369,13 +384,10 @@ def main(ctx: typer.Context) -> None:
 
 def _settings_display_rows(settings) -> list[tuple[str, str]]:
     """Return label/value rows for the current settings table."""
-    audio_val = "yes" if settings.audio_enabled_by_default else "no"
     return [
-        ("LLM model", settings.preferred_llm_model),
-        ("Whisper model", settings.preferred_whisper_model),
         ("Transcription", settings.preferred_transcription_backend),
-        ("Audio enabled", audio_val),
-        ("Mode", settings.preferred_mode),
+        ("Whisper model", settings.preferred_whisper_model),
+        ("LLM model", settings.preferred_llm_model),
     ]
 
 
@@ -406,8 +418,6 @@ def settings_command() -> None:
     staged = BrainpackSettings(
         version=current.version,
         setup_completed=current.setup_completed,
-        preferred_mode=current.preferred_mode,
-        audio_enabled_by_default=current.audio_enabled_by_default,
         preferred_transcription_backend=current.preferred_transcription_backend,
         preferred_whisper_model=current.preferred_whisper_model,
         preferred_llm_model=current.preferred_llm_model,
@@ -420,13 +430,10 @@ def settings_command() -> None:
 
     try:
         while True:
-            audio_val = "yes" if staged.audio_enabled_by_default else "no"
             choices = [
-                {"value": "llm_model", "name": f"LLM model             ({staged.preferred_llm_model})"},
-                {"value": "whisper_model", "name": f"Whisper model         ({staged.preferred_whisper_model})"},
                 {"value": "transcription", "name": f"Transcription backend ({staged.preferred_transcription_backend})"},
-                {"value": "audio", "name": f"Audio enabled         ({audio_val})"},
-                {"value": "mode", "name": f"Mode                  ({staged.preferred_mode})"},
+                {"value": "whisper_model", "name": f"Whisper model         ({staged.preferred_whisper_model})"},
+                {"value": "llm_model", "name": f"LLM model             ({staged.preferred_llm_model})"},
                 _DIVIDER,
                 _SAVE,
                 _EXIT,
@@ -447,12 +454,16 @@ def settings_command() -> None:
                 return
 
             if selection == "llm_model":
-                new_val = _text(
-                    backend,
-                    "LLM model",
-                    default=staged.preferred_llm_model,
-                )
-                staged.preferred_llm_model = new_val or staged.preferred_llm_model
+                try:
+                    typer.echo(f"  {dim('← Back  (Ctrl+C)')}")
+                    new_val = _text(
+                        backend,
+                        "LLM model",
+                        default=staged.preferred_llm_model,
+                    )
+                    staged.preferred_llm_model = new_val or staged.preferred_llm_model
+                except InteractiveAbort:
+                    continue
 
             elif selection == "whisper_model":
                 new_val = _select(
@@ -462,10 +473,12 @@ def settings_command() -> None:
                         {"value": "small", "name": "small"},
                         {"value": "medium", "name": "medium"},
                         {"value": "large", "name": "large"},
+                        {"value": "__back__", "name": "← Back"},
                     ],
                     default=staged.preferred_whisper_model,
                 )
-                staged.preferred_whisper_model = new_val
+                if new_val != "__back__":
+                    staged.preferred_whisper_model = new_val
 
             elif selection == "transcription":
                 new_val = _select(
@@ -474,31 +487,12 @@ def settings_command() -> None:
                     choices=[
                         {"value": "mlx-whisper", "name": "mlx-whisper"},
                         {"value": "faster-whisper", "name": "faster-whisper"},
+                        {"value": "__back__", "name": "← Back"},
                     ],
                     default=staged.preferred_transcription_backend,
                 )
-                staged.preferred_transcription_backend = new_val
-
-            elif selection == "audio":
-                new_val = _confirm(
-                    backend,
-                    "Audio enabled by default",
-                    default=staged.audio_enabled_by_default,
-                )
-                staged.audio_enabled_by_default = new_val
-
-            elif selection == "mode":
-                new_val = _select(
-                    backend,
-                    "Mode",
-                    choices=[
-                        {"value": "agent", "name": "agent"},
-                        {"value": "local", "name": "local"},
-                        {"value": "both", "name": "both"},
-                    ],
-                    default=staged.preferred_mode,
-                )
-                staged.preferred_mode = new_val
+                if new_val != "__back__":
+                    staged.preferred_transcription_backend = new_val
 
     except InteractiveAbort:
         typer.echo("  Settings unchanged.")
@@ -705,13 +699,9 @@ def _has_youtube_sources(config) -> bool:
 
 
 def _pack_readiness_details(config) -> dict[str, list[str]]:
-    """Return scoped blocker/warning details for one installed pack."""
+    """Return build-time blocker/warning details for one installed pack."""
     blockers: list[str] = []
     warnings: list[str] = []
-
-    provider_error = _query_provider_error(config.llm)
-    if provider_error is not None:
-        blockers.append(provider_error)
 
     if _has_youtube_sources(config):
         youtube_issue = _youtube_build_issue()
@@ -1162,19 +1152,12 @@ def _doctor_statuses(
     readiness = _pack_readiness_details(config)
 
     if operation in {"query", "all"}:
-        if not readiness["blockers"] or not any(
-            blocker.startswith("Error: OPENAI_API_KEY")
-            or blocker.startswith("Error: Ollama")
-            or blocker.startswith("Error: Anthropic")
-            or blocker.startswith("Error: Unknown LLM provider")
-            for blocker in readiness["blockers"]
-        ):
+        provider_error = _query_provider_error(config.llm)
+        if provider_error is None:
             statuses.append({"label": "Query readiness", "value": f"ready (provider={config.llm})"})
         else:
             statuses.append({"label": "Query readiness", "value": f"blocked (provider={config.llm})"})
-            for blocker in readiness["blockers"]:
-                if blocker.startswith("Error:"):
-                    statuses.append({"label": "Query detail", "value": blocker})
+            statuses.append({"label": "Query detail", "value": provider_error})
 
     if operation in {"build", "all"}:
         if _has_youtube_sources(config):
@@ -1228,6 +1211,14 @@ def _origin_display(origin: dict) -> str:
     return f"{origin_type}: {origin_source}"
 
 
+def _episode_icon(stages: dict) -> str:
+    if stages.get("embedded"):
+        return green("✓")
+    if stages.get("transcribed") or stages.get("downloaded"):
+        return yellow("~")
+    return dim("·")
+
+
 def _source_rows(config, state: dict) -> list[tuple[str, str, str]]:
     """Return (icon, label, detail) for each source in config."""
     processed = state.get("processed", {})
@@ -1249,23 +1240,11 @@ def _source_rows(config, state: dict) -> list[tuple[str, str, str]]:
             entry = audio_steps[sid]
             stages = entry.get("stages", {})
             title = entry.get("title") or url
-            if stages.get("embedded"):
-                rows.append((green("✓"), title, ""))
-            elif stages.get("transcribed"):
-                rows.append((yellow("~"), title, dim("transcribed")))
-            elif stages.get("downloaded"):
-                rows.append((yellow("~"), title, dim("downloaded")))
-            else:
-                rows.append((dim("·"), url, dim("pending")))
-        elif source_type in {"youtube", "podcast"}:
+            rows.append((_episode_icon(stages), title, ""))
+        elif source_type in {"youtube", "podcast"} and audio_steps:
+            embedded = sum(1 for e in audio_steps.values() if e.get("stages", {}).get("embedded"))
             total = len(audio_steps)
-            if total > 0:
-                embedded = sum(
-                    1 for e in audio_steps.values() if e.get("stages", {}).get("embedded")
-                )
-                rows.append((green("✓") if embedded == total else yellow("~"), url, dim(f"{embedded}/{total} episodes built")))
-            else:
-                rows.append((dim("·"), url, dim("not built")))
+            rows.append((green("✓") if embedded == total else yellow("~"), url, dim(f"{embedded}/{total} episodes")))
         else:
             rows.append((dim("·"), url, dim("not built")))
     return rows
@@ -1409,7 +1388,6 @@ def build(
     build_defaults = resolve_build_defaults(
         cli_model=model,
         cli_language=language,
-        pack_config=config,
     )
 
     # SAF-01: enforce model provenance before any ChromaDB write
@@ -1504,9 +1482,11 @@ def build(
                 report.record(source_url[:40], "blocked", failure_reason=ffmpeg_reason)
                 continue
             if source_type == "youtube":
-                episodes = list_youtube_episodes(source_url, effective_limit)
+                playlist_title, episodes = list_youtube_episodes(source_url, effective_limit)
+                if playlist_title:
+                    state.setdefault("playlist_titles", {})[source_url] = playlist_title
             else:  # podcast
-                episodes = list_podcast_episodes(source_url, effective_limit)
+                playlist_title, episodes = None, list_podcast_episodes(source_url, effective_limit)
 
             if not episodes:
                 typer.echo(f"  [warn] No episodes found for {source_url}", err=True)
@@ -1817,19 +1797,31 @@ def status_command(
             )
         )
 
+    import shutil
+
     summary = _status_payload(pack)["pack"]
     state = summary["state"]
     config = summary["config"]
 
-    typer.echo()
-    typer.echo(f"  {bold(config.name)}  {dim(f'({config.id})')}  {_status_styled(summary['status'])}")
-    typer.echo()
+    term_w = min(shutil.get_terminal_size((80, 24)).columns, 100)
+    box_w = term_w  # package box spans full terminal width
 
-    # --- Pack facts and provenance (summary-first) ---
-    info_rows: list[tuple[str, str]] = [
-        ("Type", _display_type(summary["type"])),
-        ("Version", config.version),
-    ]
+    # ── Package box ───────────────────────────────────────────────────────────
+    typer.echo()
+    typer.echo(box_top("Package", box_w))
+
+    # Header row: name left, id + status right
+    status_text = _status_styled(summary["status"])
+    id_status = f"{dim(config.id)}  {status_text}"
+    name_str = config.name
+    content_w = box_w - 2  # between the two │ chars
+    gap = max(1, content_w - 2 - len(name_str) - _visible_len(id_status))
+    typer.echo(box_row(f" {bold(name_str)}{' ' * gap}{id_status} ", box_w))
+
+    typer.echo(box_sep(box_w))
+
+    # Metadata rows
+    info_rows: list[tuple[str, str]] = [("Type", _display_type(summary["type"])), ("Version", config.version)]
     build_date = (summary.get("last_build_at") or "")[:10]
     if build_date:
         info_rows.append(("Last built", build_date))
@@ -1837,48 +1829,126 @@ def status_command(
         info_rows.append(("Tags", ", ".join(config.tags)))
     if config.contributors:
         info_rows.append(("Contributors", ", ".join(config.contributors)))
-
-    # Provenance / origin
     origin = summary.get("origin") or {}
     if origin:
-        origin_source = origin.get("source") or origin.get("type") or "unknown"
-        info_rows.append(("Origin", origin_source))
+        info_rows.append(("Origin", origin.get("source") or origin.get("type") or "unknown"))
 
-    for line in render_rows(info_rows):
-        typer.echo(line)
+    label_w = max(len(label) for label, _ in info_rows)
+    for label, value in info_rows:
+        row_content = f" {dim(label.ljust(label_w))}  {value} "
+        typer.echo(box_row(row_content, box_w))
 
-    # --- Blockers and warnings (before sources so they scan immediately) ---
+    # Blockers / warnings inside box
     if summary.get("blockers"):
-        typer.echo()
+        typer.echo(box_sep(box_w))
         for blocker in summary["blockers"]:
-            typer.echo(f"  {red('!')}  {blocker}")
-
+            typer.echo(box_row(f" {red('!')}  {blocker} ", box_w))
     if summary.get("warnings"):
-        typer.echo()
+        typer.echo(box_sep(box_w))
         for warning in summary["warnings"]:
-            typer.echo(f"  {yellow('!')}  {warning}")
+            typer.echo(box_row(f" {yellow('!')}  {warning} ", box_w))
 
-    # --- Sources (at the bottom — detail view) ---
-    typer.echo()
+    typer.echo(box_bottom(box_w))
+
+    # ── Sources table ─────────────────────────────────────────────────────────
+    processed_state = state.get("processed", {})
+    audio_steps = state.get("audio_steps", {})
+    playlist_titles_state = state.get("playlist_titles", {})
+    _PLAYLIST_LABEL = {"youtube": "YouTube Playlist", "podcast": "Podcast Feed"}
+
     source_count = summary["source_count"]
-    typer.echo(f"  {bold(f'Sources ({source_count})')}")
     typer.echo()
-    source_rows = _source_rows(config, state)
-    w_label = min(max((len(label) for _, label, _ in source_rows), default=0), 55)
-    typer.echo(
-        f"    {dim(_col('Title / URL', w_label))}  {dim('Status')}"
-    )
-    for icon, label, detail in source_rows:
-        typer.echo(f"  {icon}  {_col(label[:w_label], w_label)}  {detail}".rstrip())
-
-    # --- Lifecycle management (factual affordances) ---
+    typer.echo(f"Sources ({source_count})")
     typer.echo()
-    typer.echo(f"  {dim('Manage:')}")
-    typer.echo(f"    {dim('brainpack status')} {pack}             {dim('— refresh this view')}")
-    typer.echo(f"    {dim('brainpack update')} {pack}             {dim('— pull latest changes and rebuild')}")
-    typer.echo(f"    {dim('brainpack build')} {pack} {dim('--reset')}   {dim('— clear runtime and rebuild from scratch')}")
-    typer.echo(f"    {dim('brainpack remove')} {pack}             {dim('— permanently delete this pack')}")
 
+    W_NUM = 2
+    W_STATUS = 10
+    W_TITLE = term_w - W_NUM - W_STATUS - 7  # 7 = 3 borders + 2 padding each col
+
+    def _ep_status_text(stages: dict) -> str:
+        if stages.get("embedded"):
+            return green("ready")
+        if stages.get("transcribed") or stages.get("downloaded"):
+            return yellow("partial")
+        return dim("pending")
+
+    def _trow(num: str, status: str, title_line: str) -> str:
+        return tbl_row([num, status, title_line], [W_NUM, W_STATUS, W_TITLE])
+
+    def _trow_cont(title_line: str) -> str:
+        return tbl_row(["", "", title_line], [W_NUM, W_STATUS, W_TITLE])
+
+    typer.echo(tbl_top([W_NUM, W_STATUS, W_TITLE]))
+    typer.echo(tbl_row([dim("#"), dim("Status"), dim("Title")], [W_NUM, W_STATUS, W_TITLE]))
+
+    sources = config.sources
+    for i, source in enumerate(sources, start=1):
+        url = source.url
+        sid = canonical_source_id(url)
+        source_type = detect_source_type(url)
+        typer.echo(tbl_sep([W_NUM, W_STATUS, W_TITLE]))
+
+        if sid in processed_state:
+            entry = processed_state[sid]
+            is_done = entry.get("status") == "done"
+            status_cell = green("ready") if is_done else red("failed")
+            title = entry.get("title") or url
+            title_lines = wrap_text(title, W_TITLE)
+            url_lines = wrap_text(url, W_TITLE)
+            typer.echo(_trow(str(i), status_cell, title_lines[0]))
+            for line in title_lines[1:]:
+                typer.echo(_trow_cont(line))
+            for line in url_lines:
+                typer.echo(_trow_cont(dim(line)))
+
+        elif sid in audio_steps:
+            entry = audio_steps[sid]
+            status_cell = _ep_status_text(entry.get("stages", {}))
+            title = entry.get("title") or url
+            title_lines = wrap_text(title, W_TITLE)
+            url_lines = wrap_text(url, W_TITLE)
+            typer.echo(_trow(str(i), status_cell, title_lines[0]))
+            for line in title_lines[1:]:
+                typer.echo(_trow_cont(line))
+            for line in url_lines:
+                typer.echo(_trow_cont(dim(line)))
+
+        elif source_type in {"youtube", "podcast"} and audio_steps:
+            embedded = sum(1 for e in audio_steps.values() if e.get("stages", {}).get("embedded"))
+            total = len(audio_steps)
+            pl_status = green(f"{embedded}/{total} ready") if embedded == total else yellow(f"{embedded}/{total} ready")
+            real_title = playlist_titles_state.get(url) or _PLAYLIST_LABEL.get(source_type, "Playlist")
+            title_lines = wrap_text(real_title, W_TITLE)
+            url_lines = wrap_text(url, W_TITLE)
+            typer.echo(_trow(str(i), pl_status, title_lines[0]))
+            for line in title_lines[1:]:
+                typer.echo(_trow_cont(line))
+            for line in url_lines:
+                typer.echo(_trow_cont(dim(line)))
+            # Episodes as sub-rows
+            typer.echo(tbl_sep([W_NUM, W_STATUS, W_TITLE]))
+            for j, ep in enumerate(sorted(audio_steps.values(), key=lambda e: e.get("title") or ""), start=1):
+                ep_status = _ep_status_text(ep.get("stages", {}))
+                ep_title = ep.get("title") or ""
+                ep_url = ep.get("url") or ""
+                ep_prefix = f"{j}. "
+                ep_cont_indent = "   "
+                first_title_w = W_TITLE - len(ep_prefix)
+                ep_title_lines = wrap_text(ep_title, first_title_w)
+                ep_url_lines = wrap_text(ep_url, W_TITLE - len(ep_cont_indent))
+                typer.echo(_trow("", ep_status, ep_prefix + ep_title_lines[0]))
+                for line in ep_title_lines[1:]:
+                    typer.echo(_trow_cont(ep_cont_indent + line))
+                for line in ep_url_lines:
+                    typer.echo(_trow_cont(dim(ep_cont_indent + line)))
+
+        else:
+            url_lines = wrap_text(url, W_TITLE)
+            typer.echo(_trow(str(i), dim("pending"), url_lines[0]))
+            for line in url_lines[1:]:
+                typer.echo(_trow_cont(line))
+
+    typer.echo(tbl_bottom([W_NUM, W_STATUS, W_TITLE]))
     typer.echo()
 
 

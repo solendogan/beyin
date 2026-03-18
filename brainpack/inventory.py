@@ -219,6 +219,7 @@ def summarize_pack(
     return {
         "id": config.id,
         "name": config.name,
+        "description": config.description,
         "status": status,
         "type": _source_family(config),
         "provider": config.llm,

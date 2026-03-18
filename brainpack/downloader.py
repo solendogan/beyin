@@ -56,10 +56,11 @@ def check_deno_available() -> bool:
     return shutil.which("deno") is not None
 
 
-def list_youtube_episodes(url: str, limit: Optional[int]) -> list[dict]:
+def list_youtube_episodes(url: str, limit: Optional[int]) -> tuple[str | None, list[dict]]:
     """
-    Return episode metadata list without downloading.
-    Returns [] on any failure — never raises.
+    Return (playlist_title, episodes) without downloading.
+    playlist_title is None for single videos or on failure.
+    Returns (None, []) on any failure — never raises.
     """
     import yt_dlp  # lazy import — avoids import errors on platforms without yt-dlp
     ydl_opts = {
@@ -71,6 +72,8 @@ def list_youtube_episodes(url: str, limit: Optional[int]) -> list[dict]:
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+        is_playlist = "entries" in info
+        playlist_title = info.get("title") if is_playlist else None
         entries = info.get("entries", [info])  # single video falls back to [info]
         result = []
         for e in entries:
@@ -81,9 +84,9 @@ def list_youtube_episodes(url: str, limit: Optional[int]) -> list[dict]:
                 "title": e.get("title", "Unknown"),
                 "url": e.get("webpage_url") or e.get("url") or "",
             })
-        return result
+        return playlist_title, result
     except Exception:
-        return []
+        return None, []
 
 
 def download_audio(video_url: str, out_dir: Path, title: str = "", verbose: bool = False) -> Optional[Path]:
