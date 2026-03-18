@@ -29,9 +29,7 @@ class PackConfig:
     contributors: List[str] = field(default_factory=list)
     # runtime/local fields (kept for backward compat, not in registry schema)
     llm: str = "ollama"
-    embedding_model: str = "all-MiniLM-L6-v2"
-    whisper_model: str = "small"
-    whisper_model_explicit: bool = True
+    embedding_model: str = "paraphrase-multilingual-mpnet-base-v2"
     episode_limit: Optional[int] = 20
 
 
@@ -69,7 +67,6 @@ def config_to_raw(config: PackConfig) -> dict:
         raw["contributors"] = config.contributors
     raw["llm"] = config.llm
     raw["embedding_model"] = config.embedding_model
-    raw["whisper_model"] = config.whisper_model
     raw["episode_limit"] = config.episode_limit
     raw["sources"] = [
         s.url if s.limit is None else {"url": s.url, "limit": s.limit}
@@ -150,9 +147,7 @@ def _parse_config_from_raw(raw: dict) -> PackConfig:
         tags=raw.get("tags", []),
         contributors=raw.get("contributors", []),
         llm=raw.get("llm", "ollama"),
-        embedding_model=raw.get("embedding_model", "all-MiniLM-L6-v2"),
-        whisper_model=raw.get("whisper_model", "small"),
-        whisper_model_explicit="whisper_model" in raw,
+        embedding_model=raw.get("embedding_model", "paraphrase-multilingual-mpnet-base-v2"),
         episode_limit=raw.get("episode_limit", 20),
     )
 

@@ -139,15 +139,6 @@ def _setup_path_description(value: str) -> str:
     return "Pick mode, audio, transcription, and local answers."
 
 
-def _mode_description(value: str) -> str:
-    descriptions = {
-        "agent": "Via Claude Code, Codex, or another AI agent.",
-        "local": "Use brainpack query/chat as your main UI.",
-        "both": "Keep agent and local workflows both ready.",
-    }
-    return descriptions.get(value, value)
-
-
 def _backend_description(value: str) -> str:
     descriptions = {
         "mlx-whisper": "Apple Silicon. Metal-accelerated transcription.",
@@ -158,8 +149,8 @@ def _backend_description(value: str) -> str:
 
 def _model_description(value: str) -> str:
     descriptions = {
-        "small": "Fastest. Comfortable on 8 GB RAM.",
-        "medium": "Better accuracy. Best on 12–16 GB RAM.",
+        "small": "Fast. Lower accuracy, especially for mixed-language content.",
+        "medium": "Recommended. Better accuracy for technical and multilingual audio.",
         "large": "Best quality. Needs 16 GB+ RAM, slower.",
     }
     return descriptions.get(value, value)
@@ -329,19 +320,6 @@ def _select_setup_path(prompt_backend: Any, *, current: str = "recommended") -> 
     )
 
 
-def _select_preferred_mode(prompt_backend: Any, *, current: str) -> str:
-    return _select(
-        prompt_backend,
-        "Select the preferred Brainpack mode",
-        choices=[
-            _choice("agent", "Use with agent", help_text=_mode_description("agent")),
-            _choice("local", "Use with local model", help_text=_mode_description("local")),
-            _choice("both", "Use with both", help_text=_mode_description("both")),
-        ],
-        default=current,
-    )
-
-
 def _stage_settings(
     current: BrainpackSettings,
     *,
@@ -351,18 +329,12 @@ def _stage_settings(
     choices = available_setup_choices()
     _print_setup_intro(first_run=first_run)
     setup_path = _select_setup_path(prompt_backend)
-    preferred_mode = _select_preferred_mode(
-        prompt_backend,
-        current=current.preferred_mode,
-    )
 
     if setup_path == "recommended":
         recommended = choices["recommended"]
         staged = BrainpackSettings(
             version=current.version,
             setup_completed=True,
-            preferred_mode=preferred_mode,
-            audio_enabled_by_default=bool(recommended["audio_enabled_by_default"]),
             preferred_transcription_backend=str(
                 recommended["preferred_transcription_backend"]
             ),
@@ -372,33 +344,24 @@ def _stage_settings(
         _print_review("Recommended defaults preview", describe_settings_summary(staged).splitlines())
         return staged
 
-    audio_enabled = _confirm(
+    transcription_backend = _select(
         prompt_backend,
-        "Enable audio/video defaults",
-        default=current.audio_enabled_by_default,
-        instruction="Choose whether new setups should assume audio/video transcription is available.",
+        "Select a transcription backend",
+        choices=[
+            _choice(value, value, help_text=_backend_description(value))
+            for value in choices["transcription_backends"]
+        ],
+        default=current.preferred_transcription_backend,
     )
-    transcription_backend = current.preferred_transcription_backend
-    whisper_model = current.preferred_whisper_model
-    if audio_enabled:
-        transcription_backend = _select(
-            prompt_backend,
-            "Select a transcription backend",
-            choices=[
-                _choice(value, value, help_text=_backend_description(value))
-                for value in choices["transcription_backends"]
-            ],
-            default=current.preferred_transcription_backend,
-        )
-        whisper_model = _select(
-            prompt_backend,
-            "Select the default Whisper model",
-            choices=[
-                _choice(value, value, help_text=_model_description(value))
-                for value in choices["whisper_models"]
-            ],
-            default=current.preferred_whisper_model,
-        )
+    whisper_model = _select(
+        prompt_backend,
+        "Select the default Whisper model",
+        choices=[
+            _choice(value, value, help_text=_model_description(value))
+            for value in choices["whisper_models"]
+        ],
+        default=current.preferred_whisper_model,
+    )
     local_provider = _select(
         prompt_backend,
         "Select the default local answer provider",
@@ -419,8 +382,6 @@ def _stage_settings(
     staged = BrainpackSettings(
         version=current.version,
         setup_completed=True,
-        preferred_mode=preferred_mode,
-        audio_enabled_by_default=audio_enabled,
         preferred_transcription_backend=transcription_backend,
         preferred_whisper_model=whisper_model,
         preferred_local_provider=local_provider,
