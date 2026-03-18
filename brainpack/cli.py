@@ -63,10 +63,22 @@ from brainpack.machine_output import MachineExit, run_machine_command
 from brainpack.source_ids import artifact_stem, canonical_source_id
 from brainpack.settings import load_settings, needs_initial_setup, resolve_build_defaults, save_settings
 from brainpack.build_report import BuildReport
+from brainpack.readiness import (
+    _check_ffmpeg_available,
+    _check_ollama_reachable,
+    _has_audio_sources,
+    _has_youtube_sources,
+    _query_provider_error,
+    _youtube_build_issue,
+    _ytdlp_version_ok,
+    _YTDLP_MIN_VERSION,
+)
 from brainpack.ui import (
     bold, box_bottom, box_row, box_sep, box_top, cyan, dim, green, red,
     render_header, render_rows, render_status, render_table, tbl_bottom,
     tbl_row, tbl_sep, tbl_top, visible_len as _visible_len, wrap_text, yellow,
+    _col, _display_status, _display_type, _episode_icon, _origin_display,
+    _pack_label, _render_pack_table, _status_styled,
 )
 
 app = typer.Typer(
@@ -169,87 +181,6 @@ def transcribe_audio(*args, **kwargs):
     return _transcribe_audio(*args, **kwargs)
 
 
-def _display_status(status: str) -> str:
-    """Map internal lifecycle states to cleaner human-facing labels."""
-    if status == "new":
-        return "needs-build"
-    return status
-
-
-_DISPLAY_TYPE = {
-    "youtube": "video",
-    "podcast": "audio",
-    "text": "articles",
-    "local_text": "articles",
-    "article": "articles",
-}
-
-
-def _display_type(type_raw: str) -> str:
-    return _DISPLAY_TYPE.get(type_raw, type_raw)
-
-
-def _status_styled(status: str) -> str:
-    """Return a color-coded status label."""
-    label = _display_status(status)
-    if status == "ready":
-        return green(label)
-    if status in {"new", "needs-build", "blocked"}:
-        return yellow(label)
-    if status == "error":
-        return red(label)
-    return label
-
-
-def _col(text: str, width: int) -> str:
-    """Left-pad text to a fixed display width (ANSI-safe — no escape codes in text)."""
-    return text + " " * max(0, width - len(text))
-
-
-def _render_pack_table(summaries: list[dict], *, limit: Optional[int] = None) -> None:
-    """Render the pack list table — borderless, aligned columns."""
-    import shutil
-    rows = summaries if limit is None else summaries[:limit]
-    if not rows:
-        return
-
-    term_w = min(shutil.get_terminal_size((80, 24)).columns, 100)
-    W_ID = min(max(len(s["id"]) for s in rows), 24)
-    W_STATUS = 11  # fits "needs-build"
-    W_SRCS = 7
-    W_DESC = max(10, term_w - W_ID - W_STATUS - W_SRCS - 8)
-
-    def _ansi_col(text: str, width: int) -> str:
-        return text + " " * max(0, width - _visible_len(text))
-
-    def _row(pack_id: str, status: str, srcs: str, desc: str) -> str:
-        srcs_padded = " " * max(0, W_SRCS - _visible_len(srcs)) + srcs
-        return (
-            f"  {_ansi_col(pack_id, W_ID)}  "
-            f"{_ansi_col(status, W_STATUS)}  "
-            f"{srcs_padded}  {desc}"
-        )
-
-    typer.echo()
-    typer.echo(_row(dim("ID"), dim("Status"), dim("Sources"), dim("Description")))
-    typer.echo("  " + dim("─" * (term_w - 2)))
-
-    for s in rows:
-        status_cell = _status_styled(s["status"])
-        srcs = str(s["source_count"])
-        desc = s.get("description") or s.get("name") or ""
-        desc_lines = wrap_text(desc, W_DESC)
-        typer.echo(_row(s["id"], status_cell, srcs, desc_lines[0]))
-        for line in desc_lines[1:]:
-            typer.echo(_row("", "", "", line))
-
-    typer.echo()
-
-
-def _pack_label(summary: Optional[dict]) -> str:
-    if summary and summary.get("name"):
-        return str(summary["name"])
-    return "<pack>"
 
 
 def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False) -> None:
@@ -507,75 +438,6 @@ def help(
     typer.echo(ctx.find_root().get_help())
 
 
-def _check_ollama_reachable() -> bool:
-    """Return True if Ollama is listening on localhost:11434, False otherwise."""
-    import socket as _socket
-    try:
-        sock = _socket.create_connection(("localhost", 11434), timeout=2)
-        sock.close()
-        return True
-    except (ConnectionRefusedError, OSError):
-        return False
-
-
-def _ytdlp_version_ok() -> tuple:
-    """Return (True, version_str) if yt-dlp >= _YTDLP_MIN_VERSION, else (False, version_str)."""
-    try:
-        import yt_dlp.version as _v
-        current = _v.__version__
-        current_tuple = tuple(int(x) for x in current.split("."))
-        min_tuple = tuple(int(x) for x in _YTDLP_MIN_VERSION.split("."))
-        return (current_tuple >= min_tuple, current)
-    except Exception:
-        return (False, "unknown")
-
-
-def _query_provider_error(provider: str) -> Optional[str]:
-    """Return a user-facing readiness error for the selected query provider."""
-    if provider == "ollama":
-        if _check_ollama_reachable():
-            return None
-        if shutil.which("ollama"):
-            return "Error: Ollama is not running.\nStart it with: ollama serve"
-        return (
-            "Error: Ollama is not installed.\n"
-            "Install: brew install ollama\n"
-            "Or: curl -fsSL https://ollama.com/install.sh | sh"
-        )
-    if provider == "openai":
-        if os.environ.get("OPENAI_API_KEY"):
-            return None
-        return (
-            "Error: OPENAI_API_KEY is not set.\n"
-            "Set it in your shell environment, then retry."
-        )
-    if provider == "anthropic":
-        return (
-            "Error: Anthropic is not supported in this phase.\n"
-            "Update pack.yaml to use llm: ollama or llm: openai."
-        )
-    return (
-        f"Error: Unknown LLM provider '{provider}'.\n"
-        "Valid options: ollama, openai, anthropic."
-    )
-
-
-def _check_ffmpeg_available() -> bool:
-    """Return True when ffmpeg is available on PATH."""
-    return shutil.which("ffmpeg") is not None
-
-
-def _youtube_build_issue() -> Optional[str]:
-    """Return a user-facing yt-dlp issue message when YouTube ingest is blocked."""
-    ok, version = _ytdlp_version_ok()
-    if ok:
-        return None
-    if version == "unknown":
-        return "yt-dlp is not installed. Install or upgrade with: pip install --upgrade yt-dlp"
-    return (
-        f"yt-dlp is outdated ({version} < {_YTDLP_MIN_VERSION}). "
-        "Upgrade with: pip install --upgrade yt-dlp"
-    )
 
 
 def _transcript_path(transcripts_dir: Path, source_id: str) -> Path:
@@ -689,13 +551,6 @@ def _resolve_pack_dir(
         raise typer.Exit(code=1)
     return pack_dir
 
-
-def _has_audio_sources(config) -> bool:
-    return any(detect_source_type(source.url) in {"youtube", "podcast"} for source in config.sources)
-
-
-def _has_youtube_sources(config) -> bool:
-    return any(detect_source_type(source.url) == "youtube" for source in config.sources)
 
 
 def _pack_readiness_details(config) -> dict[str, list[str]]:
@@ -1202,21 +1057,6 @@ def _doctor_payload(
         "statuses": _doctor_statuses(pack, operation, machine=machine),
     }
 
-
-def _origin_display(origin: dict) -> str:
-    origin_type = origin.get("type")
-    origin_source = origin.get("source")
-    if not origin_type or not origin_source:
-        return "none"
-    return f"{origin_type}: {origin_source}"
-
-
-def _episode_icon(stages: dict) -> str:
-    if stages.get("embedded"):
-        return green("✓")
-    if stages.get("transcribed") or stages.get("downloaded"):
-        return yellow("~")
-    return dim("·")
 
 
 def _source_rows(config, state: dict) -> list[tuple[str, str, str]]:

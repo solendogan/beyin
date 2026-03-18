@@ -1,10 +1,13 @@
-"""Small ANSI presentation helpers for Brainpack terminal output."""
+"""ANSI presentation helpers and pack display rendering for Brainpack terminal output."""
 
 from __future__ import annotations
 
 import os
 import sys
 from collections.abc import Iterable
+from typing import Optional
+
+import typer
 
 _NO_COLOR = os.getenv("NO_COLOR") is not None
 
@@ -166,6 +169,107 @@ def tbl_row(cells: list[str], col_widths: list[int]) -> str:
         pad = " " * max(0, w - _visible_len(cell))
         parts.append(f" {cell}{pad} ")
     return "│" + "│".join(parts) + "│"
+
+
+# ── Pack status display ───────────────────────────────────────────────────────
+
+def _display_status(status: str) -> str:
+    """Map internal lifecycle states to cleaner human-facing labels."""
+    if status == "new":
+        return "needs-build"
+    return status
+
+
+_DISPLAY_TYPE = {
+    "youtube": "video",
+    "podcast": "audio",
+    "text": "articles",
+    "local_text": "articles",
+    "article": "articles",
+}
+
+
+def _display_type(type_raw: str) -> str:
+    return _DISPLAY_TYPE.get(type_raw, type_raw)
+
+
+def _status_styled(status: str) -> str:
+    """Return a color-coded status label."""
+    label = _display_status(status)
+    if status == "ready":
+        return green(label)
+    if status in {"new", "needs-build", "blocked"}:
+        return yellow(label)
+    if status == "error":
+        return red(label)
+    return label
+
+
+def _col(text: str, width: int) -> str:
+    """Left-pad text to a fixed display width (ANSI-safe — no escape codes in text)."""
+    return text + " " * max(0, width - len(text))
+
+
+def _pack_label(summary: Optional[dict]) -> str:
+    if summary and summary.get("name"):
+        return str(summary["name"])
+    return "<pack>"
+
+
+def _origin_display(origin: dict) -> str:
+    origin_type = origin.get("type")
+    origin_source = origin.get("source")
+    if not origin_type or not origin_source:
+        return "none"
+    return f"{origin_type}: {origin_source}"
+
+
+def _episode_icon(stages: dict) -> str:
+    if stages.get("embedded"):
+        return green("✓")
+    if stages.get("transcribed") or stages.get("downloaded"):
+        return yellow("~")
+    return dim("·")
+
+
+def _render_pack_table(summaries: list[dict], *, limit: Optional[int] = None) -> None:
+    """Render the pack list table — borderless, aligned columns."""
+    import shutil as _shutil
+    rows = summaries if limit is None else summaries[:limit]
+    if not rows:
+        return
+
+    term_w = min(_shutil.get_terminal_size((80, 24)).columns, 100)
+    W_ID = min(max(len(s["id"]) for s in rows), 24)
+    W_STATUS = 11  # fits "needs-build"
+    W_SRCS = 7
+    W_DESC = max(10, term_w - W_ID - W_STATUS - W_SRCS - 8)
+
+    def _ansi_col(text: str, width: int) -> str:
+        return text + " " * max(0, width - _visible_len(text))
+
+    def _row(pack_id: str, status: str, srcs: str, desc: str) -> str:
+        srcs_padded = " " * max(0, W_SRCS - _visible_len(srcs)) + srcs
+        return (
+            f"  {_ansi_col(pack_id, W_ID)}  "
+            f"{_ansi_col(status, W_STATUS)}  "
+            f"{srcs_padded}  {desc}"
+        )
+
+    typer.echo()
+    typer.echo(_row(dim("ID"), dim("Status"), dim("Sources"), dim("Description")))
+    typer.echo("  " + dim("─" * (term_w - 2)))
+
+    for s in rows:
+        status_cell = _status_styled(s["status"])
+        srcs = str(s["source_count"])
+        desc = s.get("description") or s.get("name") or ""
+        desc_lines = wrap_text(desc, W_DESC)
+        typer.echo(_row(s["id"], status_cell, srcs, desc_lines[0]))
+        for line in desc_lines[1:]:
+            typer.echo(_row("", "", "", line))
+
+    typer.echo()
 
 
 def wrap_text(text: str, width: int) -> list[str]:
