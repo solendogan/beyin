@@ -199,6 +199,178 @@ GOLDEN_DATASET = [
     },
 ]
 
+# ── Hard dataset ────────────────────────────────────────────────────────────────
+# Queries that specifically stress-test transcription quality: product model
+# numbers, mixed-language technical terms, acronyms, and brand names that
+# whisper-small commonly mishears in Turkish/English content.
+
+GOLDEN_DATASET_HARD = [
+    # ── Elektronik ve Müzik — specific product names / MIDI ───────────────────
+    {
+        "question": "Roland GK3 ve Boss GM800 nasıl bağlanır",
+        "expected_url": "https://www.youtube.com/watch?v=dtYN2GWS37c",
+        "episode": "Elektronik ve Müzik Hobileri",
+        "lang": "tr",
+    },
+    {
+        "question": "MIDI bluetooth wireless gitar pedal bağlantısı",
+        "expected_url": "https://www.youtube.com/watch?v=dtYN2GWS37c",
+        "episode": "Elektronik ve Müzik Hobileri",
+        "lang": "tr",
+    },
+    {
+        "question": "Roland GK3 guitar synthesizer MIDI wireless setup",
+        "expected_url": "https://www.youtube.com/watch?v=dtYN2GWS37c",
+        "episode": "Elektronik ve Müzik Hobileri",
+        "lang": "en",
+    },
+    {
+        "question": "Fender Stratocaster modifikasyonu ve pedallar",
+        "expected_url": "https://www.youtube.com/watch?v=dtYN2GWS37c",
+        "episode": "Elektronik ve Müzik Hobileri",
+        "lang": "tr",
+    },
+
+    # ── ChatGPT — GitHub Copilot, OpenAI, prompt engineering ──────────────────
+    {
+        "question": "GitHub Copilot kod yazma deneyimi",
+        "expected_url": "https://www.youtube.com/watch?v=Il_8LUGhDys",
+        "episode": "ChatGPT, AI, Prompt Engineering",
+        "lang": "tr",
+    },
+    {
+        "question": "OpenAI GPT-4 prompt engineering ipuçları",
+        "expected_url": "https://www.youtube.com/watch?v=Il_8LUGhDys",
+        "episode": "ChatGPT, AI, Prompt Engineering",
+        "lang": "tr",
+    },
+    {
+        "question": "GitHub Copilot vs ChatGPT for coding assistance",
+        "expected_url": "https://www.youtube.com/watch?v=Il_8LUGhDys",
+        "episode": "ChatGPT, AI, Prompt Engineering",
+        "lang": "en",
+    },
+
+    # ── Kütüphane Yazımı — Composition API, Options API, MongoDB ──────────────
+    {
+        "question": "Vue Composition API reactive ref ve computed kullanımı",
+        "expected_url": "https://www.youtube.com/watch?v=rGtGx7IsYCU",
+        "episode": "Kütüphane Yazımı, Composition API",
+        "lang": "tr",
+    },
+    {
+        "question": "MongoDB ve SQL veritabanı karşılaştırması",
+        "expected_url": "https://www.youtube.com/watch?v=rGtGx7IsYCU",
+        "episode": "Kütüphane Yazımı, Composition API",
+        "lang": "tr",
+    },
+    {
+        "question": "JavaScript library publishing npm package bundling",
+        "expected_url": "https://www.youtube.com/watch?v=rGtGx7IsYCU",
+        "episode": "Kütüphane Yazımı, Composition API",
+        "lang": "en",
+    },
+
+    # ── Dolandırıcılık — Udemy, PHP, unit testing ──────────────────────────────
+    {
+        "question": "Udemy kurs kalitesi ve yazılım eğitimi",
+        "expected_url": "https://www.youtube.com/watch?v=iYxLoh3Dqfg",
+        "episode": "Dolandırıcılık, Software Testing",
+        "lang": "tr",
+    },
+    {
+        "question": "PHP yazılımcı iş piyasasındaki yeri",
+        "expected_url": "https://www.youtube.com/watch?v=iYxLoh3Dqfg",
+        "episode": "Dolandırıcılık, Software Testing",
+        "lang": "tr",
+    },
+    {
+        "question": "unit testing TDD test driven development practices",
+        "expected_url": "https://www.youtube.com/watch?v=iYxLoh3Dqfg",
+        "episode": "Dolandırıcılık, Software Testing",
+        "lang": "en",
+    },
+
+    # ── JSDoc / Architecture — TypeScript, hexagonal, domain driven ───────────
+    {
+        "question": "TypeScript tip sistemi ve JSDoc karşılaştırması",
+        "expected_url": "https://www.youtube.com/watch?v=RZOSR7XLIfI",
+        "episode": "JSDoc, Architecture Patterns",
+        "lang": "tr",
+    },
+    {
+        "question": "hexagonal architecture domain driven design uygulama",
+        "expected_url": "https://www.youtube.com/watch?v=RZOSR7XLIfI",
+        "episode": "JSDoc, Architecture Patterns",
+        "lang": "tr",
+    },
+    {
+        "question": "JSDoc type annotations versus TypeScript tradeoffs",
+        "expected_url": "https://www.youtube.com/watch?v=RZOSR7XLIfI",
+        "episode": "JSDoc, Architecture Patterns",
+        "lang": "en",
+    },
+
+    # ── İşten Çıkarmalar — Unit of Work, AstroJS, REST API ────────────────────
+    {
+        "question": "Unit of Work ve Repository pattern implementasyonu",
+        "expected_url": "https://www.youtube.com/watch?v=9u2EB5PrKmA",
+        "episode": "İşten Çıkarmalar, Yöneticilik",
+        "lang": "tr",
+    },
+    {
+        "question": "AstroJS ile modern web geliştirme",
+        "expected_url": "https://www.youtube.com/watch?v=9u2EB5PrKmA",
+        "episode": "İşten Çıkarmalar, Yöneticilik",
+        "lang": "tr",
+    },
+    {
+        "question": "REST API design patterns best practices backend",
+        "expected_url": "https://www.youtube.com/watch?v=9u2EB5PrKmA",
+        "episode": "İşten Çıkarmalar, Yöneticilik",
+        "lang": "en",
+    },
+
+    # ── ADHD — CBT, cognitive behavioral therapy ───────────────────────────────
+    {
+        "question": "CBT kognitif davranışçı terapi ADHD yönetimi",
+        "expected_url": "https://www.youtube.com/watch?v=A_8qf7CEHOw",
+        "episode": "ADHD, Kişisel Gelişim",
+        "lang": "tr",
+    },
+    {
+        "question": "cognitive behavioral therapy CBT productivity ADHD",
+        "expected_url": "https://www.youtube.com/watch?v=A_8qf7CEHOw",
+        "episode": "ADHD, Kişisel Gelişim",
+        "lang": "en",
+    },
+
+    # ── Sabancı — CS courses, university, salary ──────────────────────────────
+    {
+        "question": "Sabancı üniversitesi CS301 CS308 yazılım dersleri",
+        "expected_url": "https://www.youtube.com/watch?v=re4K1Ohr-v8",
+        "episode": "Sabancı, Global Ekonomi",
+        "lang": "tr",
+    },
+    {
+        "question": "dolar kur farkı ve yazılımcı maaşları Türkiye",
+        "expected_url": "https://www.youtube.com/watch?v=re4K1Ohr-v8",
+        "episode": "Sabancı, Global Ekonomi",
+        "lang": "tr",
+    },
+    {
+        "question": "computer science university education Turkey software engineering",
+        "expected_url": "https://www.youtube.com/watch?v=re4K1Ohr-v8",
+        "episode": "Sabancı, Global Ekonomi",
+        "lang": "en",
+    },
+]
+
+DATASETS = {
+    "standard": GOLDEN_DATASET,
+    "hard": GOLDEN_DATASET_HARD,
+}
+
 RESULTS_DIR = Path(__file__).parent / "results"
 
 
@@ -252,6 +424,7 @@ def run_benchmark(
     reranker: str = "",
     n_candidates: int = 20,
     embedding_model_override: str = "",
+    dataset: str = "standard",
 ) -> None:
     pack_dir = Path.home() / ".brainpacks" / pack
     if not pack_dir.exists():
@@ -278,12 +451,13 @@ def run_benchmark(
         reranker_model = CrossEncoder(reranker)
 
     fetch_n = n_candidates if reranker_model else n_results
-    print(f"Running {len(GOLDEN_DATASET)} queries against '{pack}'...\n")
+    golden = DATASETS.get(dataset, GOLDEN_DATASET)
+    print(f"Running {len(golden)} queries [{dataset}] against '{pack}'...\n")
 
     rows = []
     latencies = []
 
-    for item in GOLDEN_DATASET:
+    for item in golden:
         t0 = time.perf_counter()
         if inmemory_index:
             chunks_idx, metas_idx, emb_matrix = inmemory_index
@@ -446,6 +620,7 @@ def main():
     parser.add_argument("--n-candidates", type=int, default=20, help="Candidates fetched before reranking")
     parser.add_argument("--reranker", default="", help="Cross-encoder model ID for reranking (e.g. cross-encoder/ms-marco-MiniLM-L-6-v2)")
     parser.add_argument("--embedding-model", default="", dest="embedding_model_override", help="Override bi-encoder for in-memory query test (e.g. paraphrase-multilingual-mpnet-base-v2)")
+    parser.add_argument("--dataset", default="standard", choices=["standard", "hard"], help="Query dataset to use")
     parser.add_argument("--description", default="", help="Short description of this run")
     args = parser.parse_args()
 
@@ -457,6 +632,7 @@ def main():
         reranker=args.reranker,
         n_candidates=args.n_candidates,
         embedding_model_override=args.embedding_model_override,
+        dataset=args.dataset,
     )
 
 
