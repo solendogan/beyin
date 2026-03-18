@@ -91,15 +91,14 @@ async def test_mcp_server_lists_expected_tools(mcp_app):
     tools = await mcp_app.list_tools()
 
     assert [tool.name for tool in tools] == [
-        "brainpack_list",
-        "brainpack_status",
-        "brainpack_doctor",
-        "brainpack_evidence",
-        "brainpack_query",
-        "brainpack_chat",
-        "brainpack_build",
-        "brainpack_add",
-        "brainpack_add_sources",
+        "packs",
+        "status",
+        "doctor",
+        "evidence",
+        "query",
+        "build",
+        "add",
+        "add_sources",
     ]
 
 
@@ -115,7 +114,7 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
         {"OPENAI_API_KEY": "sk-test"},
         clear=False,
     ):
-        _, structured = await mcp_app.call_tool("brainpack_list", {})
+        _, structured = await mcp_app.call_tool("packs", {})
 
     assert structured == {
         "ok": True,
@@ -179,7 +178,7 @@ async def test_mcp_query_pack_returns_structured_retrieval_payload(mcp_app, tmp_
         return_value=mock_result,
     ):
         _, structured = await mcp_app.call_tool(
-            "brainpack_query",
+            "query",
             {"pack": "query-pack", "question": "What happened?"},
         )
 
@@ -242,7 +241,7 @@ async def test_mcp_evidence_returns_structured_evidence_payload(mcp_app, tmp_pat
         return_value=mock_evidence,
     ):
         _, structured = await mcp_app.call_tool(
-            "brainpack_evidence",
+            "evidence",
             {"pack": "evidence-pack", "question": "What happened?"},
         )
 
@@ -294,7 +293,7 @@ async def test_mcp_evidence_allows_built_ollama_pack_without_reachability_check(
         return_value=[],
     ):
         _, structured = await mcp_app.call_tool(
-            "brainpack_evidence",
+            "evidence",
             {"pack": "ollama-pack", "question": "What happened?"},
         )
 
@@ -344,7 +343,7 @@ async def test_mcp_evidence_blocks_on_pack_state_preconditions(
         clear=True,
     ):
         _, structured = await mcp_app.call_tool(
-            "brainpack_evidence",
+            "evidence",
             {"pack": "state-pack", "question": "What happened?"},
         )
 
@@ -365,7 +364,7 @@ async def test_mcp_doctor_returns_structured_statuses(mcp_app, tmp_path):
         clear=True,
     ):
         _, structured = await mcp_app.call_tool(
-            "brainpack_doctor",
+            "doctor",
             {"pack": "doctor-pack", "operation": "query"},
         )
 
@@ -405,7 +404,7 @@ async def test_mcp_add_returns_structured_command_result(mcp_app, tmp_path):
 
     with patch("brainpack.cli._PACKS_DIR", packs_root):
         _, structured = await mcp_app.call_tool(
-            "brainpack_add",
+            "add",
             {"source": str(source_yaml)},
         )
 
@@ -445,7 +444,7 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
         return_value=3,
     ):
         _, structured = await mcp_app.call_tool(
-            "brainpack_build",
+            "build",
             {"pack": "build-pack"},
         )
 
@@ -463,32 +462,3 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
     assert "3" in structured["data"]["stdout"]  # chunk count appears in table or verdict
 
 
-@pytest.mark.anyio
-async def test_mcp_chat_pack_returns_structured_precondition_envelope(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
-
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
-        _, structured = await mcp_app.call_tool(
-            "brainpack_chat",
-            {"pack": "missing-pack", "question": "What happened?"},
-        )
-
-    assert structured == {
-        "ok": False,
-        "meta": {
-            "schema": "brainpack.cli.v1",
-            "command": "chat",
-            "pack": "missing-pack",
-            "surface": "mcp",
-            "server_version": "0.1.0",
-        },
-        "error": {
-            "code": "pack_not_found",
-            "message": "Pack 'missing-pack' is not installed.",
-            "details": {
-                "next_action": "brainpack create",
-                "note": "Use `brainpack add <path-or-url-or-id>` if you already have a pack.yaml to import.",
-            },
-        },
-        "warnings": [],
-    }

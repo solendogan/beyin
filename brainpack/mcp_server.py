@@ -13,12 +13,11 @@ from brainpack.authoring import add_source_to_pack
 from brainpack.cli import (
     _doctor_payload,
     _evidence_payload,
-    _chat_one_shot_payload,
     _list_payload,
     _query_payload,
     _status_payload,
-    add,
-    build,
+    add as _cli_add,
+    build as _cli_build,
 )
 from brainpack.config import load_config, write_config
 from brainpack.machine_output import (
@@ -90,14 +89,14 @@ def _command_tool_result(
 
 
 @app.tool()
-def brainpack_list() -> dict[str, Any]:
-    """List installed packs using Brainpack's stable machine-safe payload."""
+def packs() -> dict[str, Any]:
+    """List all installed packs with status and next-action guidance."""
     return _tool_result(command="list", action=lambda: _list_payload(machine=True))
 
 
 @app.tool()
-def brainpack_status(pack: str) -> dict[str, Any]:
-    """Inspect one installed pack using Brainpack's stable machine-safe payload."""
+def status(pack: str) -> dict[str, Any]:
+    """Inspect one installed pack — lifecycle state, blockers, and recommended next action."""
     return _tool_result(
         command="status",
         pack=pack,
@@ -106,8 +105,8 @@ def brainpack_status(pack: str) -> dict[str, Any]:
 
 
 @app.tool()
-def brainpack_doctor(pack: str, operation: str = "all") -> dict[str, Any]:
-    """Inspect structured pack readiness for query and build operations."""
+def doctor(pack: str, operation: str = "all") -> dict[str, Any]:
+    """Check pack readiness for query or build operations."""
     return _tool_result(
         command="doctor",
         pack=pack,
@@ -116,8 +115,8 @@ def brainpack_doctor(pack: str, operation: str = "all") -> dict[str, Any]:
 
 
 @app.tool()
-def brainpack_evidence(pack: str, question: str) -> dict[str, Any]:
-    """Return retrieval evidence for external agent synthesis."""
+def evidence(pack: str, question: str) -> dict[str, Any]:
+    """Return retrieval evidence chunks for external agent synthesis — no LLM answer included."""
     return _tool_result(
         command="evidence",
         pack=pack,
@@ -126,8 +125,8 @@ def brainpack_evidence(pack: str, question: str) -> dict[str, Any]:
 
 
 @app.tool()
-def brainpack_query(pack: str, question: str) -> dict[str, Any]:
-    """Run one cited retrieval query against a pack."""
+def query(pack: str, question: str) -> dict[str, Any]:
+    """Run a cited retrieval query against a pack and return a generated answer."""
     return _tool_result(
         command="query",
         pack=pack,
@@ -135,41 +134,32 @@ def brainpack_query(pack: str, question: str) -> dict[str, Any]:
     )
 
 
-@app.tool()
-def brainpack_chat(pack: str, question: str) -> dict[str, Any]:
-    """Run one one-shot chat query against a pack."""
-    return _tool_result(
-        command="chat",
-        pack=pack,
-        action=lambda: _chat_one_shot_payload(pack, question, machine=True),
-    )
-
 
 @app.tool()
-def brainpack_build(
+def build(
     pack: str,
     model: str = "small",
     language: str | None = None,
 ) -> dict[str, Any]:
-    """Build or incrementally update a pack."""
+    """Build or incrementally update a pack's index."""
     return _command_tool_result(
         command="build",
         pack=pack,
-        action=lambda: build(pack=pack, model=model, language=language),
+        action=lambda: _cli_build(pack=pack, model=model, language=language),
     )
 
 
 @app.tool()
-def brainpack_add(source: str) -> dict[str, Any]:
-    """Install a pack from a local path, URL, or marketplace-style identifier."""
+def add(source: str) -> dict[str, Any]:
+    """Install a pack from a local path, URL, or registry slug."""
     return _command_tool_result(
         command="add",
-        action=lambda: add(source=source),
+        action=lambda: _cli_add(source=source),
     )
 
 
 @app.tool()
-def brainpack_add_sources(pack: str, urls: list[str], model: str = "small", language: str | None = None) -> dict[str, Any]:
+def add_sources(pack: str, urls: list[str], model: str = "small", language: str | None = None) -> dict[str, Any]:
     """Add one or more source URLs to an existing pack and rebuild it."""
     def action() -> None:
         pack_dir = Path.home() / ".brainpacks" / pack
@@ -178,11 +168,13 @@ def brainpack_add_sources(pack: str, urls: list[str], model: str = "small", lang
         for url in urls:
             updated = add_source_to_pack(updated, url)
         write_config(updated, pack_dir / "pack.yaml")
-        build(pack=pack, model=model, language=language)
+        _cli_build(pack=pack, model=model, language=language)
 
     return _command_tool_result(command="add_sources", pack=pack, action=action)
 
 
 def run_stdio_server() -> None:
     """Run the Brainpack MCP server over stdio."""
+    import sys
+    print("Brainpack MCP server running on stdio.", file=sys.stderr)
     app.run(transport="stdio")
