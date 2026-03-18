@@ -11,13 +11,15 @@ from mcp.server.fastmcp import FastMCP
 from brainpack import __version__
 from brainpack.authoring import add_source_to_pack
 from brainpack.cli import (
+    add as _cli_add,
+    build as _cli_build,
+)
+from brainpack.payloads import (
     _doctor_payload,
     _evidence_payload,
     _list_payload,
     _query_payload,
     _status_payload,
-    add as _cli_add,
-    build as _cli_build,
 )
 from brainpack.config import load_config, write_config
 from brainpack.machine_output import (
