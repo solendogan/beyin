@@ -7,13 +7,15 @@ import typer
 
 from brainpack.source_ids import canonical_source_id
 
-_STATE_SCHEMA_VERSION = 2
+_STATE_SCHEMA_VERSION = 3
 
 
 def _default_state() -> Dict[str, Any]:
     return {
         "schema_version": _STATE_SCHEMA_VERSION,
         "embedding_model": None,
+        "transcription_model": None,
+        "transcription_language": None,
         "processed": {},
         "audio_steps": {},
         "last_build_result": None,
@@ -68,6 +70,16 @@ def _upgrade_state(state: Dict[str, Any]) -> Dict[str, Any]:
     upgraded["schema_version"] = _STATE_SCHEMA_VERSION
     upgraded["processed"] = _upgrade_processed(upgraded.get("processed", {}))
     upgraded["audio_steps"] = _upgrade_audio_steps(upgraded.get("audio_steps", {}))
+    upgraded["transcription_model"] = (
+        None
+        if upgraded.get("transcription_model") is None
+        else str(upgraded.get("transcription_model"))
+    )
+    upgraded["transcription_language"] = (
+        None
+        if upgraded.get("transcription_language") is None
+        else str(upgraded.get("transcription_language"))
+    )
     upgraded["last_build_result"] = (
         None
         if upgraded.get("last_build_result") is None
@@ -149,6 +161,7 @@ def mark_audio_step(
     step: str,
     title: str = "",
     source_id: str | None = None,
+    parent_source_url: str | None = None,
 ) -> None:
     """
     Mark a specific step as complete for a source.
@@ -163,6 +176,8 @@ def mark_audio_step(
     )
     if title:
         episode["title"] = title
+    if parent_source_url:
+        episode["parent_source_url"] = parent_source_url
     episode.setdefault("stages", {})[step] = True
 
 
@@ -201,3 +216,47 @@ def check_model_provenance(
             f"Run `brainpack build {pack_name} --reset` to rebuild from scratch, "
             f"or revert pack.yaml to use '{recorded}'."
         )
+
+
+def check_transcription_provenance(
+    state: Dict[str, Any],
+    current_model: str,
+    current_language: str | None,
+    pack_name: str,
+) -> None:
+    """
+    Enforce transcription-model consistency for audio-derived pack data.
+
+    Audio transcripts and chunks should not silently mix outputs produced by
+    different Whisper model sizes or language settings.
+    """
+    recorded_model = state.get("transcription_model")
+    recorded_language = state.get("transcription_language")
+    has_audio_state = bool(state.get("audio_steps"))
+
+    if recorded_model is None:
+        state["transcription_model"] = current_model
+        state["transcription_language"] = current_language
+        return
+
+    if recorded_model != current_model:
+        if has_audio_state:
+            raise typer.BadParameter(
+                f"Transcription model mismatch: pack '{pack_name}' was built with "
+                f"Whisper '{recorded_model}' but the current build is using '{current_model}'. "
+                f"Run `brainpack build {pack_name} --reset` to rebuild transcripts and chunks from scratch, "
+                f"or switch back to '{recorded_model}'."
+            )
+        state["transcription_model"] = current_model
+
+    if recorded_language != current_language:
+        if has_audio_state:
+            previous = recorded_language or "auto-detect"
+            current = current_language or "auto-detect"
+            raise typer.BadParameter(
+                f"Transcription language mismatch: pack '{pack_name}' was built with "
+                f"'{previous}' but the current build is using '{current}'. "
+                f"Run `brainpack build {pack_name} --reset` to rebuild transcripts and chunks from scratch, "
+                f"or switch back to '{previous}'."
+            )
+        state["transcription_language"] = current_language

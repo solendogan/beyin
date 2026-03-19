@@ -81,7 +81,7 @@ def _transcribe_mlx(
         language=language,                    # None = auto-detect
         condition_on_previous_text=False,     # TRN-02 mitigation: no native VAD in mlx-whisper
         word_timestamps=False,               # segment-level sufficient (TRN-04)
-        verbose=verbose,                     # per-segment output to stdout
+        verbose=True if verbose else False,  # False keeps MLX progress visible without per-segment logs
     )
     return [
         {"start": seg["start"], "end": seg["end"], "text": seg["text"].strip()}

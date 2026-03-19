@@ -8,9 +8,11 @@ from typing import Any, Callable, Dict, Optional
 from brainpack.config import PackConfig, _load_config_from_file, load_config
 from brainpack.downloader import detect_source_type
 from brainpack.pack_state import load_state
+from brainpack.source_ids import canonical_source_id
 
 _ORIGIN_FILE = "origin.json"
 _MARKETPLACE_MAP_FILE = "marketplace-map.json"
+_ORIGIN_SCHEMA_VERSION = 2
 
 
 def utc_now_iso() -> str:
@@ -23,12 +25,25 @@ def load_pack_origin(pack_dir: Path) -> Dict[str, Any]:
     path = pack_dir / _ORIGIN_FILE
     if not path.exists():
         return {}
-    return json.loads(path.read_text())
+    raw = json.loads(path.read_text())
+    if not isinstance(raw, dict):
+        return {}
+    origin = dict(raw)
+    origin["schema_version"] = _ORIGIN_SCHEMA_VERSION
+    if origin.get("last_update_summary") is None:
+        origin["last_update_summary"] = []
+    elif not isinstance(origin.get("last_update_summary"), list):
+        origin["last_update_summary"] = [str(origin["last_update_summary"])]
+    return origin
 
 
 def save_pack_origin(pack_dir: Path, origin: Dict[str, Any]) -> None:
     """Persist per-pack origin metadata."""
-    (pack_dir / _ORIGIN_FILE).write_text(json.dumps(origin, indent=2))
+    payload = dict(origin)
+    payload["schema_version"] = _ORIGIN_SCHEMA_VERSION
+    if payload.get("last_update_summary") is None:
+        payload["last_update_summary"] = []
+    (pack_dir / _ORIGIN_FILE).write_text(json.dumps(payload, indent=2))
 
 
 def marketplace_mapping_path(packs_dir: Path) -> Path:
@@ -77,6 +92,12 @@ def resolve_pack_origin(source: str, packs_dir: Path) -> Dict[str, str]:
 def pack_config_hash(pack_dir: Path) -> str:
     """Hash the installed pack.yaml contents for stale/build tracking."""
     raw = (pack_dir / "pack.yaml").read_text()
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def pack_file_hash(path: Path) -> str:
+    """Hash an arbitrary pack.yaml file for sync tracking."""
+    raw = path.read_text()
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
@@ -249,6 +270,8 @@ def inspect_pack(
     summary["last_build_summary"] = state.get("last_build_summary")
     summary["last_update_at"] = origin.get("last_updated_at") or origin.get("added_at")
     summary["last_update_summary"] = origin.get("last_update_summary", [])
+    summary["last_sync_at"] = origin.get("last_sync_at")
+    summary["last_sync_status"] = origin.get("last_sync_status")
     return summary
 
 
@@ -257,7 +280,6 @@ def serialize_pack_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "name": summary["name"],
         "status": summary["status"],
-        "type": summary["type"],
         "provider": summary["provider"],
         "source_count": summary["source_count"],
         "recent_summary": summary["recent_summary"],
@@ -268,16 +290,101 @@ def serialize_pack_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _serialize_sources(config: Any, state: Dict[str, Any]) -> list:
+    """Build a detailed sources list from config and build state."""
+    processed = state.get("processed", {})
+    audio_steps = state.get("audio_steps", {})
+    playlist_titles = state.get("playlist_titles", {})
+
+    def _source_audio_entries(url: str, source_type: str) -> list[dict]:
+        direct_sid = canonical_source_id(url)
+        if direct_sid in audio_steps:
+            return [audio_steps[direct_sid]]
+        owned = [
+            entry for entry in audio_steps.values()
+            if entry.get("parent_source_url") == url
+        ]
+        if owned:
+            return sorted(owned, key=lambda e: e.get("title") or e.get("url") or "")
+        if source_type not in {"youtube", "podcast"}:
+            return []
+        return []
+
+    result = []
+    for source in config.sources:
+        url = source.url
+        sid = canonical_source_id(url)
+        source_type = detect_source_type(url)
+        source_audio_entries = _source_audio_entries(url, source_type)
+
+        if sid in processed:
+            entry = processed[sid]
+            result.append({
+                "url": url,
+                "title": entry.get("title") or url,
+                "status": "ready" if entry.get("status") == "done" else "failed",
+                "type": source_type,
+            })
+        elif source_audio_entries and sid in audio_steps:
+            entry = source_audio_entries[0]
+            stages = entry.get("stages", {})
+            if stages.get("embedded"):
+                status = "ready"
+            elif stages.get("transcribed") or stages.get("downloaded"):
+                status = "partial"
+            else:
+                status = "pending"
+            result.append({
+                "url": url,
+                "title": entry.get("title") or url,
+                "status": status,
+                "type": source_type,
+            })
+        elif source_type in {"youtube", "podcast"} and source_audio_entries:
+            embedded = sum(1 for e in source_audio_entries if e.get("stages", {}).get("embedded"))
+            total = len(source_audio_entries)
+            episodes = [
+                {
+                    "url": ep.get("url", ""),
+                    "title": ep.get("title", ""),
+                    "status": "ready" if ep.get("stages", {}).get("embedded") else "partial" if ep.get("stages", {}).get("transcribed") or ep.get("stages", {}).get("downloaded") else "pending",
+                }
+                for ep in source_audio_entries
+            ]
+            result.append({
+                "url": url,
+                "title": playlist_titles.get(url) or url,
+                "status": f"{embedded}/{total} ready",
+                "type": source_type,
+                "episodes": episodes,
+            })
+        else:
+            result.append({
+                "url": url,
+                "title": url,
+                "status": "pending",
+                "type": source_type,
+            })
+    return result
+
+
 def serialize_pack_detail(summary: Dict[str, Any]) -> Dict[str, Any]:
     """Return the stable public machine payload for one pack detail record."""
     payload = serialize_pack_summary(summary)
+    config = summary.get("config")
+    state = summary.get("state", {})
     payload.update(
         {
+            "version": config.version if config else None,
+            "description": config.description if config else None,
+            "tags": list(config.tags) if config and config.tags else [],
+            "contributors": list(config.contributors) if config and config.contributors else [],
             "last_build_at": summary.get("last_build_at"),
             "last_update_at": summary.get("last_update_at"),
             "last_update_summary": [
                 str(item) for item in summary.get("last_update_summary", [])
             ],
+            "sources": _serialize_sources(config, state) if config else [],
         }
     )
     return payload

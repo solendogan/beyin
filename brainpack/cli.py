@@ -39,6 +39,7 @@ from brainpack.inventory import (
     load_config_from_source_path,
     load_pack_origin,
     next_action_reason,
+    pack_file_hash,
     pack_config_hash,
     resolve_pack_origin,
     save_pack_origin,
@@ -49,6 +50,7 @@ from brainpack.inventory import (
 )
 from brainpack.pack_state import (
     check_model_provenance,
+    check_transcription_provenance,
     get_audio_step,
     is_audio_step_done,
     is_processed,
@@ -670,6 +672,21 @@ def _write_pack_yaml_from_source(
             Path(tmp_file).unlink(missing_ok=True)
 
 
+def _runtime_update_status(pack: str, state: dict, current_hash: str) -> tuple[str, str | None]:
+    """Return a short runtime-status label and an explicit follow-up command, if any."""
+    result = str(state.get("last_build_result") or "").strip() or "not-built"
+    built_hash = state.get("last_built_pack_hash")
+    if result == "success" and built_hash == current_hash:
+        return "ready", None
+    if built_hash and built_hash != current_hash:
+        return "stale", f"brainpack build {pack}"
+    if result in {"failed", "mixed", "completed_with_issues", "error"}:
+        return result, f"brainpack build {pack}"
+    if result == "success":
+        return "success-with-older-definition", f"brainpack build {pack}"
+    return result, f"brainpack build {pack}"
+
+
 @app.command()
 def create() -> None:
     """Guide the user through creating a new pack without hand-editing YAML."""
@@ -740,11 +757,30 @@ def build(
 
     # SAF-01: enforce model provenance before any ChromaDB write
     check_model_provenance(state, config.embedding_model, pack_name=config.id)
+    if _has_audio_sources(config):
+        check_transcription_provenance(
+            state,
+            current_model=str(build_defaults["model"]),
+            current_language=build_defaults["language"],
+            pack_name=config.id,
+        )
     save_state(pack_dir, state)  # persist model registration on first build
 
     model_size = build_defaults["model"]
-    model_obj = load_model(config.embedding_model)
-    collection = get_collection(pack_dir, config.id)
+    # Lazy-loaded: only initialized when we actually need to embed something.
+    _model_obj = None
+    _collection = None
+    _embedding_resources_announced = False
+
+    def _get_embed_resources():
+        nonlocal _model_obj, _collection, _embedding_resources_announced
+        if _model_obj is None:
+            if not verbose and not _embedding_resources_announced:
+                typer.echo(f"  [embed] Loading embedding model: {config.embedding_model}")
+                _embedding_resources_announced = True
+            _model_obj = load_model(config.embedding_model)
+            _collection = get_collection(pack_dir, config.id)
+        return _model_obj, _collection
 
     audio_dir = pack_dir / "audio"
     transcripts_dir = pack_dir / "transcripts"
@@ -809,6 +845,7 @@ def build(
             text, title = result
             chunks = chunk_text(text)
             metadatas = [{"url": source_url, "title": title} for _ in chunks]
+            model_obj, collection = _get_embed_resources()
             new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_url)
             mark_processed(state, source_url, title)
             save_state(pack_dir, state)
@@ -845,6 +882,7 @@ def build(
                 episode_url = episode["url"]
                 episode_title = episode.get("title", "Unknown")
                 source_id = canonical_source_id(episode, source_type=source_type)
+                episode_counter = f"Episode {idx}/{total}: {episode_title}"
 
                 # Skip if fully embedded already
                 if is_audio_step_done(state, episode_url, "embedded", source_id=source_id):
@@ -855,16 +893,27 @@ def build(
                 # Step 1: download
                 audio_path = None
                 ep_step = get_audio_step(state, episode_url, source_id=source_id)
-                if ep_step.get("stages", {}).get("downloaded"):
-                    candidates = _candidate_audio_paths(audio_dir, source_id, episode)
-                    if candidates:
-                        audio_path = candidates[0]
-                    if audio_path is None or not audio_path.exists() or audio_path.stat().st_size < 10_000:
-                        audio_path = None  # force re-download
+                # Always scan for existing audio files — handles interrupted builds where
+                # the file was saved but state wasn't (avoids unnecessary re-downloads).
+                candidates = _candidate_audio_paths(audio_dir, source_id, episode)
+                if candidates:
+                    candidate = candidates[0]
+                    if candidate.exists() and candidate.stat().st_size >= 10_000:
+                        audio_path = candidate
+                        if not ep_step.get("stages", {}).get("downloaded"):
+                            # File exists but state wasn't saved — recover
+                            mark_audio_step(
+                                state,
+                                episode_url,
+                                "downloaded",
+                                episode_title,
+                                source_id=source_id,
+                                parent_source_url=source_url,
+                            )
+                            save_state(pack_dir, state)
 
                 if audio_path is None:
-                    if verbose:
-                        typer.echo(f"  [download] {episode_title}")
+                    typer.echo(f"  [download] {episode_counter}")
                     if source_type == "youtube":
                         audio_path = download_audio(episode_url, audio_dir, episode_title, verbose=verbose)
                     else:
@@ -872,8 +921,7 @@ def build(
 
                     if audio_path is None:
                         # Retry once
-                        if verbose:
-                            typer.echo(f"  [download] retrying {episode_title}...")
+                        typer.echo(f"  [download] retrying {episode_counter}...")
                         if source_type == "youtube":
                             audio_path = download_audio(episode_url, audio_dir, episode_title, verbose=verbose)
                         else:
@@ -890,7 +938,14 @@ def build(
                         continue
 
                     audio_path = _canonical_audio_path(audio_dir, source_id, audio_path)
-                    mark_audio_step(state, episode_url, "downloaded", episode_title, source_id=source_id)
+                    mark_audio_step(
+                        state,
+                        episode_url,
+                        "downloaded",
+                        episode_title,
+                        source_id=source_id,
+                        parent_source_url=source_url,
+                    )
                     save_state(pack_dir, state)
 
                 # Step 2: transcribe
@@ -899,21 +954,39 @@ def build(
                 if is_audio_step_done(state, episode_url, "transcribed", source_id=source_id):
                     segments = _load_transcript_segments(transcript_path, legacy_transcript_path)
                 else:
-                    if verbose:
-                        typer.echo(f"  [transcribe] Episode {idx}/{total}: {episode_title}")
-                    segments = transcribe_audio(audio_path, model_size=model_size, language=language, verbose=verbose)
-                    if not segments:
-                        typer.echo(
-                            f"  [warn] Transcription failed for {episode_title} — skipping",
-                            err=True,
+                    # Check if transcript file already exists (interrupted build recovery)
+                    existing_segments = _load_transcript_segments(transcript_path, legacy_transcript_path)
+                    if existing_segments:
+                        segments = existing_segments
+                        mark_audio_step(
+                            state,
+                            episode_url,
+                            "transcribed",
+                            source_id=source_id,
+                            parent_source_url=source_url,
                         )
-                        mark_failed(state, episode_url, "transcription returned empty", source_id=source_id)
                         save_state(pack_dir, state)
-                        report.record(episode_title, "failed", failure_reason="transcription returned empty")
-                        continue
-                    _save_transcript_segments(transcript_path, segments)
-                    mark_audio_step(state, episode_url, "transcribed", source_id=source_id)
-                    save_state(pack_dir, state)
+                    else:
+                        typer.echo(f"  [transcribe] {episode_counter}")
+                        segments = transcribe_audio(audio_path, model_size=model_size, language=language, verbose=verbose)
+                        if not segments:
+                            typer.echo(
+                                f"  [warn] Transcription failed for {episode_title} — skipping",
+                                err=True,
+                            )
+                            mark_failed(state, episode_url, "transcription returned empty", source_id=source_id)
+                            save_state(pack_dir, state)
+                            report.record(episode_title, "failed", failure_reason="transcription returned empty")
+                            continue
+                        _save_transcript_segments(transcript_path, segments)
+                        mark_audio_step(
+                            state,
+                            episode_url,
+                            "transcribed",
+                            source_id=source_id,
+                            parent_source_url=source_url,
+                        )
+                        save_state(pack_dir, state)
 
                 if not segments:
                     typer.echo(
@@ -930,8 +1003,17 @@ def build(
                     metadata = {"url": episode_url, "title": episode_title, "source_id": source_id}
                     metadata.update(chunk_range)
                     metadatas.append(metadata)
+                if not verbose:
+                    typer.echo(f"  [embed] {episode_counter}")
+                model_obj, collection = _get_embed_resources()
                 new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_id)
-                mark_audio_step(state, episode_url, "embedded", source_id=source_id)
+                mark_audio_step(
+                    state,
+                    episode_url,
+                    "embedded",
+                    source_id=source_id,
+                    parent_source_url=source_url,
+                )
                 save_state(pack_dir, state)
                 if verbose:
                     typer.echo(f"  [embed] {episode_title} — {new_count} chunks")
@@ -1163,6 +1245,9 @@ def status_command(
     build_date = (summary.get("last_build_at") or "")[:10]
     if build_date:
         info_rows.append(("Last built", build_date))
+    sync_date = (summary.get("last_sync_at") or "")[:10]
+    if sync_date:
+        info_rows.append(("Last synced", sync_date))
     if config.tags:
         info_rows.append(("Tags", ", ".join(config.tags)))
     if config.contributors:
@@ -1213,6 +1298,20 @@ def status_command(
             return yellow("partial")
         return dim("pending")
 
+    def _source_audio_entries(url: str, source_type: str) -> list[dict]:
+        direct_sid = canonical_source_id(url)
+        if direct_sid in audio_steps:
+            return [audio_steps[direct_sid]]
+        owned = [
+            entry for entry in audio_steps.values()
+            if entry.get("parent_source_url") == url
+        ]
+        if owned:
+            return sorted(owned, key=lambda e: e.get("title") or e.get("url") or "")
+        if source_type not in {"youtube", "podcast"}:
+            return []
+        return []
+
     # Header + separator
     typer.echo(_srow(dim("#"), dim("Status"), dim("Title")))
     typer.echo("  " + dim("─" * (term_w - 2)))
@@ -1222,6 +1321,7 @@ def status_command(
         url = source.url
         sid = canonical_source_id(url)
         source_type = detect_source_type(url)
+        source_audio_entries = _source_audio_entries(url, source_type)
 
         if sid in processed_state:
             entry = processed_state[sid]
@@ -1232,8 +1332,8 @@ def status_command(
             for line in wrap_text(url, W_TITLE):
                 typer.echo(_CONT + dim(line))
 
-        elif sid in audio_steps:
-            entry = audio_steps[sid]
+        elif source_audio_entries and sid in audio_steps:
+            entry = source_audio_entries[0]
             status_cell = _ep_status(entry.get("stages", {}))
             title = entry.get("title") or url
             for j, line in enumerate(wrap_text(title, W_TITLE)):
@@ -1241,9 +1341,9 @@ def status_command(
             for line in wrap_text(url, W_TITLE):
                 typer.echo(_CONT + dim(line))
 
-        elif source_type in {"youtube", "podcast"} and audio_steps:
-            embedded = sum(1 for e in audio_steps.values() if e.get("stages", {}).get("embedded"))
-            total = len(audio_steps)
+        elif source_type in {"youtube", "podcast"} and source_audio_entries:
+            embedded = sum(1 for e in source_audio_entries if e.get("stages", {}).get("embedded"))
+            total = len(source_audio_entries)
             pl_status = green(f"{embedded}/{total} ready") if embedded == total else yellow(f"{embedded}/{total} ready")
             real_title = playlist_titles_state.get(url) or _PLAYLIST_LABEL.get(source_type, "Playlist")
             for j, line in enumerate(wrap_text(real_title, W_TITLE)):
@@ -1251,7 +1351,7 @@ def status_command(
             for line in wrap_text(url, W_TITLE):
                 typer.echo(_CONT + dim(line))
             typer.echo()
-            for k, ep in enumerate(sorted(audio_steps.values(), key=lambda e: e.get("title") or ""), start=1):
+            for k, ep in enumerate(source_audio_entries, start=1):
                 ep_status = _ep_status(ep.get("stages", {}))
                 ep_prefix = f"{k}. "
                 ep_indent = " " * len(ep_prefix)
@@ -1301,6 +1401,7 @@ def add(
 
     dest_dir.mkdir(parents=True)
     _write_pack_yaml_from_source(resolved, dest_dir / "pack.yaml")
+    installed_hash = pack_config_hash(dest_dir)
     save_pack_origin(
         dest_dir,
         {
@@ -1308,6 +1409,10 @@ def add(
             "source": resolved["source"],
             "resolved": resolved["resolved"],
             "added_at": utc_now_iso(),
+            "last_sync_at": utc_now_iso(),
+            "last_sync_status": "synced",
+            "last_source_hash": installed_hash,
+            "last_synced_pack_hash": installed_hash,
             "last_updated_at": utc_now_iso(),
             "last_update_summary": ["initial add"],
         },
@@ -1349,6 +1454,8 @@ def update(
         typer.echo(f"Add it first: brainpack add <path-or-url-or-id>", err=True)
         raise typer.Exit(code=1)
 
+    state = load_state(pack_dir)
+    current_hash = pack_config_hash(pack_dir)
     origin = load_pack_origin(pack_dir)
     if origin.get("source"):
         try:
@@ -1368,17 +1475,23 @@ def update(
                     err=True,
                 )
                 raise typer.Exit(code=1)
-            changes = summarize_pack_changes(current_config, incoming_config)
+            incoming_hash = pack_file_hash(tmp_yaml)
+            changes = [] if incoming_hash == current_hash else summarize_pack_changes(current_config, incoming_config)
             if changes:
                 typer.echo("Updating pack definition:")
                 for line in changes:
                     typer.echo(f"  - {line}")
                 shutil.copy2(tmp_yaml, pack_dir / "pack.yaml")
+                current_hash = pack_config_hash(pack_dir)
             origin.update(
                 {
                     "type": resolved["type"],
                     "source": resolved["source"],
                     "resolved": resolved["resolved"],
+                    "last_sync_at": utc_now_iso(),
+                    "last_sync_status": "synced",
+                    "last_source_hash": incoming_hash,
+                    "last_synced_pack_hash": current_hash,
                     "last_updated_at": utc_now_iso(),
                     "last_update_summary": changes or ["no config changes"],
                 }
@@ -1386,10 +1499,29 @@ def update(
             save_pack_origin(pack_dir, origin)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
-    else:
-        typer.echo(f"No remembered origin for '{pack}' — rebuilding installed pack without remote refresh.")
 
-    build(pack=pack, model=model, language=language)
+        if not changes:
+            runtime_status, next_step = _runtime_update_status(pack, state, current_hash)
+            if runtime_status == "ready":
+                typer.echo(f"Pack '{pack}' is up-to-date.")
+            else:
+                typer.echo(f"Pack '{pack}' definition is already current.")
+                typer.echo(f"Runtime status: {runtime_status}")
+                if next_step:
+                    typer.echo(f"Next step: {next_step}")
+            return
+    else:
+        runtime_status, next_step = _runtime_update_status(pack, state, current_hash)
+        if runtime_status == "ready":
+            typer.echo(f"Pack '{pack}' is up-to-date.")
+        else:
+            typer.echo(f"Pack '{pack}' has no remembered remote origin.")
+            typer.echo(f"Runtime status: {runtime_status}")
+            if next_step:
+                typer.echo(f"Next step: {next_step}")
+        return
+
+    build(pack=pack, model=model, language=language, reset=False, verbose=False)
 
 
 @app.command(name="add-source")

@@ -64,8 +64,6 @@ def _save_global_settings(home: Path, **overrides):
         BrainpackSettings(
             version=1,
             setup_completed=True,
-            preferred_mode=overrides.get("preferred_mode", "agent"),
-            audio_enabled_by_default=overrides.get("audio_enabled_by_default", True),
             preferred_transcription_backend=overrides.get(
                 "preferred_transcription_backend",
                 "faster-whisper",
@@ -384,23 +382,17 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
 
     assert first.exit_code == 0
     assert settings.setup_completed is True
-    assert settings.preferred_mode == "agent"
     assert "Brainpack v0.1.0" in first.output
     assert "Start your first setup now" in first.output
     first_select = next(
         kwargs for prompt_type, kwargs in backend.calls if prompt_type == "select"
     )
     assert "Recommended" in str(first_select.get("choices", ""))
-    assert "Agent mode            ready" in first.output
-    assert "Audio/video defaults  off for now" in first.output
-    assert "Transcription         configure when you enable audio/video" in first.output
-    assert "Local answers         skip for now" in first.output
     assert first.output.count("Setup complete") == 1
     assert "Quick start" in first.output
     assert second.exit_code == 0
     assert "Setup complete" not in second.output
     assert "What would you like to do?" in second.output
-    assert "Authoring menu cancelled." in second.output
     assert load_backend.call_count == 2
 
 
@@ -414,8 +406,8 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
     backend = _FakePromptBackend(
         [
             "custom",
-            "both",
-            False,
+            "faster-whisper",
+            "small",
             "openai",
             True,
         ]
@@ -437,12 +429,10 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
 
     assert completed is True
     assert settings.setup_completed is True
-    assert settings.preferred_mode == "both"
-    assert settings.audio_enabled_by_default is False
     assert settings.preferred_transcription_backend == "faster-whisper"
     assert settings.preferred_whisper_model == "small"
     assert settings.preferred_local_provider == "openai"
-    assert backend_names == []
+    assert "mlx-whisper" not in backend_names
 
 
 def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch, tmp_path):
@@ -452,7 +442,7 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
     from brainpack.cli import app
     from brainpack.settings import load_settings
 
-    _save_global_settings(tmp_path, preferred_mode="agent", preferred_whisper_model="small")
+    _save_global_settings(tmp_path, preferred_whisper_model="small")
     runner = CliRunner()
     # Sequence: menu → "mode", edit mode → "local",
     #           menu → "whisper_model", edit whisper → "large",
@@ -476,7 +466,6 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
     settings = load_settings()
 
     assert result.exit_code == 0
-    assert settings.preferred_mode == "local"
     assert settings.preferred_whisper_model == "large"
     # Settings table is always shown
     assert "Brainpack Settings" in result.output
@@ -492,7 +481,7 @@ def test_settings_command_shows_table_in_non_tty(
 
     from brainpack.cli import app
 
-    _save_global_settings(tmp_path, preferred_mode="local")
+    _save_global_settings(tmp_path)
     runner = CliRunner()
 
     with patch("brainpack.cli.is_interactive_session", return_value=False), patch(
@@ -503,7 +492,7 @@ def test_settings_command_shows_table_in_non_tty(
 
     assert result.exit_code == 0
     assert "Brainpack Settings" in result.output
-    assert "Mode" in result.output
+    assert "Transcription" in result.output
     assert "brainpack settings" in result.output
 
 
@@ -516,7 +505,7 @@ def test_saved_local_preference_shown_in_home_settings_section(
 
     from brainpack.cli import app
 
-    _save_global_settings(tmp_path, preferred_mode="local")
+    _save_global_settings(tmp_path)
     runner = CliRunner()
     packs_root = tmp_path / "brainpacks"
 
@@ -556,7 +545,6 @@ def test_cancelled_settings_edit_preserves_previous_settings(monkeypatch, tmp_pa
 
     _save_global_settings(
         tmp_path,
-        preferred_mode="agent",
         preferred_whisper_model="small",
         preferred_local_provider="ollama",
     )
@@ -573,7 +561,6 @@ def test_cancelled_settings_edit_preserves_previous_settings(monkeypatch, tmp_pa
 
     assert completed is False
     assert settings_path().read_text() == original
-    assert load_settings().preferred_mode == "agent"
 
 
 def test_plain_module_import_does_not_import_inquirerpy():
@@ -1118,7 +1105,7 @@ def test_build_local_path_unsupported_suffix_fails_clearly(tmp_path):
             "whisper_model: large\n",
             "medium",
             [],
-            "large",
+            "medium",
         ),
         (
             "name: test-pack\n"
@@ -1167,7 +1154,7 @@ def test_build_whisper_settings_precedence_for_audio_sources(
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli._youtube_build_issue", return_value=None), \
          patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=[episode]), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
          patch("brainpack.cli.download_audio", return_value=audio_file), \
          patch("brainpack.cli.transcribe_audio", mock_transcribe), \
          patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
@@ -1686,7 +1673,7 @@ def test_build_persists_structured_transcripts_with_timestamps(tmp_path):
          patch("brainpack.cli.load_model", return_value=MagicMock()), \
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=[episode]), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
          patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
          patch("brainpack.cli._youtube_build_issue", return_value=None), \
          patch("brainpack.cli.download_audio", return_value=audio_path), \
@@ -1767,7 +1754,7 @@ def test_build_resume_reuses_structured_transcript_segments(tmp_path):
          patch("brainpack.cli.load_model", return_value=MagicMock()), \
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=[episode]), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
          patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
          patch("brainpack.cli._youtube_build_issue", return_value=None), \
          patch("brainpack.cli.download_audio") as mock_download, \
@@ -1839,7 +1826,7 @@ class TestAudioBuild:
              patch("brainpack.cli.get_collection", return_value=MagicMock()), \
              patch("brainpack.cli.detect_source_type", return_value="youtube"), \
              patch("brainpack.cli.check_deno_available", return_value=True), \
-             patch("brainpack.cli.list_youtube_episodes", return_value=[episode]), \
+             patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
              patch("brainpack.cli.download_audio", mock_download), \
              patch("brainpack.cli.transcribe_audio", mock_transcribe), \
              patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
@@ -1932,7 +1919,7 @@ class TestAudioBuild:
              patch("brainpack.cli.get_collection", return_value=MagicMock()), \
              patch("brainpack.cli.detect_source_type", return_value="youtube"), \
              patch("brainpack.cli.check_deno_available", return_value=True), \
-             patch("brainpack.cli.list_youtube_episodes", return_value=[episode]), \
+             patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
              patch("brainpack.cli.download_audio", return_value=audio_file), \
              patch("brainpack.cli.transcribe_audio", mock_transcribe), \
              patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
@@ -1978,7 +1965,7 @@ class TestAudioBuild:
              patch("brainpack.cli.get_collection", return_value=MagicMock()), \
              patch("brainpack.cli.detect_source_type", return_value="youtube"), \
              patch("brainpack.cli.check_deno_available", return_value=True), \
-             patch("brainpack.cli.list_youtube_episodes", return_value=[episode]), \
+             patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
              patch("brainpack.cli.download_audio", return_value=audio_file), \
              patch("brainpack.cli.transcribe_audio", mock_transcribe), \
              patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
@@ -2687,7 +2674,7 @@ def test_build_transcribe_counter(tmp_path):
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", return_value="youtube"), \
          patch("brainpack.cli.check_deno_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=episodes), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
          patch("brainpack.cli.is_audio_step_done", return_value=False), \
          patch("brainpack.cli.get_audio_step", return_value={}), \
          patch("brainpack.cli.download_audio", return_value=audio_file), \
@@ -2734,7 +2721,7 @@ def test_build_embed_label(tmp_path):
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", return_value="youtube"), \
          patch("brainpack.cli.check_deno_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=episodes), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
          patch("brainpack.cli.is_audio_step_done", return_value=False), \
          patch("brainpack.cli.get_audio_step", return_value={}), \
          patch("brainpack.cli.download_audio", return_value=audio_file), \
@@ -2779,7 +2766,7 @@ def test_build_final_summary_table(tmp_path):
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", return_value="youtube"), \
          patch("brainpack.cli.check_deno_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=episodes), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
          patch("brainpack.cli.is_audio_step_done", return_value=False), \
          patch("brainpack.cli.get_audio_step", return_value={}), \
          patch("brainpack.cli.download_audio", return_value=audio_file), \
@@ -2823,7 +2810,7 @@ def test_build_all_up_to_date(tmp_path):
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", return_value="youtube"), \
          patch("brainpack.cli.check_deno_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=episodes), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
          patch("brainpack.cli.is_audio_step_done", return_value=True), \
          patch("brainpack.cli.get_audio_step", return_value={}), \
          patch("brainpack.cli.embed_and_store", return_value=0), \
@@ -3022,6 +3009,50 @@ def test_status_blocked_pack_shows_blockers_inline_without_coaching(tmp_path):
     # But coaching copy (Use with agent/local model blocks) must not be appended
     assert "Use with agent" not in result.output
     assert "Use with local model" not in result.output
+
+
+def test_status_audio_sources_do_not_repeat_unowned_partial_episodes(tmp_path):
+    """status should scope partial audio episodes to their owning source."""
+    from brainpack.cli import app
+    from brainpack.pack_state import save_state
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "demo-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: demo-pack\n"
+        "description: demo\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - https://www.youtube.com/playlist?list=PL123\n"
+        "  - https://www.youtube.com/watch?v=yoXW3XD8li0\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {},
+            "audio_steps": {
+                "youtube:iYxLoh3Dqfg": {
+                    "source_id": "youtube:iYxLoh3Dqfg",
+                    "url": "https://www.youtube.com/watch?v=iYxLoh3Dqfg",
+                    "title": "Yazilim sektorundeki dolandiricilik",
+                    "parent_source_url": "https://www.youtube.com/playlist?list=PL123",
+                    "stages": {"downloaded": True},
+                }
+            },
+        },
+    )
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["status", "demo-pack"])
+
+    assert result.exit_code == 0
+    output = result.output
+    assert output.count("Yazilim sektorundeki dolandiricilik") == 1
+    assert "https://www.youtube.com/watch?v=yoXW3XD8li0" in output
 
 
 def test_list_json_stays_stable_and_prompt_free_for_installed_packs(tmp_path):
@@ -3368,7 +3399,7 @@ def test_build_audio_shows_episode_progress_with_counter(tmp_path):
     stack.enter_context(patch("brainpack.cli.check_deno_available", return_value=True))
     stack.enter_context(patch("brainpack.cli._youtube_build_issue", return_value=None))
     stack.enter_context(patch("brainpack.cli._check_ffmpeg_available", return_value=True))
-    stack.enter_context(patch("brainpack.cli.list_youtube_episodes", return_value=episodes))
+    stack.enter_context(patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)))
     stack.enter_context(patch("brainpack.cli.is_audio_step_done", return_value=False))
     stack.enter_context(patch("brainpack.cli.get_audio_step", return_value={}))
     stack.enter_context(patch("brainpack.cli.download_audio", return_value=audio_file))
@@ -3390,6 +3421,55 @@ def test_build_audio_shows_episode_progress_with_counter(tmp_path):
     assert "2/2" in output or "Episode 2" in output, (
         f"Expected episode 2 progress, got: {output!r}"
     )
+
+
+def test_build_quiet_audio_shows_stage_progress_lines(tmp_path):
+    """Non-verbose audio builds still show coarse download/transcribe/embed progress."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "testpack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: testpack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://youtube.com/watch?v=abc\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    audio_file = tmp_path / "audio.mp3"
+    audio_file.write_bytes(b"x" * 11_000)
+
+    episode = {"url": "https://youtube.com/watch?v=1", "title": "Ep 1", "id": "1"}
+    mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
+         patch("brainpack.cli._youtube_build_issue", return_value=None), \
+         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
+         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
+         patch("brainpack.cli.is_audio_step_done", return_value=False), \
+         patch("brainpack.cli.get_audio_step", return_value={}), \
+         patch("brainpack.cli.download_audio", return_value=audio_file), \
+         patch("brainpack.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
+         patch("brainpack.cli.embed_and_store", return_value=3), \
+         patch("brainpack.cli.mark_audio_step"), \
+         patch("brainpack.cli._canonical_audio_path", return_value=audio_file), \
+         patch("brainpack.cli._save_transcript_segments"), \
+         patch("brainpack.cli._chunk_transcript_segments", return_value=(["chunk"], [{}])):
+        result = runner.invoke(app, ["build", "testpack"])
+
+    output = result.output
+    assert "[download] Episode 1/1: Ep 1" in output
+    assert "[transcribe] Episode 1/1: Ep 1" in output
+    assert "[embed] Episode 1/1: Ep 1" in output
+    assert "[embed] Loading embedding model:" in output
 
 
 def test_build_clean_success_exits_0_and_shows_summary(tmp_path):
@@ -3620,8 +3700,73 @@ def test_model_mismatch_remediation_points_to_build_reset(tmp_path):
     )
 
 
+def test_transcription_model_mismatch_remediation_points_to_build_reset():
+    """Whisper model mismatch error message must point to `brainpack build <pack> --reset`."""
+    from brainpack.pack_state import check_transcription_provenance
+
+    state = {
+        "transcription_model": "medium",
+        "transcription_language": None,
+        "audio_steps": {
+            "youtube:abc": {
+                "source_id": "youtube:abc",
+                "url": "https://www.youtube.com/watch?v=abc",
+                "stages": {"embedded": True},
+            }
+        },
+    }
+    import typer as _typer
+
+    with pytest.raises(_typer.BadParameter) as exc_info:
+        check_transcription_provenance(state, "small", None, "my-pack")
+
+    message = str(exc_info.value)
+    assert "build" in message.lower() and "reset" in message.lower()
+    assert "medium" in message and "small" in message
+
+
+def test_build_blocks_audio_pack_when_whisper_model_changes_without_reset(tmp_path):
+    """Audio packs must not silently mix transcripts built with different Whisper models."""
+    from brainpack.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://youtube.com/watch?v=abc\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
+    state = {
+        "embedding_model": "all-MiniLM-L6-v2",
+        "transcription_model": "medium",
+        "transcription_language": None,
+        "processed": {},
+        "audio_steps": {
+            "youtube:abc": {
+                "source_id": "youtube:abc",
+                "url": "https://youtube.com/watch?v=abc",
+                "stages": {"embedded": True},
+            }
+        },
+    }
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_config", return_value=mock_config), \
+         patch("brainpack.cli.load_state", return_value=state), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli._has_audio_sources", return_value=True):
+        result = runner.invoke(app, ["build", "test-pack", "--model", "small"])
+
+    assert result.exit_code == 2
+    assert "Transcription model mismatch" in result.output
+    assert "--reset" in result.output
+
+
 def test_update_with_remembered_origin_fetches_and_rebuilds(tmp_path):
-    """brainpack update refreshes pack.yaml from origin and then rebuilds when origin is stored."""
+    """brainpack update refreshes pack.yaml from origin and rebuilds when the definition changed."""
     from brainpack.cli import app
 
     packs_root = tmp_path / "brainpacks"
@@ -3639,9 +3784,24 @@ def test_update_with_remembered_origin_fetches_and_rebuilds(tmp_path):
         "resolved": "https://example.com/pack.yaml",
     }))
 
-    mock_config = _make_config([SourceEntry(url="https://example.com/article")])
+    mock_config = _make_config([
+        SourceEntry(url="https://example.com/article"),
+        SourceEntry(url="https://example.com/new"),
+    ])
     mock_config.id = "test-pack"  # must match the installed pack id
     runner = CliRunner()
+
+    incoming_yaml = tmp_path / "incoming.yaml"
+    incoming_yaml.write_text(
+        "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "  - https://example.com/new\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    def _fake_write(_resolved, destination):
+        destination.write_text(incoming_yaml.read_text())
+        return destination, mock_config
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
          patch("brainpack.cli.load_pack_origin", return_value={
@@ -3654,18 +3814,65 @@ def test_update_with_remembered_origin_fetches_and_rebuilds(tmp_path):
              "type": "url",
              "resolved": "https://example.com/pack.yaml",
          }) as mock_resolve, \
-         patch("brainpack.cli._write_pack_yaml_from_source", return_value=(None, mock_config)), \
-         patch("brainpack.cli.summarize_pack_changes", return_value=[]), \
+         patch("brainpack.cli._write_pack_yaml_from_source", side_effect=_fake_write), \
          patch("brainpack.cli.save_pack_origin"), \
          patch("brainpack.cli.build") as mock_build:
         result = runner.invoke(app, ["update", "test-pack"])
 
+    assert result.exit_code == 0, result.output
     mock_resolve.assert_called_once()
     mock_build.assert_called_once()
 
 
+def test_update_with_unchanged_remembered_origin_skips_rebuild_and_reports_runtime(tmp_path):
+    """brainpack update should not rebuild when the synced remote definition is unchanged."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    installed_yaml = (
+        "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    (pack_dir / "pack.yaml").write_text(installed_yaml)
+    runner = CliRunner()
+
+    incoming_yaml = tmp_path / "incoming-same.yaml"
+    incoming_yaml.write_text(installed_yaml)
+    mock_config = _make_config([SourceEntry(url="https://example.com/article")])
+    mock_config.id = "test-pack"
+
+    def _fake_write(_resolved, destination):
+        destination.write_text(incoming_yaml.read_text())
+        return destination, mock_config
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_pack_origin", return_value={
+             "source": "https://example.com/pack.yaml",
+             "type": "url",
+             "resolved": "https://example.com/pack.yaml",
+         }), \
+         patch("brainpack.cli.resolve_pack_origin", return_value={
+             "source": "https://example.com/pack.yaml",
+             "type": "url",
+             "resolved": "https://example.com/pack.yaml",
+         }), \
+         patch("brainpack.cli._write_pack_yaml_from_source", side_effect=_fake_write), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("brainpack.cli.save_pack_origin"), \
+         patch("brainpack.cli.build") as mock_build:
+        result = runner.invoke(app, ["update", "test-pack"])
+
+    assert result.exit_code == 0, result.output
+    mock_build.assert_not_called()
+    assert "definition is already current" in result.output.lower()
+    assert "runtime status" in result.output.lower()
+
+
 def test_update_without_remembered_origin_says_no_remote_refresh(tmp_path):
-    """brainpack update with no stored origin communicates that no remote refresh occurred."""
+    """brainpack update with no stored origin reports runtime state and does not rebuild."""
     from brainpack.cli import app
 
     packs_root = tmp_path / "brainpacks"
@@ -3684,30 +3891,18 @@ def test_update_without_remembered_origin_says_no_remote_refresh(tmp_path):
          patch("brainpack.cli.load_pack_origin", return_value={}), \
          patch("brainpack.cli.load_config", return_value=mock_config), \
          patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="article"), \
-         patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.fetch_article", return_value=("Article text", "Article Title")), \
-         patch("brainpack.cli.chunk_text", return_value=["chunk"]), \
-         patch("brainpack.cli.embed_and_store", return_value=1), \
-         patch("brainpack.cli.mark_processed"), \
-         patch("brainpack.cli.mark_failed"):
+         patch("brainpack.cli.build") as mock_build:
         result = runner.invoke(app, ["update", "test-pack"])
 
     assert result.exit_code == 0
+    mock_build.assert_not_called()
     output = result.output.lower()
-    # Should communicate that no remote refresh occurred
     assert (
-        "no origin" in output
-        or "no remote" in output
-        or "local rebuild" in output
-        or "rebuild only" in output
-        or "without remote refresh" in output
-        or "no refresh" in output
+        "no remembered remote origin" in output
+        or "no remote origin" in output
     ), f"Expected a note about no remote refresh, got: {result.output!r}"
+    assert "runtime status" in output
+    assert "next step: brainpack build test-pack" in output
 
 
 def test_status_command_exposes_lifecycle_management_lines(tmp_pack_root):
