@@ -67,6 +67,7 @@ def list_youtube_episodes(url: str, limit: Optional[int]) -> tuple[str | None, l
         "extract_flat": "in_playlist",
         "quiet": True,
         "no_warnings": True,
+        "noprogress": True,
         "playlistend": limit,  # None = all episodes
     }
     try:
@@ -101,6 +102,7 @@ def download_audio(video_url: str, out_dir: Path, title: str = "", verbose: bool
         "outtmpl": str(out_dir / "%(id)s.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
+        "noprogress": True,
         "progress_hooks": [_make_progress_hook(title)] if verbose else [],
     }
     try:

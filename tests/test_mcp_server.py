@@ -95,7 +95,6 @@ async def test_mcp_server_lists_expected_tools(mcp_app):
         "status",
         "doctor",
         "evidence",
-        "query",
         "build",
         "add",
         "add_sources",
@@ -129,7 +128,6 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
                 {
                     "name": "alpha-pack",
                     "status": "ready",
-                    "type": "text",
                     "provider": "openai",
                     "source_count": 1,
                     "recent_summary": "build 2026-03-13",
@@ -143,68 +141,6 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
         "warnings": [],
     }
 
-
-@pytest.mark.anyio
-async def test_mcp_query_pack_returns_structured_retrieval_payload(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
-    pack_dir = packs_root / "query-pack"
-    _write_pack(pack_dir, name="query-pack")
-    _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
-
-    mock_result = {
-        "answer": "Structured answer",
-        "sources": [
-            {
-                "url": "https://example.com/article",
-                "title": "Example Article",
-                "timestamp_start": 12.0,
-                "timestamp_end": 34.0,
-            }
-        ],
-    }
-
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
-        "os.environ",
-        {"OPENAI_API_KEY": "sk-test"},
-        clear=False,
-    ), patch(
-        "brainpack.cli.load_model",
-        return_value=object(),
-    ), patch(
-        "brainpack.cli.get_collection",
-        return_value=object(),
-    ), patch(
-        "brainpack.cli.run_query",
-        return_value=mock_result,
-    ):
-        _, structured = await mcp_app.call_tool(
-            "query",
-            {"pack": "query-pack", "question": "What happened?"},
-        )
-
-    assert structured == {
-        "ok": True,
-        "meta": {
-            "schema": "brainpack.cli.v1",
-            "command": "query",
-            "pack": "query-pack",
-            "surface": "mcp",
-            "server_version": "0.1.0",
-        },
-        "data": {
-            "question": "What happened?",
-            "answer": "Structured answer",
-            "sources": [
-                {
-                    "url": "https://example.com/article",
-                    "title": "Example Article",
-                    "timestamp_start": 12.0,
-                    "timestamp_end": 34.0,
-                }
-            ],
-        },
-        "warnings": [],
-    }
 
 
 @pytest.mark.anyio

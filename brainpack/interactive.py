@@ -391,20 +391,12 @@ def _stage_settings(
 
 
 def _print_applied_summary(settings: BrainpackSettings) -> None:
-    if settings.preferred_mode in {"agent", "both"}:
-        next_lines = [
-            "Quick start for agent mode:",
-            "  1. brainpack mcp-server  \u2190 add this to your agent's MCP config",
-            "  2. brainpack create       \u2190 create your first pack",
-            "  3. brainpack build <pack>",
-        ]
-    else:
-        next_lines = [
-            "Quick start:",
-            "  1. brainpack create",
-            "  2. brainpack build <pack>",
-            '  3. brainpack query <pack> "your question"',
-        ]
+    next_lines = [
+        "Quick start for agent mode:",
+        "  1. brainpack mcp-server  \u2190 add this to your agent's MCP config",
+        "  2. brainpack create       \u2190 create your first pack",
+        "  3. brainpack build <pack>",
+    ]
     _echo_lines(
         render_status(
             "Setup complete",

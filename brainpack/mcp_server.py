@@ -18,7 +18,6 @@ from brainpack.payloads import (
     _doctor_payload,
     _evidence_payload,
     _list_payload,
-    _query_payload,
     _status_payload,
 )
 from brainpack.config import load_config, write_config
@@ -125,15 +124,6 @@ def evidence(pack: str, question: str) -> dict[str, Any]:
         action=lambda: _evidence_payload(pack, question, machine=True),
     )
 
-
-@app.tool()
-def query(pack: str, question: str) -> dict[str, Any]:
-    """Run a cited retrieval query against a pack and return a generated answer."""
-    return _tool_result(
-        command="query",
-        pack=pack,
-        action=lambda: _query_payload(pack, question, machine=True),
-    )
 
 
 

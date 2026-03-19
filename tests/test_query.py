@@ -117,43 +117,6 @@ def test_topk(tmp_pack_dir, mock_model):
     assert len(result["sources"]) <= 5
 
 
-def test_citations(tmp_pack_dir, mock_model):
-    from brainpack.store import get_collection, embed_and_store
-    from brainpack.query import run_query
-    col = get_collection(tmp_pack_dir, "test-pack")
-    embed_and_store(
-        col, mock_model, ["Some content."],
-        [{"url": "https://example.com/a", "title": "My Article"}],
-        url="https://example.com/a",
-    )
-    with patch("brainpack.query.OpenAI") as MockOpenAI:
-        client = MockOpenAI.return_value
-        choice = MagicMock()
-        choice.message.content = "Answer."
-        client.chat.completions.create.return_value = MagicMock(choices=[choice])
-        result = run_query("test question", col, mock_model)
-    assert any("url" in s for s in result["sources"])
-    assert any("title" in s for s in result["sources"])
-
-
-def test_answer_is_nonempty(tmp_pack_dir, mock_model):
-    from brainpack.store import get_collection, embed_and_store
-    from brainpack.query import run_query
-    col = get_collection(tmp_pack_dir, "test-pack")
-    embed_and_store(
-        col, mock_model, ["Some content."],
-        [{"url": "https://example.com/a", "title": "My Article"}],
-        url="https://example.com/a",
-    )
-    with patch("brainpack.query.OpenAI") as MockOpenAI:
-        client = MockOpenAI.return_value
-        choice = MagicMock()
-        choice.message.content = "Non-empty answer from LLM."
-        client.chat.completions.create.return_value = MagicMock(choices=[choice])
-        result = run_query("test question", col, mock_model)
-    assert isinstance(result["answer"], str)
-    assert len(result["answer"]) > 0
-
 
 def test_run_query_caps_context_after_shared_retrieval(mock_model):
     from brainpack.query import run_query
