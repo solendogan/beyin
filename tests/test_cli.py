@@ -91,7 +91,7 @@ def _make_config(
 
 
 def _mark_pack_ready(pack_dir: Path, *, last_build_at: str = "2026-03-13T10:00:00+00:00"):
-    """Persist the minimal ready state needed for query/chat command tests."""
+    """Persist the minimal ready state needed for query command tests."""
     from brainpack.inventory import pack_config_hash
     from brainpack.pack_state import save_state
 
@@ -165,28 +165,106 @@ def test_help_command_alias_shows_top_level_framing():
     result = runner.invoke(app, ["help"])
 
     assert result.exit_code == 0
-    assert "Usage:" in result.output
+    assert "Brainpack v0.1.0" in result.output
     assert "agent" in result.output.lower()
     assert "local model" in result.output.lower()
+    assert "Pack lifecycle:" in result.output
+    assert "Inspect and retrieve:" in result.output
+    assert "https://github.com/buralog/brainpack" in result.output
+
+
+def test_about_command_shows_short_project_summary_and_repo_url():
+    """brainpack about should explain the project briefly and point to the repo."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["about"])
+
+    assert result.exit_code == 0
+    assert "local knowledge" in result.output.lower() or "local knowledge packs" in result.output.lower()
+    assert "mcp" in result.output.lower()
+    assert "https://github.com/buralog/brainpack" in result.output
 
 
 def test_local_mode_command_help_and_agent_server_help_use_new_positioning():
-    """Command help should position query/chat as local mode and mcp-server for agents."""
+    """Command help should position query as local mode and mcp-server for agents."""
     from brainpack.cli import app
 
     runner = CliRunner()
 
     query_help = runner.invoke(app, ["query", "--help"])
-    chat_help = runner.invoke(app, ["chat", "--help"])
     mcp_help = runner.invoke(app, ["mcp-server", "--help"])
 
     assert query_help.exit_code == 0
     assert "local mode" in query_help.output.lower()
-    assert chat_help.exit_code == 0
-    assert "local mode" in chat_help.output.lower()
     assert mcp_help.exit_code == 0
     assert "agent" in mcp_help.output.lower()
     assert "stdio" in mcp_help.output.lower()
+
+
+@pytest.mark.parametrize(
+    ("argv", "missing_label", "help_needle", "extra_needle"),
+    [
+        (
+            ["status"],
+            "<pack>",
+            "Inspect one installed pack in detail.",
+            "--json",
+        ),
+        (
+            ["query"],
+            "<pack>",
+            "Query a pack directly in local model mode and receive a cited LLM answer.",
+            "--json",
+        ),
+        (
+            ["build"],
+            "<pack>",
+            "Build or incrementally update a pack from its pack.yaml sources.",
+            "--model",
+        ),
+        (
+            ["add"],
+            "<source>",
+            "Add a shared pack from a local path, URL, or marketplace-style id.",
+            "Arguments",
+        ),
+        (
+            ["add-source"],
+            "<pack>",
+            "Add one or more source URLs to an existing pack's pack.yaml.",
+            "--build",
+        ),
+        (
+            ["remove"],
+            "<pack>",
+            "Permanently remove one installed pack and all its data.",
+            "--yes",
+        ),
+        (
+            ["update"],
+            "<pack>",
+            "Fetch new sources and rebuild a pack incrementally.",
+            "--model",
+        ),
+    ],
+)
+def test_missing_required_arguments_show_help_without_help_option(argv, missing_label, help_needle, extra_needle):
+    """Missing required args should show help with args first, then visible options, and no --help row."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, argv)
+
+    assert result.exit_code == 2
+    assert "Brainpack v0.1.0" in result.output
+    assert f"Missing required argument: {missing_label}" in result.output
+    assert "Usage:" in result.output
+    assert help_needle in result.output
+    assert extra_needle in result.output
+    assert "[OPTIONS]" not in result.output
+    assert "--help" not in result.output
+    assert "Show this message and exit." not in result.output
 
 
 def test_no_arg_home_screen_guides_first_run(tmp_path):
@@ -1196,7 +1274,7 @@ def test_query_exits_0_and_prints_answer(tmp_pack_root):
     }
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli._query_provider_error", return_value=None), \
          patch("brainpack.cli.load_model", return_value=MagicMock()), \
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.run_query", return_value=mock_result):
@@ -1223,7 +1301,7 @@ def test_query_prints_sources_section(tmp_pack_root):
     }
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli._query_provider_error", return_value=None), \
          patch("brainpack.cli.load_model", return_value=MagicMock()), \
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.run_query", return_value=mock_result):
@@ -1263,7 +1341,7 @@ def test_query_compacts_duplicate_video_sources_by_title_and_url(tmp_pack_root):
     }
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli._query_provider_error", return_value=None), \
          patch("brainpack.cli.load_model", return_value=MagicMock()), \
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.run_query", return_value=mock_result):
@@ -1290,7 +1368,7 @@ def test_query_openai_pack_does_not_require_ollama(tmp_pack_root):
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
          patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=False), \
+         patch("brainpack.cli._query_provider_error", return_value=None), \
          patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False), \
          patch("brainpack.cli.load_model", return_value=MagicMock()), \
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
@@ -1316,7 +1394,10 @@ def test_query_openai_without_api_key_fails_cleanly(tmp_pack_root):
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
          patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=False), \
+         patch(
+             "brainpack.cli._query_provider_error",
+             return_value="Error: OPENAI_API_KEY is not set.\nSet it in your shell environment, then retry.",
+         ), \
          patch.dict("os.environ", {}, clear=True):
 
         result = runner.invoke(app, ["query", "test-pack", "What is this?"])
@@ -1369,7 +1450,7 @@ def test_query_prints_timestamp_ranges_in_sources(tmp_pack_root):
     }
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli._query_provider_error", return_value=None), \
          patch("brainpack.cli.load_model", return_value=MagicMock()), \
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.run_query", return_value=mock_result):
@@ -1380,185 +1461,6 @@ def test_query_prints_timestamp_ranges_in_sources(tmp_pack_root):
     assert "00:12-00:34" in result.output
 
 
-def test_chat_one_shot_uses_existing_query_path_and_shows_sources(tmp_pack_root):
-    """chat one-shot delegates through run_query and prints answer sources."""
-    from brainpack.cli import app
-    from brainpack.inventory import pack_config_hash
-    from brainpack.pack_state import save_state
-
-    packs_root, pack_dir = tmp_pack_root
-    runner = CliRunner()
-    save_state(
-        pack_dir,
-        {
-            "embedding_model": "all-MiniLM-L6-v2",
-            "processed": {},
-            "audio_steps": {},
-            "last_build_at": "2026-03-13T10:00:00+00:00",
-            "last_built_pack_hash": pack_config_hash(pack_dir),
-        },
-    )
-
-    mock_result = {
-        "answer": "One-shot answer",
-        "sources": [{"url": "https://example.com/chat", "title": "Chat Source"}],
-    }
-
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.run_query", return_value=mock_result) as mock_run_query:
-
-        result = runner.invoke(app, ["chat", "test-pack", "What is new?"])
-
-    assert result.exit_code == 0
-    mock_run_query.assert_called_once()
-    assert "One-shot answer" in result.output
-    assert "Sources:" in result.output
-    assert "Chat Source" in result.output
-    assert "https://example.com/chat" in result.output
-
-
-def test_chat_interactive_keeps_session_memory_only_for_current_process(tmp_pack_root):
-    """Interactive chat reuses in-memory history during one run and starts fresh next run."""
-    from brainpack.cli import app
-    from brainpack.inventory import pack_config_hash
-    from brainpack.pack_state import save_state
-
-    packs_root, pack_dir = tmp_pack_root
-    runner = CliRunner()
-    save_state(
-        pack_dir,
-        {
-            "embedding_model": "all-MiniLM-L6-v2",
-            "processed": {},
-            "audio_steps": {},
-            "last_build_at": "2026-03-13T10:00:00+00:00",
-            "last_built_pack_hash": pack_config_hash(pack_dir),
-        },
-    )
-
-    first_session_calls = []
-
-    def first_session_run_query(**kwargs):
-        first_session_calls.append(kwargs)
-        return {
-            "answer": f"Answer {len(first_session_calls)}",
-            "sources": [{"url": "https://example.com/chat", "title": "Chat Source"}],
-        }
-
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.run_query", side_effect=first_session_run_query):
-        first_result = runner.invoke(
-            app,
-            ["chat", "test-pack"],
-            input="First question?\nSecond question?\nexit\n",
-        )
-
-    assert first_result.exit_code == 0
-    assert len(first_session_calls) == 2
-    assert first_session_calls[0].get("history") in (None, [])
-    assert first_session_calls[1]["history"] == [
-        {"question": "First question?", "answer": "Answer 1"}
-    ]
-    assert first_result.output.count("Sources:") == 2
-
-    second_session_calls = []
-
-    def second_session_run_query(**kwargs):
-        second_session_calls.append(kwargs)
-        return {
-            "answer": "Fresh session answer",
-            "sources": [{"url": "https://example.com/chat", "title": "Chat Source"}],
-        }
-
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.run_query", side_effect=second_session_run_query):
-        second_result = runner.invoke(app, ["chat", "test-pack"], input="Fresh question?\nquit\n")
-
-    assert second_result.exit_code == 0
-    assert len(second_session_calls) == 1
-    assert second_session_calls[0].get("history") in (None, [])
-
-
-def test_chat_missing_pack_redirects_to_create_or_add(tmp_path):
-    """Missing-pack chat should redirect to an actionable onboarding command."""
-    from brainpack.cli import app
-
-    runner = CliRunner()
-    packs_root = tmp_path / "brainpacks"
-
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
-        result = runner.invoke(app, ["chat", "missing-pack", "Where do I start?"])
-
-    assert result.exit_code == 1
-    assert "missing-pack" in result.output
-    assert "Next step: brainpack create" in result.output
-    assert "brainpack add <path-or-url-or-id>" in result.output
-    assert "mkdir -p" not in result.output
-
-
-def test_chat_unbuilt_pack_redirects_to_build(tmp_pack_root):
-    """Unbuilt-pack chat should reuse onboarding guidance instead of a raw next-step line."""
-    from brainpack.cli import app
-
-    packs_root, _ = tmp_pack_root
-    runner = CliRunner()
-
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
-         patch("brainpack.cli.load_model") as mock_load_model, \
-         patch("brainpack.cli.get_collection") as mock_get_collection, \
-         patch("brainpack.cli.run_query") as mock_run_query:
-        result = runner.invoke(app, ["chat", "test-pack", "Can I ask now?"])
-
-    assert result.exit_code == 1
-    assert "not built" in result.output.lower() or "build" in result.output.lower()
-    assert "Use with agent" in result.output
-    assert "Use with local model" in result.output
-    assert "brainpack mcp-server" in result.output
-    assert "brainpack build test-pack" in result.output
-    assert "Next step:" not in result.output
-    mock_load_model.assert_not_called()
-    mock_get_collection.assert_not_called()
-    mock_run_query.assert_not_called()
-
-
-def test_chat_blocked_pack_redirects_to_doctor(tmp_pack_root):
-    """Blocked-pack chat should reuse onboarding guidance instead of stale chat-first copy."""
-    from brainpack.cli import app
-
-    packs_root, _ = tmp_pack_root
-    runner = CliRunner()
-
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=False), \
-         patch("brainpack.cli.shutil.which", return_value="/usr/local/bin/ollama"), \
-         patch("brainpack.cli.load_model") as mock_load_model, \
-         patch("brainpack.cli.get_collection") as mock_get_collection, \
-         patch("brainpack.cli.run_query") as mock_run_query:
-        result = runner.invoke(app, ["chat", "test-pack", "Can I ask now?"])
-
-    assert result.exit_code == 1
-    assert "blocked" in result.output.lower()
-    assert "Use with agent" in result.output
-    assert "Use with local model" in result.output
-    assert "brainpack mcp-server" in result.output
-    assert "brainpack doctor test-pack" in result.output
-    assert "try chat again" not in result.output
-    assert "Next step:" not in result.output
-    mock_load_model.assert_not_called()
-    mock_get_collection.assert_not_called()
-    mock_run_query.assert_not_called()
-
-
 def test_query_unbuilt_pack_redirects_to_build(tmp_pack_root):
     """Unbuilt-pack query should reuse onboarding guidance instead of a raw next-step line."""
     from brainpack.cli import app
@@ -1567,7 +1469,7 @@ def test_query_unbuilt_pack_redirects_to_build(tmp_pack_root):
     runner = CliRunner()
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli._query_provider_error", return_value=None), \
          patch("brainpack.cli.load_model") as mock_load_model, \
          patch("brainpack.cli.get_collection") as mock_get_collection, \
          patch("brainpack.cli.run_query") as mock_run_query:
@@ -1590,8 +1492,6 @@ def test_query_unbuilt_pack_redirects_to_build(tmp_pack_root):
     [
         ("query", "needs-build", "brainpack build test-pack"),
         ("query", "error", "brainpack build test-pack"),
-        ("chat", "needs-build", "brainpack build test-pack"),
-        ("chat", "error", "brainpack build test-pack"),
     ],
 )
 def test_retrieval_preconditions_share_onboarding_guidance(
@@ -1600,7 +1500,7 @@ def test_retrieval_preconditions_share_onboarding_guidance(
     status_setup,
     expected_command,
 ):
-    """Human query/chat preconditions should render the shared onboarding guidance seam."""
+    """Human query preconditions should render the shared onboarding guidance seam."""
     from brainpack.cli import app
 
     packs_root, pack_dir = tmp_pack_root
@@ -1612,7 +1512,7 @@ def test_retrieval_preconditions_share_onboarding_guidance(
         _mark_pack_failed(pack_dir)
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True), \
+         patch("brainpack.cli._query_provider_error", return_value=None), \
          patch("brainpack.cli.load_model") as mock_load_model, \
          patch("brainpack.cli.get_collection") as mock_get_collection, \
          patch("brainpack.cli.run_query") as mock_run_query:
@@ -2042,9 +1942,10 @@ def test_query_ollama_not_running():
 
     with patch("brainpack.cli._resolve_pack_dir", return_value=Path("/tmp/mypack")), \
          patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=False), \
-         patch("brainpack.cli.shutil") as mock_shutil:
-        mock_shutil.which.return_value = "/usr/local/bin/ollama"
+         patch(
+             "brainpack.cli._query_provider_error",
+             return_value="Error: Ollama is not running.\nStart it with: ollama serve",
+         ):
         result = runner.invoke(app, ["query", "mypack", "test"])
 
     assert result.exit_code == 1
@@ -2061,9 +1962,10 @@ def test_query_ollama_not_installed():
 
     with patch("brainpack.cli._resolve_pack_dir", return_value=Path("/tmp/mypack")), \
          patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=False), \
-         patch("brainpack.cli.shutil") as mock_shutil:
-        mock_shutil.which.return_value = None
+         patch(
+             "brainpack.cli._query_provider_error",
+             return_value="Error: Ollama is not installed.\nInstall it with: brew install ollama",
+         ):
         result = runner.invoke(app, ["query", "mypack", "test"])
 
     assert result.exit_code == 1
@@ -2144,27 +2046,6 @@ def test_check_deps_ffmpeg_missing():
     assert "ffmpeg" in output.lower()
     # Should include install instruction
     assert "brew install ffmpeg" in output or "ffmpeg.org" in output
-
-
-def test_doctor_reports_openai_query_readiness(tmp_pack_root):
-    """doctor reports query readiness using the selected pack provider."""
-    from brainpack.cli import app
-    packs_root, _ = tmp_pack_root
-    runner = CliRunner()
-    mock_config = _make_config(
-        [SourceEntry(url="https://example.com/article")],
-        llm="openai",
-    )
-
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
-        result = runner.invoke(app, ["doctor", "test-pack", "--operation", "query"])
-
-    assert result.exit_code == 0
-    assert "Query readiness: ready" in result.output
-    assert "provider=openai" in result.output
-    assert "Ollama" not in result.output
 
 
 def test_build_youtube_source_fails_when_ytdlp_unavailable(tmp_path):
@@ -2281,7 +2162,7 @@ def test_inventory_summary_marks_blocked_pack(tmp_path):
     )
 
     assert summary["status"] == "blocked"
-    assert summary["next_action"] == "brainpack doctor test-pack"
+    assert summary["next_action"] == "brainpack status test-pack"
 
 
 def test_add_local_pack_stores_origin_metadata(tmp_path):
@@ -2394,7 +2275,6 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
     ("pack_name", "state_setup", "env_vars", "expected_status", "expected_command"),
     [
         ("ready-pack", "ready", {"OPENAI_API_KEY": "sk-test"}, "ready", "brainpack mcp-server"),
-        ("blocked-pack", "blocked", {}, "blocked", "brainpack doctor blocked-pack"),
         ("new-pack", "new", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build new-pack"),
         ("stale-pack", "needs-build", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build stale-pack"),
         ("error-pack", "error", {"OPENAI_API_KEY": "sk-test"}, "error", "brainpack build error-pack"),
@@ -2442,9 +2322,8 @@ def test_status_uses_onboarding_guidance_across_lifecycle_states(
 
     assert result.exit_code == 0, result.output
     assert expected_status in result.output
-    assert "articles" in result.output
-    if state_setup == "blocked":
-        assert "OPENAI_API_KEY" in result.output
+    assert f"ID           {pack_name}" in result.output or pack_name in result.output
+    assert "Description  test" in result.output
 
 
 def test_update_uses_remembered_origin_and_shows_change_summary(tmp_path):
@@ -2981,8 +2860,8 @@ def test_status_ready_pack_does_not_show_next_step_coaching(tmp_path):
     assert "brainpack create" not in result.output
 
 
-def test_status_blocked_pack_shows_blockers_inline_without_coaching(tmp_path):
-    """status on a blocked pack shows blocker text inline without appending the full coaching block."""
+def test_status_pack_without_runtime_readiness_stays_compact_without_coaching(tmp_path):
+    """status should stay compact even when runtime query readiness is unavailable."""
     from brainpack.cli import app
 
     packs_root = tmp_path / "brainpacks"
@@ -3004,9 +2883,8 @@ def test_status_blocked_pack_shows_blockers_inline_without_coaching(tmp_path):
         result = runner.invoke(app, ["status", "blocked-pack"])
 
     assert result.exit_code == 0
-    # Blocker text must be present inline
-    assert "OPENAI_API_KEY" in result.output
-    # But coaching copy (Use with agent/local model blocks) must not be appended
+    assert "blocked-pack" in result.output
+    assert "needs-build" in result.output
     assert "Use with agent" not in result.output
     assert "Use with local model" not in result.output
 
@@ -3906,7 +3784,7 @@ def test_update_without_remembered_origin_says_no_remote_refresh(tmp_path):
 
 
 def test_status_command_exposes_lifecycle_management_lines(tmp_pack_root):
-    """brainpack status should expose explicit lifecycle management commands in its output."""
+    """brainpack status should expose the pack summary without fallback coaching blocks."""
     from brainpack.cli import app
 
     packs_root, pack_dir = tmp_pack_root
@@ -3919,10 +3797,11 @@ def test_status_command_exposes_lifecycle_management_lines(tmp_pack_root):
 
     assert result.exit_code == 0
     output = result.output
-    # Lifecycle management commands should appear on pack-specific status
-    assert "brainpack build test-pack --reset" in output or "build test-pack --reset" in output
-    assert "brainpack update test-pack" in output or "update test-pack" in output
-    assert "brainpack remove test-pack" in output or "remove test-pack" in output
+    assert "test-pack" in output
+    assert "ready" in output
+    assert "Last built" in output
+    assert "Use with agent" not in output
+    assert "Use with local model" not in output
 
 
 def test_home_screen_with_packs_exposes_lifecycle_management_lines(tmp_pack_root):

@@ -1,14 +1,19 @@
 """Brainpack CLI — build and query commands."""
+import io
 import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import urllib.request
+from contextlib import redirect_stdout
 from pathlib import Path
 from typing import List, Optional
 
+import click
 import typer
+from typer.core import TyperCommand
 
 from brainpack import __version__
 from brainpack.authoring import build_new_pack_config
@@ -77,14 +82,10 @@ from brainpack.audio_pipeline import (
 from brainpack.payloads import (
     _build_evidence_payload,
     _build_retrieval_payload,
-    _chat_one_shot_payload,
-    _doctor_payload,
-    _doctor_statuses,
     _evidence_payload,
     _has_failed_build,
     _has_successful_build,
     _list_payload,
-    _load_chat_runtime,
     _load_evidence_runtime,
     _load_query_runtime,
     _query_payload,
@@ -107,15 +108,183 @@ from brainpack.readiness import (
 )
 from brainpack.ui import (
     bold, box_bottom, box_row, box_sep, box_top, cyan, dim, green, red,
-    render_header, render_rows, render_status, render_table, tbl_bottom,
+    render_header, render_meta, render_review, render_rows, render_status, render_table, tbl_bottom,
     tbl_row, tbl_sep, tbl_top, visible_len as _visible_len, wrap_text, yellow,
     _col, _display_status, _display_type, _episode_icon, _origin_display,
     _pack_label, _render_pack_table, _status_styled,
 )
 
+
+def _missing_parameter_label(param: click.Parameter) -> str:
+    if isinstance(param, click.Argument):
+        return f"<{param.name.replace('_', '-')}>"
+    if isinstance(param, click.Option):
+        return next(
+            (opt for opt in param.opts if opt.startswith("--")),
+            param.opts[0] if param.opts else f"--{param.name.replace('_', '-')}",
+        )
+    return param.name
+
+
+def _strip_help_option_from_help_text(help_text: str) -> str:
+    lines = help_text.splitlines()
+    output: list[str] = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        if "╭─ Options" not in line:
+            if "--help" not in line:
+                output.append(line)
+            i += 1
+            continue
+
+        block = [line]
+        i += 1
+        while i < len(lines):
+            block.append(lines[i])
+            if "╰" in lines[i]:
+                i += 1
+                break
+            i += 1
+
+        filtered = [row for row in block if "--help" not in row]
+        has_visible_option = any(
+            ("│" in row or "|" in row) and "--" in row
+            for row in filtered[1:-1]
+        )
+        if has_visible_option:
+            output.extend(filtered)
+
+    return "\n".join(output)
+
+
+def _brainpack_command_path(ctx: click.Context) -> str:
+    parts: list[str] = []
+    cursor = ctx
+    while cursor is not None:
+        if cursor.info_name:
+            parts.append(cursor.info_name)
+        cursor = cursor.parent
+    if not parts:
+        return "brainpack"
+    parts = list(reversed(parts))
+    parts[0] = "brainpack"
+    return " ".join(parts)
+
+
+def _argument_usage_token(param: click.Argument) -> str:
+    token = f"<{param.name.replace('_', '-')}>"
+    if param.nargs != 1:
+        token += "..."
+    return token
+
+
+def _option_usage_token(param: click.Option) -> Optional[str]:
+    if param.hidden or "--help" in param.opts:
+        return None
+    primary = next(
+        (opt for opt in param.opts if opt.startswith("--")),
+        param.opts[0] if param.opts else f"--{param.name.replace('_', '-')}",
+    )
+    if param.is_flag:
+        value = primary
+    else:
+        value = f"{primary} <{param.name.replace('_', '-')}>"
+    return value if param.required else f"[{value}]"
+
+
+def _rewrite_usage_line(help_text: str, ctx: click.Context, command: click.Command) -> str:
+    arguments = [
+        token
+        for param in command.get_params(ctx)
+        if isinstance(param, click.Argument)
+        for token in [_argument_usage_token(param)]
+    ]
+    options = [
+        token
+        for param in command.get_params(ctx)
+        if isinstance(param, click.Option)
+        for token in [_option_usage_token(param)]
+        if token is not None
+    ]
+    usage = f" Usage: {_brainpack_command_path(ctx)}"
+    if arguments:
+        usage += " " + " ".join(arguments)
+    if options:
+        usage += " " + " ".join(options)
+
+    lines = help_text.splitlines()
+    for idx, line in enumerate(lines):
+        if line.lstrip().startswith("Usage:"):
+            leading = line[: len(line) - len(line.lstrip())]
+            lines[idx] = f"{leading}{usage.strip()}"
+            break
+    return "\n".join(lines)
+
+
+def _colorize_missing_arg_help(help_text: str) -> str:
+    if not sys.stderr.isatty():
+        return help_text
+
+    styled = help_text
+    for heading in ("Usage:", "Arguments", "Options"):
+        styled = styled.replace(heading, click.style(heading, fg="cyan", bold=True))
+    styled = styled.replace("[required]", click.style("[required]", fg="red", bold=True))
+    styled = re.sub(
+        r"(?m)^(\s*Usage:\s+)(brainpack .+)$",
+        lambda match: match.group(1) + click.style(match.group(2), fg="bright_white", bold=True),
+        styled,
+    )
+    styled = re.sub(
+        r"(?m)(--[a-zA-Z0-9-]+(?:,\s+-[a-zA-Z])?)",
+        lambda match: click.style(match.group(1), fg="green", bold=True),
+        styled,
+    )
+    return styled
+
+
+def _command_help_text(command: click.Command, ctx: click.Context) -> str:
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        command.get_help(ctx)
+    return buf.getvalue()
+
+
+def _render_missing_parameter_error(
+    ctx: click.Context,
+    command: click.Command,
+    exc: click.MissingParameter,
+) -> None:
+    param = exc.param
+    if param is None:
+        raise exc
+
+    typer.echo(f"{bold('Brainpack')} {dim(f'v{__version__}')}", err=True)
+    typer.echo("", err=True)
+    typer.echo(f"{red('Error:')} Missing required argument: {_missing_parameter_label(param)}", err=True)
+    typer.echo("", err=True)
+    help_text = _command_help_text(command, ctx)
+    help_text = _strip_help_option_from_help_text(help_text)
+    help_text = _rewrite_usage_line(help_text, ctx, command)
+    help_text = _colorize_missing_arg_help(help_text)
+    typer.echo(help_text.rstrip() + "\n", err=True)
+
+
+class BrainpackCommand(TyperCommand):
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        try:
+            return super().parse_args(ctx, args)
+        except click.MissingParameter as exc:
+            if ctx.resilient_parsing:
+                raise
+            _render_missing_parameter_error(ctx, self, exc)
+            raise click.exceptions.Exit(2)
+
+
 app = typer.Typer(
     help=(
-        "Brainpack — use with an agent for evidence retrieval, or run query/chat in local model mode"
+        "Brainpack — use with an agent for evidence retrieval, or run query in local model mode"
     )
 )
 
@@ -224,7 +393,7 @@ def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False)
     status = summary.get("status") if summary else None
     lifecycle_command = human_guidance_command(summary) if summary else None
     build_cmd = f"brainpack build {pack_name}" if summary else "brainpack build <pack>"
-    doctor_cmd = f"brainpack doctor {pack_name}" if summary else "brainpack doctor <pack>"
+    status_cmd = f"brainpack status {pack_name}" if summary else "brainpack status <pack>"
 
     def _agent_block() -> None:
         _echo(f"  {bold('Use with agent')}")
@@ -242,7 +411,7 @@ def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False)
     def _local_block() -> None:
         _echo(f"  {bold('Use with local model')}")
         _echo(f"    {dim('1.')} Install Ollama (or another local runtime)")
-        _echo(f"    {dim('2.')} {doctor_cmd}")
+        _echo(f"    {dim('2.')} {status_cmd}")
         _echo(f"    {dim('3.')} brainpack create")
         _echo(f"    {dim('4.')} {build_cmd}")
         if summary and status == "ready":
@@ -354,7 +523,7 @@ def _settings_display_rows(settings) -> list[tuple[str, str]]:
     ]
 
 
-@app.command(name="settings")
+@app.command(name="settings", cls=BrainpackCommand)
 def settings_command() -> None:
     """Show current settings and edit them interactively in a terminal."""
     from brainpack.settings import BrainpackSettings
@@ -462,12 +631,121 @@ def settings_command() -> None:
         return
 
 
-@app.command()
+@app.command(cls=BrainpackCommand)
 def help(
     ctx: typer.Context,
 ) -> None:
     """Show top-level help using a friendly command alias."""
-    typer.echo(ctx.find_root().get_help())
+    term_w = min(shutil.get_terminal_size((80, 24)).columns, 100)
+
+    typer.echo(f"{bold('Brainpack')} {dim(f'v{__version__}')}")
+    typer.echo(f"{dim('Build local knowledge packs for agents and local model retrieval.')}")
+    typer.echo("")
+
+    sections: list[tuple[str, list[tuple[str, str]]]] = [
+        (
+            "Pack lifecycle",
+            [
+                ("create", "Create a new pack"),
+                ("add", "Import a pack.yaml from a path, URL, or id"),
+                ("build", "Build or incrementally update a pack"),
+                ("update", "Refresh an installed pack from its remembered origin"),
+                ("remove", "Remove an installed pack"),
+            ],
+        ),
+        (
+            "Inspect and retrieve",
+            [
+                ("list", "List installed packs"),
+                ("status", "Inspect one pack in detail"),
+                ("query", "Ask one local question against a pack"),
+            ],
+        ),
+        (
+            "Manage sources",
+            [
+                ("add-source", "Append one or more source URLs to a pack"),
+            ],
+        ),
+        (
+            "Agent integration",
+            [
+                ("mcp-server", "Run the local MCP server for agents"),
+            ],
+        ),
+        (
+            "Settings and support",
+            [
+                ("settings", "View or edit Brainpack settings"),
+                ("check-deps", "Check ffmpeg and yt-dlp availability"),
+                ("about", "Show a short Brainpack overview"),
+                ("help", "Show this command guide"),
+            ],
+        ),
+    ]
+
+    def _render_command_table(rows: list[tuple[str, str]]) -> list[str]:
+        cmd_w = min(14, max(len(name) for name, _ in rows))
+        desc_w = max(20, term_w - cmd_w - 8)
+
+        if term_w >= 72:
+            lines = []
+            for name, description in rows:
+                wrapped = wrap_text(description, desc_w)
+                first = wrapped[0] if wrapped else ""
+                lines.append(f"{name.ljust(cmd_w)}  {first}")
+                for line in wrapped[1:]:
+                    lines.append(f"{' ' * cmd_w}  {line}")
+            return lines
+
+        compact_lines: list[str] = []
+        for idx, (name, description) in enumerate(rows):
+            compact_lines.append(f"{bold(name)}")
+            for line in wrap_text(description, max(20, term_w - 4)):
+                compact_lines.append(f"  {dim(line)}")
+            if idx < len(rows) - 1:
+                compact_lines.append(f"{dim('─' * max(12, term_w - 4))}")
+        return compact_lines
+
+    for title, commands in sections:
+        typer.echo(f"{bold(title + ':')}")
+        for line in _render_command_table(commands):
+            typer.echo(line)
+        typer.echo("")
+
+    typer.echo(f"{dim('Project')}  https://github.com/buralog/brainpack")
+
+
+@app.command(cls=BrainpackCommand)
+def about() -> None:
+    """Show a short overview of Brainpack."""
+    typer.echo(f"{bold('Brainpack')} {dim(f'v{__version__}')}")
+    typer.echo("")
+    typer.echo("Brainpack turns your own sources into local knowledge packs.")
+    typer.echo("Connect them to coding agents over MCP so tools like Codex or Claude Code can query them")
+    typer.echo("and answer questions with your own context.")
+    typer.echo("")
+    typer.echo("You can also use Brainpack directly on your machine.")
+    typer.echo("Ask questions with your configured local model, such as Ollama, and get answers")
+    typer.echo("grounded in the sources you added.")
+    typer.echo("")
+    for line in render_review(
+        "Best For",
+        [
+            ("Agents", "Expose packs over MCP for evidence retrieval and workflow integration"),
+            ("Direct use", "Ask one-off questions locally with your configured model"),
+            ("Owned context", "Keep your retrieval layer local instead of pushing source data elsewhere"),
+        ],
+    ):
+        typer.echo(line[2:] if line.startswith("  ") else line)
+    typer.echo("")
+    for line in render_meta(
+        [
+            "Open source",
+            "https://github.com/buralog/brainpack",
+        ]
+    ):
+        typer.echo(line[2:] if line.startswith("  ") else line)
 
 
 
@@ -687,7 +965,7 @@ def _runtime_update_status(pack: str, state: dict, current_hash: str) -> tuple[s
     return result, f"brainpack build {pack}"
 
 
-@app.command()
+@app.command(cls=BrainpackCommand)
 def create() -> None:
     """Guide the user through creating a new pack without hand-editing YAML."""
     if is_interactive_session():
@@ -716,7 +994,7 @@ def create() -> None:
     )
 
 
-@app.command()
+@app.command(cls=BrainpackCommand)
 def build(
     pack: str = typer.Argument(..., help="Pack name (directory under ~/.brainpacks/)"),
     model: Optional[str] = typer.Option(
@@ -1041,7 +1319,7 @@ def build(
         raise typer.Exit(code=1)
 
 
-@app.command()
+@app.command(cls=BrainpackCommand)
 def query(
     pack: str = typer.Argument(..., help="Pack name to query in local mode"),
     question: str = typer.Argument(..., help="Question to answer in local mode"),
@@ -1063,72 +1341,7 @@ def query(
     _render_query_output(_query_payload(pack, question))
 
 
-@app.command()
-def chat(
-    pack: str = typer.Argument(..., help="Pack name to chat with in local mode"),
-    question: Optional[str] = typer.Argument(
-        None,
-        help="Optional one-shot local-mode question. Omit for interactive chat.",
-    ),
-    json_mode: bool = typer.Option(
-        False,
-        "--json",
-        help="Emit machine-safe JSON output.",
-    ),
-):
-    """Chat with a pack in local model mode, one-shot or interactive."""
-    if json_mode:
-        def _machine_action() -> dict:
-            if question is None:
-                raise MachineExit.usage(
-                    "interactive_json_not_supported",
-                    "brainpack chat --json requires a question argument",
-                    pack=pack,
-                )
-            return _chat_one_shot_payload(pack, question, machine=True)
-
-        raise typer.Exit(
-            code=run_machine_command(
-                command="chat",
-                pack=pack,
-                action=_machine_action,
-            )
-        )
-
-    if question is not None:
-        _render_query_output(_chat_one_shot_payload(pack, question))
-        return
-
-    _, config, model, collection = _load_chat_runtime(pack)
-    llm_model = load_settings().preferred_llm_model
-
-    def _ask(prompt_text: str, history: list[dict[str, str]] | None = None) -> dict:
-        return run_query(
-            question=prompt_text,
-            collection=collection,
-            model=model,
-            llm_provider=config.llm,
-            llm_model=llm_model,
-            history=list(history) if history else None,
-        )
-
-    typer.echo(f"Chatting with '{pack}'. Type exit or quit to leave.")
-    session_history: list[dict[str, str]] = []
-    while True:
-        prompt_text = typer.prompt("You").strip()
-        if prompt_text.lower() in {"exit", "quit"}:
-            typer.echo("Bye.")
-            return
-        if not prompt_text:
-            continue
-        result = _ask(prompt_text, history=session_history or None)
-        _render_query_output(result)
-        session_history.append(
-            {"question": prompt_text, "answer": result["answer"]}
-        )
-
-
-@app.command(name="check-deps")
+@app.command(name="check-deps", cls=BrainpackCommand)
 def check_deps() -> None:
     """Check current user-facing dependencies: ffmpeg and yt-dlp."""
     failures = []
@@ -1165,25 +1378,7 @@ def check_deps() -> None:
         raise typer.Exit(code=1)
 
 
-@app.command()
-def doctor(
-    pack: str = typer.Argument(..., help="Pack name to inspect"),
-    operation: str = typer.Option(
-        "all",
-        "--operation",
-        "-o",
-        help="Scope readiness to query, build, or all",
-    ),
-) -> None:
-    """Report operation-scoped runtime readiness for a pack."""
-    statuses = _doctor_payload(pack, operation)["statuses"]
-    for item in statuses:
-        label = item["label"]
-        value = item["value"]
-        typer.echo(f"{label}: {value}")
-
-
-@app.command(name="list")
+@app.command(name="list", cls=BrainpackCommand)
 def list_command(
     json_mode: bool = typer.Option(
         False,
@@ -1208,7 +1403,7 @@ def list_command(
     _render_pack_table(summaries)
 
 
-@app.command(name="status")
+@app.command(name="status", cls=BrainpackCommand)
 def status_command(
     pack: str = typer.Argument(..., help="Pack name to inspect"),
     json_mode: bool = typer.Option(
@@ -1237,11 +1432,12 @@ def status_command(
 
     # ── Package header ────────────────────────────────────────────────────────
     typer.echo()
-    status_text = _status_styled(summary["status"])
-    typer.echo(f"  {bold(config.name)}  {dim(f'({config.id})')}  {status_text}")
+    typer.echo(f"  {bold(config.name)}")
     typer.echo()
 
-    info_rows: list[tuple[str, str]] = [("Type", _display_type(summary["type"])), ("Version", config.version)]
+    info_rows: list[tuple[str, str]] = [("ID", config.id), ("Status", _status_styled(summary["status"])), ("Version", config.version)]
+    if config.description:
+        info_rows.append(("Description", config.description))
     build_date = (summary.get("last_build_at") or "")[:10]
     if build_date:
         info_rows.append(("Last built", build_date))
@@ -1372,7 +1568,7 @@ def status_command(
     typer.echo()
 
 
-@app.command(name="add")
+@app.command(name="add", cls=BrainpackCommand)
 def add(
     source: str = typer.Argument(..., help="Local path or URL to a pack.yaml file"),
 ):
@@ -1423,7 +1619,7 @@ def add(
     )
 
 
-@app.command(hidden=True)
+@app.command(hidden=True, cls=BrainpackCommand)
 def install(
     source: str = typer.Argument(..., help="Local path or URL to a pack.yaml file"),
 ) -> None:
@@ -1431,7 +1627,7 @@ def install(
     add(source)
 
 
-@app.command()
+@app.command(cls=BrainpackCommand)
 def update(
     pack: str = typer.Argument(..., help="Pack name to update"),
     model: Optional[str] = typer.Option(
@@ -1524,7 +1720,7 @@ def update(
     build(pack=pack, model=model, language=language, reset=False, verbose=False)
 
 
-@app.command(name="add-source")
+@app.command(name="add-source", cls=BrainpackCommand)
 def add_source_command(
     pack: str = typer.Argument(..., help="Pack name to add sources to"),
     urls: List[str] = typer.Argument(..., help="One or more URLs to add (YouTube, playlist, article, podcast)"),
@@ -1572,7 +1768,7 @@ def add_source_command(
         build(pack=pack, model=None, language=None, reset=False, verbose=False)
 
 
-@app.command(name="remove")
+@app.command(name="remove", cls=BrainpackCommand)
 def remove_command(
     pack: str = typer.Argument(..., help="Pack name to permanently remove"),
     yes: bool = typer.Option(
@@ -1624,7 +1820,7 @@ def remove_command(
     typer.echo(f"Pack '{pack}' removed.")
 
 
-@app.command(name="mcp-server")
+@app.command(name="mcp-server", cls=BrainpackCommand)
 def mcp_server_command() -> None:
     """Run Brainpack as a local stdio server for agents on the same machine."""
     from brainpack.mcp_server import run_stdio_server

@@ -17,13 +17,7 @@ from brainpack.inventory import (
 )
 from brainpack.machine_output import MachineExit
 from brainpack.pack_state import load_state
-from brainpack.readiness import (
-    _check_ffmpeg_available,
-    _has_audio_sources,
-    _has_youtube_sources,
-    _query_provider_error,
-    _youtube_build_issue,
-)
+from brainpack.readiness import _query_provider_error
 from brainpack.settings import load_settings
 
 
@@ -94,7 +88,7 @@ def _serialize_evidence_item(item: dict) -> dict:
 
 
 def _build_retrieval_payload(question: str, result: dict, *, machine: bool = False) -> dict:
-    """Normalize retrieval results for shared query/chat payload construction."""
+    """Normalize retrieval results for shared query payload construction."""
     if not machine:
         sources = result["sources"]
     else:
@@ -160,7 +154,7 @@ def _load_query_runtime(
     *,
     machine_command: Optional[str] = None,
 ) -> tuple[Path, PackConfig, object, object]:
-    """Load pack config and retrieval runtime for query/chat surfaces."""
+    """Load pack config and retrieval runtime for query surfaces."""
     from brainpack import cli as _cli
     pack_dir = _cli._resolve_pack_dir(pack, machine_command=machine_command)
     config = _cli.load_config(pack_dir)
@@ -256,65 +250,6 @@ def _load_evidence_runtime(
     return pack_dir, config, model, collection
 
 
-def _load_chat_runtime(
-    pack: str,
-    *,
-    machine_command: Optional[str] = None,
-) -> tuple[Path, PackConfig, object, object]:
-    """Load chat runtime only when the pack exists and is ready for chat."""
-    from brainpack import cli as _cli
-    pack_dir = _cli._resolve_pack_dir(
-        pack,
-        missing_next_step="brainpack create",
-        missing_note="Use `brainpack add <path-or-url-or-id>` if you already have a pack.yaml to import.",
-        machine_command=machine_command,
-    )
-    summary = inspect_pack(pack_dir, _cli._pack_readiness_details)
-    status = summary["status"]
-
-    if status == "blocked":
-        _raise_retrieval_precondition(
-            pack,
-            "pack_blocked",
-            f"Pack '{pack}' is blocked before chat can start.",
-            summary,
-            machine_command=machine_command,
-            include_blocker=True,
-        )
-
-    if status == "new":
-        _raise_retrieval_precondition(
-            pack,
-            "pack_not_built",
-            f"Pack '{pack}' is not built yet.",
-            summary,
-            machine_command=machine_command,
-        )
-
-    if status == "needs-build":
-        _raise_retrieval_precondition(
-            pack,
-            "pack_needs_build",
-            f"Pack '{pack}' changed after its last build and needs a rebuild before chat can continue.",
-            summary,
-            machine_command=machine_command,
-        )
-
-    if status == "error":
-        _raise_retrieval_precondition(
-            pack,
-            "pack_build_failed",
-            f"Pack '{pack}' needs a successful build before chat can continue.",
-            summary,
-            machine_command=machine_command,
-        )
-
-    config = summary["config"]
-    model = _cli.load_model(config.embedding_model)
-    collection = _cli.get_collection(pack_dir, config.id)
-    return pack_dir, config, model, collection
-
-
 # ── Payload builders ──────────────────────────────────────────────────────────
 
 def _query_payload(
@@ -328,28 +263,6 @@ def _query_payload(
     _, config, model, collection = _load_query_runtime(
         pack,
         machine_command="query" if machine else None,
-    )
-    result = _cli.run_query(
-        question=question,
-        collection=collection,
-        model=model,
-        llm_provider=config.llm,
-        llm_model=load_settings().preferred_llm_model,
-    )
-    return _build_retrieval_payload(question, result, machine=machine)
-
-
-def _chat_one_shot_payload(
-    pack: str,
-    question: str,
-    *,
-    machine: bool = False,
-) -> dict:
-    """Build a reusable result payload for one-shot chat."""
-    from brainpack import cli as _cli
-    _, config, model, collection = _load_chat_runtime(
-        pack,
-        machine_command="chat" if machine else None,
     )
     result = _cli.run_query(
         question=question,
@@ -402,82 +315,3 @@ def _status_payload(
         return {"pack": serialize_pack_detail(summary)}
     return {"pack": summary}
 
-
-def _doctor_statuses(
-    pack: str,
-    operation: str = "all",
-    *,
-    machine: bool = False,
-) -> list[dict[str, str]]:
-    """Build the reusable doctor/readiness payload."""
-    if operation not in {"query", "build", "all"}:
-        if machine:
-            raise MachineExit.usage(
-                "invalid_operation",
-                f"Unsupported doctor operation '{operation}'.",
-                pack=pack,
-                details={"valid_operations": ["query", "build", "all"]},
-            )
-        typer.echo(
-            f"Error: Unsupported doctor operation '{operation}'. "
-            "Use query, build, or all.",
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    from brainpack import cli as _cli
-    pack_dir = _cli._resolve_pack_dir(pack, machine_command="doctor" if machine else None)
-    config = _cli.load_config(pack_dir)
-    statuses: list[dict[str, str]] = []
-    readiness = _cli._pack_readiness_details(config)
-
-    if operation in {"query", "all"}:
-        provider_error = _cli._query_provider_error(config.llm)
-        if provider_error is None:
-            statuses.append({"label": "Query readiness", "value": f"ready (provider={config.llm})"})
-        else:
-            statuses.append({"label": "Query readiness", "value": f"blocked (provider={config.llm})"})
-            statuses.append({"label": "Query detail", "value": provider_error})
-
-    if operation in {"build", "all"}:
-        if _has_youtube_sources(config):
-            youtube_issue = _youtube_build_issue()
-            if youtube_issue is None:
-                statuses.append({"label": "Build YouTube", "value": "ready"})
-            else:
-                statuses.append({"label": "Build YouTube", "value": "blocked"})
-                statuses.append({"label": "Build YouTube detail", "value": youtube_issue})
-        if _has_audio_sources(config):
-            if _check_ffmpeg_available():
-                statuses.append({"label": "Build audio", "value": "ready"})
-            else:
-                statuses.append(
-                    {
-                        "label": "Build audio",
-                        "value": "blocked",
-                    }
-                )
-                statuses.append(
-                    {
-                        "label": "Build audio detail",
-                        "value": "ffmpeg is required for audio builds. Install: brew install ffmpeg",
-                    }
-                )
-        if not _has_audio_sources(config):
-            statuses.append({"label": "Build audio", "value": "not-needed"})
-
-    return statuses
-
-
-def _doctor_payload(
-    pack: str,
-    operation: str = "all",
-    *,
-    machine: bool = False,
-) -> dict:
-    """Build a reusable payload for doctor output."""
-    return {
-        "pack": pack,
-        "operation": operation,
-        "statuses": _doctor_statuses(pack, operation, machine=machine),
-    }

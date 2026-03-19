@@ -15,7 +15,6 @@ from brainpack.cli import (
     build as _cli_build,
 )
 from brainpack.payloads import (
-    _doctor_payload,
     _evidence_payload,
     _list_payload,
     _status_payload,
@@ -102,16 +101,6 @@ def status(pack: str) -> dict[str, Any]:
         command="status",
         pack=pack,
         action=lambda: _status_payload(pack, machine=True),
-    )
-
-
-@app.tool()
-def doctor(pack: str, operation: str = "all") -> dict[str, Any]:
-    """Check pack readiness for query or build operations."""
-    return _tool_result(
-        command="doctor",
-        pack=pack,
-        action=lambda: _doctor_payload(pack, operation, machine=True),
     )
 
 

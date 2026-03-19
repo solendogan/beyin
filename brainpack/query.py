@@ -71,18 +71,6 @@ def _source_label(meta: Dict[str, Any], index: int | None = None) -> str:
     return label
 
 
-def _conversation_history_block(history: List[Dict[str, str]] | None) -> str:
-    """Render prior chat turns for session-local conversational context."""
-    if not history:
-        return ""
-
-    lines = ["Conversation so far:"]
-    for turn in history:
-        lines.append(f"User: {turn['question']}")
-        lines.append(f"Assistant: {turn['answer']}")
-    return "\n".join(lines)
-
-
 def _response_language_instruction(question: str, context: str) -> str:
     """Tell the model to answer in the user's language and avoid mixed-language drift."""
     lowered = f"{question}\n{context}".lower()
@@ -176,7 +164,6 @@ def run_query(
     model,
     llm_provider: str = "ollama",
     llm_model: str = "llama3.2",
-    history: List[Dict[str, str]] | None = None,
 ) -> Dict[str, Any]:
     """
     Run a full RAG query against the collection.
@@ -214,9 +201,7 @@ def run_query(
         "Do not invent facts beyond the context. If the context does not contain "
         "enough information to answer, say so clearly."
     )
-    history_block = _conversation_history_block(history)
-    history_prefix = f"{history_block}\n\n" if history_block else ""
-    user_message = f"{history_prefix}Context:\n{context}\n\nQuestion: {question}"
+    user_message = f"Context:\n{context}\n\nQuestion: {question}"
 
     # Step 5: Call LLM (QRY-03, QRY-04)
     base_url, api_key = _provider_settings(llm_provider)

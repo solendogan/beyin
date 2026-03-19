@@ -93,7 +93,6 @@ async def test_mcp_server_lists_expected_tools(mcp_app):
     assert [tool.name for tool in tools] == [
         "packs",
         "status",
-        "doctor",
         "evidence",
         "build",
         "add",
@@ -289,43 +288,6 @@ async def test_mcp_evidence_blocks_on_pack_state_preconditions(
 
 
 @pytest.mark.anyio
-async def test_mcp_doctor_returns_structured_statuses(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
-    pack_dir = packs_root / "doctor-pack"
-    _write_pack(pack_dir, name="doctor-pack", llm="openai")
-
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
-        "os.environ",
-        {},
-        clear=True,
-    ):
-        _, structured = await mcp_app.call_tool(
-            "doctor",
-            {"pack": "doctor-pack", "operation": "query"},
-        )
-
-    assert structured == {
-        "ok": True,
-        "meta": {
-            "schema": "brainpack.cli.v1",
-            "command": "doctor",
-            "pack": "doctor-pack",
-            "surface": "mcp",
-            "server_version": "0.1.0",
-        },
-        "data": {
-            "pack": "doctor-pack",
-            "operation": "query",
-            "statuses": [
-                {"label": "Query readiness", "value": "blocked (provider=openai)"},
-                {"label": "Query detail", "value": "Error: OPENAI_API_KEY is not set.\nSet it in your shell environment, then retry."},
-            ],
-        },
-        "warnings": [],
-    }
-
-
-@pytest.mark.anyio
 async def test_mcp_add_returns_structured_command_result(mcp_app, tmp_path):
     packs_root = tmp_path / "brainpacks"
     source_yaml = tmp_path / "incoming-pack.yaml"
@@ -396,5 +358,4 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
     # Build complete verdict with new always-on summary table format
     assert "Build complete" in structured["data"]["stdout"]
     assert "3" in structured["data"]["stdout"]  # chunk count appears in table or verdict
-
 

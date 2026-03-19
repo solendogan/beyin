@@ -212,7 +212,7 @@ def summarize_pack(
 
     if blockers:
         status = "blocked"
-        next_action = f"brainpack doctor {config.id}"
+        next_action = f"brainpack status {config.id}"
     elif has_error:
         status = "error"
         next_action = f"brainpack build {config.id}"
@@ -395,7 +395,7 @@ def human_guidance_command(summary: Dict[str, Any]) -> str:
     name = str(summary.get("name", "<pack>"))
     status = summary.get("status")
     if status == "blocked":
-        return f"brainpack doctor {name}"
+        return f"brainpack status {name}"
     if status in {"new", "needs-build", "error"}:
         return f"brainpack build {name}"
     return "brainpack mcp-server"
