@@ -1,4 +1,4 @@
-"""Runtime loaders and payload builders for Brainpack query/evidence/status surfaces."""
+"""Runtime loaders and payload builders for Brainpack query/retrieve/status surfaces."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -70,8 +70,8 @@ def _serialize_query_source(source: dict) -> dict:
     return payload
 
 
-def _serialize_evidence_item(item: dict) -> dict:
-    """Return the stable public evidence payload item."""
+def _serialize_retrieve_item(item: dict) -> dict:
+    """Return the stable public retrieval result item."""
     payload = {
         "text": item.get("text", ""),
         "url": item.get("url", ""),
@@ -100,15 +100,15 @@ def _build_retrieval_payload(question: str, result: dict, *, machine: bool = Fal
     }
 
 
-def _build_evidence_payload(question: str, evidence: list[dict], *, machine: bool = False) -> dict:
-    """Normalize retrieval evidence for the agent-first MCP contract."""
+def _build_retrieve_payload(question: str, results: list[dict], *, machine: bool = False) -> dict:
+    """Normalize retrieval results for the MCP retrieve contract."""
     if machine:
-        items = [_serialize_evidence_item(item) for item in evidence]
+        items = [_serialize_retrieve_item(item) for item in results]
     else:
-        items = evidence
+        items = results
     return {
         "question": question,
-        "evidence": items,
+        "results": items,
     }
 
 
@@ -223,7 +223,7 @@ def _load_evidence_runtime(
         _raise_retrieval_precondition(
             pack,
             code="pack_build_failed",
-            message=f"Pack '{pack}' needs a successful build before evidence retrieval can continue.",
+            message=f"Pack '{pack}' needs a successful build before retrieve can continue.",
             summary=_retrieval_precondition_summary("error", pack),
             machine_command=machine_command,
         )
@@ -240,7 +240,7 @@ def _load_evidence_runtime(
             pack,
             code="pack_needs_build",
             message=(
-                f"Pack '{pack}' changed after its last build and needs a rebuild before evidence retrieval can continue."
+                f"Pack '{pack}' changed after its last build and needs a rebuild before retrieve can continue."
             ),
             summary=_retrieval_precondition_summary("needs-build", pack),
             machine_command=machine_command,
@@ -274,20 +274,20 @@ def _query_payload(
     return _build_retrieval_payload(question, result, machine=machine)
 
 
-def _evidence_payload(
+def _retrieve_payload(
     pack: str,
     question: str,
     *,
     machine: bool = False,
 ) -> dict:
-    """Build a reusable evidence-only payload for agent retrieval."""
+    """Build a reusable retrieval-only payload for MCP."""
     from brainpack import cli as _cli
     _, _, model, collection = _load_evidence_runtime(
         pack,
-        machine_command="evidence" if machine else None,
+        machine_command="retrieve" if machine else None,
     )
-    evidence = _cli.retrieve_evidence(question=question, collection=collection, model=model)
-    return _build_evidence_payload(question, evidence, machine=machine)
+    results = _cli.retrieve_evidence(question=question, collection=collection, model=model)
+    return _build_retrieve_payload(question, results, machine=machine)
 
 
 def _list_payload(
@@ -314,4 +314,3 @@ def _status_payload(
     if machine:
         return {"pack": serialize_pack_detail(summary)}
     return {"pack": summary}
-

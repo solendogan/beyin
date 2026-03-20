@@ -18,7 +18,7 @@ from brainpack.authoring import (
     build_new_pack_config,
     update_pack_metadata,
 )
-from brainpack.config import load_config, write_config
+from brainpack.config import load_config, write_config, write_public_config
 from brainpack.settings import (
     BrainpackSettings,
     available_setup_choices,
@@ -136,7 +136,7 @@ def _machine_label() -> str:
 def _setup_path_description(value: str) -> str:
     if value == "recommended":
         return "Agent-first defaults. Tune details later."
-    return "Pick mode, audio, transcription, and local answers."
+    return "Pick transcription settings and your default local model."
 
 
 def _backend_description(value: str) -> str:
@@ -152,15 +152,6 @@ def _model_description(value: str) -> str:
         "small": "Fast. Lower accuracy, especially for mixed-language content.",
         "medium": "Recommended. Better accuracy for technical and multilingual audio.",
         "large": "Best quality. Needs 16 GB+ RAM, slower.",
-    }
-    return descriptions.get(value, value)
-
-
-def _provider_description(value: str) -> str:
-    descriptions = {
-        "none": "Skip for now, configure later.",
-        "ollama": "Local model on this machine via Ollama.",
-        "openai": "OpenAI API for local-mode answering.",
     }
     return descriptions.get(value, value)
 
@@ -339,7 +330,7 @@ def _stage_settings(
                 recommended["preferred_transcription_backend"]
             ),
             preferred_whisper_model=str(recommended["preferred_whisper_model"]),
-            preferred_local_provider=str(recommended["preferred_local_provider"]),
+            preferred_llm_model=str(recommended["preferred_llm_model"]),
         )
         _print_review("Recommended defaults preview", describe_settings_summary(staged).splitlines())
         return staged
@@ -362,29 +353,18 @@ def _stage_settings(
         ],
         default=current.preferred_whisper_model,
     )
-    local_provider = _select(
+    llm_model = _text(
         prompt_backend,
-        "Select the default local answer provider",
-        choices=[
-            _choice(
-                value,
-                {
-                    "none": "Skip for now",
-                    "ollama": "Ollama",
-                    "openai": "OpenAI",
-                }.get(value, value),
-                help_text=_provider_description(value),
-            )
-            for value in choices["local_providers"]
-        ],
-        default=current.preferred_local_provider,
+        "Local model",
+        default=current.preferred_llm_model,
+        instruction="Used for local answers through Ollama.",
     )
     staged = BrainpackSettings(
         version=current.version,
         setup_completed=True,
         preferred_transcription_backend=transcription_backend,
         preferred_whisper_model=whisper_model,
-        preferred_local_provider=local_provider,
+        preferred_llm_model=llm_model or current.preferred_llm_model,
     )
     _print_review("Review setup", describe_settings_summary(staged).splitlines())
     return staged
@@ -568,7 +548,7 @@ def run_create_flow(
         typer.echo("Pack creation cancelled. No files were written.")
         return False
 
-    write_config(config, pack_dir / "pack.yaml")
+    write_public_config(config, pack_dir / "pack.yaml")
     _echo_lines(
         render_status(
             f"Created pack '{config.id}'",

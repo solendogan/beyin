@@ -93,7 +93,7 @@ async def test_mcp_server_lists_expected_tools(mcp_app):
     assert [tool.name for tool in tools] == [
         "packs",
         "status",
-        "evidence",
+        "retrieve",
         "build",
         "add",
         "add_sources",
@@ -143,13 +143,13 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
 
 
 @pytest.mark.anyio
-async def test_mcp_evidence_returns_structured_evidence_payload(mcp_app, tmp_path):
+async def test_mcp_retrieve_returns_structured_results_payload(mcp_app, tmp_path):
     packs_root = tmp_path / "brainpacks"
-    pack_dir = packs_root / "evidence-pack"
-    _write_pack(pack_dir, name="evidence-pack", llm="openai")
+    pack_dir = packs_root / "retrieve-pack"
+    _write_pack(pack_dir, name="retrieve-pack", llm="openai")
     _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
 
-    mock_evidence = [
+    mock_results = [
         {
             "text": "Raw chunk text",
             "url": "https://example.com/article",
@@ -173,25 +173,25 @@ async def test_mcp_evidence_returns_structured_evidence_payload(mcp_app, tmp_pat
         return_value=object(),
     ), patch(
         "brainpack.cli.retrieve_evidence",
-        return_value=mock_evidence,
+        return_value=mock_results,
     ):
         _, structured = await mcp_app.call_tool(
-            "evidence",
-            {"pack": "evidence-pack", "question": "What happened?"},
+            "retrieve",
+            {"pack": "retrieve-pack", "question": "What happened?"},
         )
 
     assert structured == {
         "ok": True,
         "meta": {
             "schema": "brainpack.cli.v1",
-            "command": "evidence",
-            "pack": "evidence-pack",
+            "command": "retrieve",
+            "pack": "retrieve-pack",
             "surface": "mcp",
             "server_version": "0.1.0",
         },
         "data": {
             "question": "What happened?",
-            "evidence": [
+            "results": [
                 {
                     "text": "Raw chunk text",
                     "url": "https://example.com/article",
@@ -208,7 +208,7 @@ async def test_mcp_evidence_returns_structured_evidence_payload(mcp_app, tmp_pat
 
 
 @pytest.mark.anyio
-async def test_mcp_evidence_allows_built_ollama_pack_without_reachability_check(mcp_app, tmp_path):
+async def test_mcp_retrieve_allows_built_ollama_pack_without_reachability_check(mcp_app, tmp_path):
     packs_root = tmp_path / "brainpacks"
     pack_dir = packs_root / "ollama-pack"
     _write_pack(pack_dir, name="ollama-pack", llm="ollama")
@@ -228,12 +228,12 @@ async def test_mcp_evidence_allows_built_ollama_pack_without_reachability_check(
         return_value=[],
     ):
         _, structured = await mcp_app.call_tool(
-            "evidence",
+            "retrieve",
             {"pack": "ollama-pack", "question": "What happened?"},
         )
 
     assert structured["ok"] is True
-    assert structured["data"] == {"question": "What happened?", "evidence": []}
+    assert structured["data"] == {"question": "What happened?", "results": []}
     mock_reachable.assert_not_called()
 
 
@@ -246,16 +246,16 @@ async def test_mcp_evidence_allows_built_ollama_pack_without_reachability_check(
         (
             "needs-build",
             "pack_needs_build",
-            "Pack 'state-pack' changed after its last build and needs a rebuild before evidence retrieval can continue.",
+            "Pack 'state-pack' changed after its last build and needs a rebuild before retrieve can continue.",
         ),
         (
             "error",
             "pack_build_failed",
-            "Pack 'state-pack' needs a successful build before evidence retrieval can continue.",
+            "Pack 'state-pack' needs a successful build before retrieve can continue.",
         ),
     ],
 )
-async def test_mcp_evidence_blocks_on_pack_state_preconditions(
+async def test_mcp_retrieve_blocks_on_pack_state_preconditions(
     mcp_app,
     tmp_path,
     state_setup,
@@ -278,7 +278,7 @@ async def test_mcp_evidence_blocks_on_pack_state_preconditions(
         clear=True,
     ):
         _, structured = await mcp_app.call_tool(
-            "evidence",
+            "retrieve",
             {"pack": "state-pack", "question": "What happened?"},
         )
 
@@ -323,6 +323,66 @@ async def test_mcp_add_returns_structured_command_result(mcp_app, tmp_path):
 
 
 @pytest.mark.anyio
+async def test_mcp_add_accepts_pasted_yaml_content(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    yaml_content = (
+        "id: pasted-pack\n"
+        "name: pasted-pack\n"
+        "description: Added from pasted yaml\n"
+        "sources:\n"
+        "  - url: https://example.com/article\n"
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        _, structured = await mcp_app.call_tool(
+            "add",
+            {"yaml": yaml_content},
+        )
+
+    assert structured["ok"] is True
+    assert structured["data"]["exit_code"] == 0
+    assert "Pack 'pasted-pack' added" in structured["data"]["stdout"]
+    assert (packs_root / "pasted-pack" / "pack.yaml").exists()
+    origin = json.loads((packs_root / "pasted-pack" / "origin.json").read_text())
+    assert origin["type"] == "file"
+    assert origin["last_update_summary"] == ["initial add"]
+
+
+@pytest.mark.anyio
+async def test_mcp_add_rejects_source_and_yaml_together(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    source_yaml = tmp_path / "incoming-pack.yaml"
+    source_yaml.write_text(
+        "name: imported-pack\n"
+        "description: Imported test pack\n"
+        "sources:\n"
+        "  - url: https://example.com/article\n"
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        _, structured = await mcp_app.call_tool(
+            "add",
+            {"source": str(source_yaml), "yaml": "name: duplicate\nsources:\n  - url: https://example.com\n"},
+        )
+
+    assert structured == {
+        "ok": False,
+        "meta": {
+            "schema": "brainpack.cli.v1",
+            "command": "add",
+            "surface": "mcp",
+            "server_version": "0.1.0",
+        },
+        "error": {
+            "code": "invalid_add_input",
+            "message": "Provide exactly one of 'source' or 'yaml'.",
+            "details": {},
+        },
+        "warnings": [],
+    }
+
+
+@pytest.mark.anyio
 async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
     packs_root = tmp_path / "brainpacks"
     pack_dir = packs_root / "build-pack"
@@ -359,3 +419,21 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
     assert "Build complete" in structured["data"]["stdout"]
     assert "3" in structured["data"]["stdout"]  # chunk count appears in table or verdict
 
+
+def test_run_stdio_server_swallows_keyboard_interrupt():
+    from brainpack.mcp_server import run_stdio_server
+
+    with patch("brainpack.mcp_server.app.run", side_effect=KeyboardInterrupt()):
+        run_stdio_server()
+
+
+def test_run_stdio_server_swallows_shutdown_exception_group():
+    from brainpack.mcp_server import run_stdio_server
+
+    exc = BaseExceptionGroup(
+        "shutdown",
+        [KeyboardInterrupt(), BrokenPipeError()],
+    )
+
+    with patch("brainpack.mcp_server.app.run", side_effect=exc):
+        run_stdio_server()

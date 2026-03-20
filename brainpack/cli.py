@@ -23,6 +23,7 @@ from brainpack.config import (
     SourceEntry,
     _load_config_from_file,
     load_config,
+    write_public_config,
     write_config,
 )
 from brainpack.interactive import (
@@ -46,6 +47,7 @@ from brainpack.inventory import (
     next_action_reason,
     pack_file_hash,
     pack_config_hash,
+    pack_diverged_from_origin,
     resolve_pack_origin,
     save_pack_origin,
     serialize_pack_detail,
@@ -80,20 +82,9 @@ from brainpack.audio_pipeline import (
     _transcript_path,
 )
 from brainpack.payloads import (
-    _build_evidence_payload,
-    _build_retrieval_payload,
-    _evidence_payload,
-    _has_failed_build,
-    _has_successful_build,
     _list_payload,
-    _load_evidence_runtime,
     _load_query_runtime,
     _query_payload,
-    _raise_retrieval_precondition,
-    _retrieval_precondition_summary,
-    _serialize_evidence_item,
-    _serialize_query_source,
-    _split_machine_message,
     _status_payload,
 )
 from brainpack.readiness import (
@@ -410,7 +401,7 @@ def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False)
 
     def _local_block() -> None:
         _echo(f"  {bold('Use with local model')}")
-        _echo(f"    {dim('1.')} Install Ollama (or another local runtime)")
+        _echo(f"    {dim('1.')} Install Ollama")
         _echo(f"    {dim('2.')} {status_cmd}")
         _echo(f"    {dim('3.')} brainpack create")
         _echo(f"    {dim('4.')} {build_cmd}")
@@ -439,7 +430,7 @@ def _render_home_screen() -> None:
     settings_rows = [
         ("Transcription", settings.preferred_transcription_backend),
         ("Whisper model", settings.preferred_whisper_model),
-        ("LLM model", settings.preferred_llm_model),
+        ("Local model", settings.preferred_llm_model),
     ]
     for line in render_rows(settings_rows):
         typer.echo(line)
@@ -519,7 +510,7 @@ def _settings_display_rows(settings) -> list[tuple[str, str]]:
     return [
         ("Transcription", settings.preferred_transcription_backend),
         ("Whisper model", settings.preferred_whisper_model),
-        ("LLM model", settings.preferred_llm_model),
+        ("Local model", settings.preferred_llm_model),
     ]
 
 
@@ -553,7 +544,6 @@ def settings_command() -> None:
         preferred_transcription_backend=current.preferred_transcription_backend,
         preferred_whisper_model=current.preferred_whisper_model,
         preferred_llm_model=current.preferred_llm_model,
-        preferred_local_provider=current.preferred_local_provider,
     )
 
     _DIVIDER = {"value": "__divider__", "name": "──────────────────────"}
@@ -565,7 +555,7 @@ def settings_command() -> None:
             choices = [
                 {"value": "transcription", "name": f"Transcription backend ({staged.preferred_transcription_backend})"},
                 {"value": "whisper_model", "name": f"Whisper model         ({staged.preferred_whisper_model})"},
-                {"value": "llm_model", "name": f"LLM model             ({staged.preferred_llm_model})"},
+                {"value": "llm_model", "name": f"Local model           ({staged.preferred_llm_model})"},
                 _DIVIDER,
                 _SAVE,
                 _EXIT,
@@ -590,7 +580,7 @@ def settings_command() -> None:
                     typer.echo(f"  {dim('← Back  (Ctrl+C)')}")
                     new_val = _text(
                         backend,
-                        "LLM model",
+                        "Local model",
                         default=staged.preferred_llm_model,
                     )
                     staged.preferred_llm_model = new_val or staged.preferred_llm_model
@@ -983,7 +973,7 @@ def create() -> None:
         )
         raise typer.Exit(code=1)
 
-    write_config(config, pack_dir / "pack.yaml")
+    write_public_config(config, pack_dir / "pack.yaml")
 
     typer.echo(f"Created pack '{config.id}'.")
     typer.echo(f"Source saved: {config.sources[0].url}")
@@ -1653,6 +1643,7 @@ def update(
     state = load_state(pack_dir)
     current_hash = pack_config_hash(pack_dir)
     origin = load_pack_origin(pack_dir)
+    local_changed_since_sync = pack_diverged_from_origin(pack_dir, origin)
     if origin.get("source"):
         try:
             resolved = resolve_pack_origin(origin["source"], _PACKS_DIR)
@@ -1672,6 +1663,25 @@ def update(
                 )
                 raise typer.Exit(code=1)
             incoming_hash = pack_file_hash(tmp_yaml)
+            upstream_changed = incoming_hash != origin.get("last_source_hash")
+            if upstream_changed and local_changed_since_sync:
+                typer.echo(
+                    f"Pack '{pack}' has local changes and the origin has changed too.",
+                    err=True,
+                )
+                typer.echo(
+                    "Update stopped to avoid overwriting local edits.",
+                    err=True,
+                )
+                typer.echo(
+                    f"Origin: {origin.get('source')}",
+                    err=True,
+                )
+                typer.echo(
+                    f"Local pack file: {pack_dir / 'pack.yaml'}",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
             changes = [] if incoming_hash == current_hash else summarize_pack_changes(current_config, incoming_config)
             if changes:
                 typer.echo("Updating pack definition:")
@@ -1697,6 +1707,11 @@ def update(
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
         if not changes:
+            if local_changed_since_sync and not upstream_changed:
+                typer.echo(f"Origin for '{pack}' is already current.")
+                typer.echo("Local pack differs from the last synced origin.")
+                typer.echo(f"Pack file: {pack_dir / 'pack.yaml'}")
+                return
             runtime_status, next_step = _runtime_update_status(pack, state, current_hash)
             if runtime_status == "ready":
                 typer.echo(f"Pack '{pack}' is up-to-date.")

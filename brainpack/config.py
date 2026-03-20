@@ -11,6 +11,7 @@ import yaml
 class SourceEntry:
     """A normalized source with URL and optional per-source episode limit."""
     url: str
+    title: Optional[str] = None
     limit: Optional[int] = None
 
 
@@ -69,8 +70,39 @@ def config_to_raw(config: PackConfig) -> dict:
     raw["embedding_model"] = config.embedding_model
     raw["episode_limit"] = config.episode_limit
     raw["sources"] = [
-        s.url if s.limit is None else {"url": s.url, "limit": s.limit}
+        s.url if s.limit is None and s.title is None else {
+            "url": s.url,
+            **({"title": s.title} if s.title else {}),
+            **({"limit": s.limit} if s.limit is not None else {}),
+        }
         for s in config.sources
+    ]
+    return raw
+
+
+def config_to_public_raw(config: PackConfig) -> dict:
+    """Serialize PackConfig into the shareable pack.yaml manifest shape."""
+    raw: dict = {
+        "id": config.id,
+        "name": config.name,
+        "version": config.version,
+        "description": config.description,
+    }
+    if config.created:
+        raw["created"] = config.created
+    if config.updated:
+        raw["updated"] = config.updated
+    if config.tags:
+        raw["tags"] = config.tags
+    if config.contributors:
+        raw["contributors"] = config.contributors
+    raw["sources"] = [
+        {
+            "url": source.url,
+            **({"title": source.title} if source.title else {}),
+            **({"limit": source.limit} if source.limit is not None else {}),
+        }
+        for source in config.sources
     ]
     return raw
 
@@ -107,6 +139,35 @@ def write_config(
     return destination
 
 
+def write_public_config(
+    config: PackConfig,
+    destination: Path,
+    *,
+    previous: Optional["PackConfig"] = None,
+) -> Path:
+    """Write PackConfig to destination using the public pack manifest shape."""
+    today = _today()
+
+    if not config.created:
+        config = _replace(config, created=today)
+
+    if previous is not None:
+        prev_urls = {s.url for s in previous.sources}
+        curr_urls = {s.url for s in config.sources}
+        if curr_urls != prev_urls:
+            config = _replace(config, version=_bump_version(config.version, minor=True))
+        elif _metadata_changed(previous, config):
+            config = _replace(config, version=_bump_version(config.version))
+
+    config = _replace(config, updated=today)
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    raw = config_to_public_raw(config)
+    with open(destination, "w", encoding="utf-8") as f:
+        yaml.safe_dump(raw, f, sort_keys=False)
+    return destination
+
+
 def _replace(config: PackConfig, **kwargs) -> PackConfig:
     """Return a copy of config with specified fields replaced."""
     from dataclasses import replace
@@ -130,7 +191,7 @@ def _parse_config_from_raw(raw: dict) -> PackConfig:
         if isinstance(s, str):
             sources.append(SourceEntry(url=s))
         elif isinstance(s, dict):
-            sources.append(SourceEntry(url=s["url"], limit=s.get("limit")))
+            sources.append(SourceEntry(url=s["url"], title=s.get("title"), limit=s.get("limit")))
 
     # id falls back to name for backward compat
     name = raw.get("name", "")

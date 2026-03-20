@@ -154,6 +154,18 @@ def _public_origin(origin: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
+def pack_diverged_from_origin(pack_dir: Path, origin: Dict[str, Any] | None = None) -> bool:
+    """Return True when local pack.yaml changed since the last synced origin snapshot."""
+    origin = origin or load_pack_origin(pack_dir)
+    last_synced_pack_hash = origin.get("last_synced_pack_hash")
+    if not origin.get("source") or not last_synced_pack_hash:
+        return False
+    try:
+        return pack_config_hash(pack_dir) != last_synced_pack_hash
+    except Exception:
+        return False
+
+
 def _source_family(config: PackConfig) -> str:
     """Return the compact user-facing source family label for a pack."""
     families = {
@@ -209,6 +221,8 @@ def summarize_pack(
     needs_build = bool(has_build and last_build_hash and last_build_hash != current_hash)
     is_new = not has_build
     has_error = _has_failed_sources(state)
+    if pack_diverged_from_origin(pack_dir, origin):
+        warnings.append("Local pack differs from the last synced origin.")
 
     if blockers:
         status = "blocked"

@@ -1,4 +1,5 @@
 """Tests for cli.py — covers CLI-01, CLI-02."""
+import hashlib
 import importlib
 import json
 import sys
@@ -69,7 +70,7 @@ def _save_global_settings(home: Path, **overrides):
                 "faster-whisper",
             ),
             preferred_whisper_model=overrides.get("preferred_whisper_model", "small"),
-            preferred_local_provider=overrides.get("preferred_local_provider", "ollama"),
+            preferred_llm_model=overrides.get("preferred_llm_model", "llama3.2"),
         )
     )
 
@@ -281,7 +282,7 @@ def test_no_arg_home_screen_guides_first_run(tmp_path):
     assert "Brainpack v0.1.0" in result.output
     assert "No packs installed yet" in result.output
     assert "Settings" in result.output
-    assert "LLM model" in result.output
+    assert "Local model" in result.output
     assert "brainpack create" in result.output
     assert "brainpack settings" in result.output
 
@@ -304,7 +305,7 @@ def test_no_arg_home_screen_orients_around_existing_inventory(tmp_pack_root):
     assert "test-pack" in result.output
     assert "needs-build" in result.output
     assert "Settings" in result.output
-    assert "LLM model" in result.output
+    assert "Local model" in result.output
 
 
 def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
@@ -326,6 +327,32 @@ def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
     assert "Commands:" not in home_result.output
     assert "Your local knowledge base" in home_result.output
     assert home_result.output != help_result.output
+
+
+def test_create_writes_public_pack_yaml_shape(tmp_path):
+    """create should write the cleaner public manifest shape for new packs."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(
+            app,
+            ["create"],
+            input="https://example.com/article\nmy-pack\nA clean manifest\n",
+        )
+
+    assert result.exit_code == 0, result.output
+    raw = (packs_root / "my-pack" / "pack.yaml").read_text()
+    assert "id: my-pack" in raw
+    assert "name: my-pack" in raw
+    assert "description: A clean manifest" in raw
+    assert "sources:" in raw
+    assert "- url: https://example.com/article" in raw
+    assert "llm:" not in raw
+    assert "embedding_model:" not in raw
+    assert "episode_limit:" not in raw
 
 
 def test_no_arg_tty_first_run_routes_to_the_setup_seam_before_home_screen():
@@ -486,7 +513,7 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
             "custom",
             "faster-whisper",
             "small",
-            "openai",
+            "llama3.2:latest",
             True,
         ]
     )
@@ -509,7 +536,7 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
     assert settings.setup_completed is True
     assert settings.preferred_transcription_backend == "faster-whisper"
     assert settings.preferred_whisper_model == "small"
-    assert settings.preferred_local_provider == "openai"
+    assert settings.preferred_llm_model == "llama3.2:latest"
     assert "mlx-whisper" not in backend_names
 
 
@@ -522,13 +549,13 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
 
     _save_global_settings(tmp_path, preferred_whisper_model="small")
     runner = CliRunner()
-    # Sequence: menu → "mode", edit mode → "local",
+    # Sequence: menu → "llm_model", edit local model → "qwen2.5",
     #           menu → "whisper_model", edit whisper → "large",
     #           menu → "__save__"
     backend = _FakePromptBackend(
         [
-            "mode",
-            "local",
+            "llm_model",
+            "qwen2.5",
             "whisper_model",
             "large",
             "__save__",
@@ -545,6 +572,7 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
 
     assert result.exit_code == 0
     assert settings.preferred_whisper_model == "large"
+    assert settings.preferred_llm_model == "qwen2.5"
     # Settings table is always shown
     assert "Brainpack Settings" in result.output
     assert "Settings saved" in result.output
@@ -578,7 +606,7 @@ def test_saved_local_preference_shown_in_home_settings_section(
     monkeypatch,
     tmp_path,
 ):
-    """The home screen settings section reflects the saved mode preference."""
+    """The home screen settings section reflects the saved local model."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
     from brainpack.cli import app
@@ -591,7 +619,7 @@ def test_saved_local_preference_shown_in_home_settings_section(
         result = runner.invoke(app, [])
 
     assert result.exit_code == 0
-    assert "local" in result.output
+    assert "llama3.2" in result.output
 
 
 def test_cancelled_initial_setup_leaves_settings_missing(monkeypatch, tmp_path):
@@ -624,13 +652,12 @@ def test_cancelled_settings_edit_preserves_previous_settings(monkeypatch, tmp_pa
     _save_global_settings(
         tmp_path,
         preferred_whisper_model="small",
-        preferred_local_provider="ollama",
     )
     original = settings_path().read_text()
     backend = _FakePromptBackend(
         [
             "custom",
-            "local",
+            "mistral",
             KeyboardInterrupt(),
         ]
     )
@@ -796,7 +823,7 @@ def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp
     assert raw["version"] == "1.0.0"
     assert raw["created"] is not None
     assert raw["updated"] is not None
-    assert raw["sources"] == [str(local_source)]
+    assert raw["sources"] == [{"url": str(local_source)}]
     assert config.id == "creator-pack"
     assert config.name == "creator-pack"
     assert config.sources == [SourceEntry(url=str(local_source))]
@@ -3747,6 +3774,140 @@ def test_update_with_unchanged_remembered_origin_skips_rebuild_and_reports_runti
     mock_build.assert_not_called()
     assert "definition is already current" in result.output.lower()
     assert "runtime status" in result.output.lower()
+
+
+def test_update_blocks_when_local_and_origin_both_changed(tmp_path):
+    """update should refuse to overwrite local edits when origin also changed."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    local_yaml = (
+        "name: test-pack\ndescription: Local edit\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    last_synced_yaml = (
+        "name: test-pack\ndescription: Old sync\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    upstream_yaml = (
+        "name: test-pack\ndescription: Upstream changed\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "  - https://example.com/new\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    (pack_dir / "pack.yaml").write_text(local_yaml)
+    source_yaml = tmp_path / "remote-pack.yaml"
+    source_yaml.write_text(upstream_yaml)
+
+    from brainpack.inventory import pack_file_hash
+
+    (pack_dir / "origin.json").write_text(
+        json.dumps(
+            {
+                "type": "file",
+                "source": str(source_yaml.resolve()),
+                "resolved": str(source_yaml.resolve()),
+                "last_source_hash": pack_file_hash(source_yaml),
+                "last_synced_pack_hash": hashlib.sha1(last_synced_yaml.encode("utf-8")).hexdigest(),
+            }
+        )
+    )
+    source_yaml.write_text(upstream_yaml.replace("Upstream changed", "Upstream changed again"))
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.build") as mock_build:
+        result = runner.invoke(app, ["update", "test-pack"])
+
+    assert result.exit_code == 1
+    assert "local changes" in result.output.lower()
+    assert "avoid overwriting local edits" in result.output.lower()
+    mock_build.assert_not_called()
+
+
+def test_update_with_local_divergence_and_unchanged_origin_reports_local_edits(tmp_path):
+    """update should report local divergence when origin has no new changes."""
+    from brainpack.cli import app
+    from brainpack.inventory import pack_file_hash
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    local_yaml = (
+        "name: test-pack\ndescription: Local edit\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    last_synced_yaml = (
+        "name: test-pack\ndescription: Old sync\nllm: ollama\nsources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    (pack_dir / "pack.yaml").write_text(local_yaml)
+    source_yaml = tmp_path / "remote-pack.yaml"
+    source_yaml.write_text(last_synced_yaml)
+    (pack_dir / "origin.json").write_text(
+        json.dumps(
+            {
+                "type": "file",
+                "source": str(source_yaml.resolve()),
+                "resolved": str(source_yaml.resolve()),
+                "last_source_hash": pack_file_hash(source_yaml),
+                "last_synced_pack_hash": hashlib.sha1(last_synced_yaml.encode("utf-8")).hexdigest(),
+            }
+        )
+    )
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.build") as mock_build:
+        result = runner.invoke(app, ["update", "test-pack"])
+
+    assert result.exit_code == 0
+    assert "origin for 'test-pack' is already current" in result.output.lower()
+    assert "differs from the last synced origin" in result.output.lower()
+    mock_build.assert_not_called()
+
+
+def test_status_warns_when_pack_diverged_from_origin(tmp_path):
+    """status should warn when local pack.yaml changed since the last synced origin."""
+    from brainpack.cli import app
+    from brainpack.inventory import pack_file_hash
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "diverged-pack"
+    pack_dir.mkdir(parents=True)
+    current_yaml = (
+        "name: diverged-pack\ndescription: local\nllm: openai\nsources:\n"
+        "  - https://example.com/article\n"
+    )
+    old_yaml = (
+        "name: diverged-pack\ndescription: upstream\nllm: openai\nsources:\n"
+        "  - https://example.com/article\n"
+    )
+    (pack_dir / "pack.yaml").write_text(current_yaml)
+    (pack_dir / "origin.json").write_text(
+        json.dumps(
+            {
+                "type": "file",
+                "source": "/tmp/diverged-pack.yaml",
+                "last_synced_pack_hash": hashlib.sha1(old_yaml.encode("utf-8")).hexdigest(),
+                "last_source_hash": pack_file_hash(pack_dir / "pack.yaml"),
+            }
+        )
+    )
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=True):
+        result = runner.invoke(app, ["status", "diverged-pack"])
+
+    assert result.exit_code == 0
+    assert "differs from the last synced origin" in result.output.lower()
 
 
 def test_update_without_remembered_origin_says_no_remote_refresh(tmp_path):

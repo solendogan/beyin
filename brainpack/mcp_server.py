@@ -1,5 +1,6 @@
 """Brainpack MCP server exposing machine-safe inventory and retrieval tools."""
 
+import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
@@ -15,8 +16,8 @@ from brainpack.cli import (
     build as _cli_build,
 )
 from brainpack.payloads import (
-    _evidence_payload,
     _list_payload,
+    _retrieve_payload,
     _status_payload,
 )
 from brainpack.config import load_config, write_config
@@ -27,6 +28,15 @@ from brainpack.machine_output import (
 )
 
 app = FastMCP("Brainpack", json_response=True)
+
+
+def _is_expected_stdio_shutdown(exc: BaseException) -> bool:
+    """Return True for normal stdio server shutdown exceptions."""
+    if isinstance(exc, (KeyboardInterrupt, BrokenPipeError, EOFError)):
+        return True
+    if isinstance(exc, BaseExceptionGroup):
+        return all(_is_expected_stdio_shutdown(child) for child in exc.exceptions)
+    return False
 
 
 def _tool_result(
@@ -90,13 +100,13 @@ def _command_tool_result(
 
 @app.tool()
 def packs() -> dict[str, Any]:
-    """List all installed packs with status and next-action guidance."""
+    """List your installed packs."""
     return _tool_result(command="list", action=lambda: _list_payload(machine=True))
 
 
 @app.tool()
 def status(pack: str) -> dict[str, Any]:
-    """Inspect one installed pack — lifecycle state, blockers, and recommended next action."""
+    """Show details for one pack."""
     return _tool_result(
         command="status",
         pack=pack,
@@ -105,12 +115,12 @@ def status(pack: str) -> dict[str, Any]:
 
 
 @app.tool()
-def evidence(pack: str, question: str) -> dict[str, Any]:
-    """Return retrieval evidence chunks for external agent synthesis — no LLM answer included."""
+def retrieve(pack: str, question: str) -> dict[str, Any]:
+    """Find the most relevant source passages for a question."""
     return _tool_result(
-        command="evidence",
+        command="retrieve",
         pack=pack,
-        action=lambda: _evidence_payload(pack, question, machine=True),
+        action=lambda: _retrieve_payload(pack, question, machine=True),
     )
 
 
@@ -122,7 +132,7 @@ def build(
     model: str = "small",
     language: str | None = None,
 ) -> dict[str, Any]:
-    """Build or incrementally update a pack's index."""
+    """Build or update a pack."""
     return _command_tool_result(
         command="build",
         pack=pack,
@@ -131,8 +141,25 @@ def build(
 
 
 @app.tool()
-def add(source: str) -> dict[str, Any]:
-    """Install a pack from a local path, URL, or registry slug."""
+def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
+    """Add a pack from a path, URL, registry id, or pasted YAML."""
+    if bool(source) == bool(yaml):
+        return build_error_envelope(
+            command="add",
+            error_code="invalid_add_input",
+            message="Provide exactly one of 'source' or 'yaml'.",
+            meta={"surface": "mcp", "server_version": __version__},
+        )
+
+    if yaml is not None:
+        def action() -> None:
+            with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=True, encoding="utf-8") as handle:
+                handle.write(yaml)
+                handle.flush()
+                _cli_add(source=handle.name)
+
+        return _command_tool_result(command="add", action=action)
+
     return _command_tool_result(
         command="add",
         action=lambda: _cli_add(source=source),
@@ -141,7 +168,7 @@ def add(source: str) -> dict[str, Any]:
 
 @app.tool()
 def add_sources(pack: str, urls: list[str], model: str = "small", language: str | None = None) -> dict[str, Any]:
-    """Add one or more source URLs to an existing pack and rebuild it."""
+    """Add source URLs to a pack and rebuild it."""
     def action() -> None:
         pack_dir = Path.home() / ".brainpacks" / pack
         config = load_config(pack_dir)
@@ -158,4 +185,9 @@ def run_stdio_server() -> None:
     """Run the Brainpack MCP server over stdio."""
     import sys
     print("Brainpack MCP server running on stdio.", file=sys.stderr)
-    app.run(transport="stdio")
+    try:
+        app.run(transport="stdio")
+    except BaseException as exc:
+        if _is_expected_stdio_shutdown(exc):
+            return
+        raise

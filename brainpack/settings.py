@@ -12,7 +12,6 @@ from typing import Any
 
 SETTINGS_VERSION = 1
 _SETUP_PATHS = ["recommended", "custom"]
-_LOCAL_PROVIDERS = ["none", "ollama", "openai"]
 _WHISPER_MODELS = ["small", "medium", "large"]
 DEFAULT_WHISPER_MODEL = "medium"
 DEFAULT_LLM_MODEL = "llama3.2"
@@ -35,7 +34,6 @@ class BrainpackSettings:
     )
     preferred_whisper_model: str = DEFAULT_WHISPER_MODEL
     preferred_llm_model: str = DEFAULT_LLM_MODEL
-    preferred_local_provider: str = "none"
 
 
 def settings_path() -> Path:
@@ -57,11 +55,10 @@ def available_setup_choices() -> dict[str, Any]:
         "setup_paths": list(_SETUP_PATHS),
         "transcription_backends": backends,
         "whisper_models": list(_WHISPER_MODELS),
-        "local_providers": list(_LOCAL_PROVIDERS),
         "recommended": {
             "preferred_transcription_backend": recommended.preferred_transcription_backend,
             "preferred_whisper_model": recommended.preferred_whisper_model,
-            "preferred_local_provider": recommended.preferred_local_provider,
+            "preferred_llm_model": recommended.preferred_llm_model,
         },
     }
 
@@ -137,18 +134,10 @@ def resolve_build_defaults(
 
 def describe_settings_summary(settings: BrainpackSettings) -> str:
     """Return a compact human summary of the active settings."""
-    provider_labels = {
-        "none": "skip for now",
-        "ollama": "ollama",
-        "openai": "openai",
-    }
     lines = []
     lines.append(
         "Transcription: "
         f"{settings.preferred_transcription_backend} / {settings.preferred_whisper_model}"
     )
-    lines.append(
-        "Local answers: "
-        f"{provider_labels.get(settings.preferred_local_provider, settings.preferred_local_provider)}"
-    )
+    lines.append(f"Local model: {settings.preferred_llm_model} via Ollama")
     return "\n".join(lines)
