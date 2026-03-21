@@ -836,6 +836,37 @@ def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp
     assert "Source type" not in " ".join(text_prompts)
 
 
+def test_create_command_accepts_local_media_source(tmp_path):
+    """create should accept local media paths as supported source inputs."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "brainpacks"
+    local_source = tmp_path / "clip.mp4"
+    local_source.write_bytes(b"x" * 20_000)
+    backend = _FakePromptBackend(
+        [
+            str(local_source),
+            "media-pack",
+            "Creator clip",
+            True,
+        ]
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.cli.is_interactive_session",
+        return_value=True,
+    ), patch(
+        "brainpack.cli.load_prompt_backend",
+        return_value=backend,
+    ):
+        result = runner.invoke(app, ["create"])
+
+    assert result.exit_code == 0
+    config = load_config(packs_root / "media-pack")
+    assert config.sources == [SourceEntry(url=str(local_source))]
+
+
 def test_add_rejects_local_text_path_as_pack_import(tmp_path):
     """add remains import-only and should not reinterpret a local text file as pack authoring input."""
     from brainpack.cli import app
@@ -1149,7 +1180,7 @@ def test_build_local_path_unsupported_suffix_fails_clearly(tmp_path):
     packs_root = tmp_path / "brainpacks"
     pack_dir = packs_root / "binary-pack"
     pack_dir.mkdir(parents=True)
-    source = tmp_path / "recording.mp3"
+    source = tmp_path / "recording.bin"
     source.write_bytes(b"binary")
     (pack_dir / "pack.yaml").write_text(
         "name: binary-pack\n"
@@ -1273,6 +1304,56 @@ def test_build_whisper_settings_precedence_for_audio_sources(
     assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
     _, kwargs = mock_transcribe.call_args
     assert kwargs.get("model_size") == expected_model
+
+
+def test_build_local_media_source_transcribes_without_download(tmp_path):
+    """build should route local media sources through transcription without downloader calls."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    local_video = tmp_path / "demo.mp4"
+    local_video.write_bytes(b"x" * 20_000)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\n"
+        "description: Test\n"
+        "llm: ollama\n"
+        "sources:\n"
+        f"  - url: {local_video}\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    runner = CliRunner()
+    segments = [{"start": 0.0, "end": 5.0, "text": "Content"}]
+    mock_transcribe = MagicMock(return_value=segments)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli.check_transcription_provenance"), \
+         patch("brainpack.cli.save_state"), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
+         patch("brainpack.cli.download_audio") as mock_download_audio, \
+         patch("brainpack.cli.download_podcast_audio") as mock_download_podcast_audio, \
+         patch("brainpack.cli.transcribe_audio", mock_transcribe), \
+         patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
+         patch("brainpack.cli.embed_and_store", return_value=1), \
+         patch("brainpack.cli.is_audio_step_done", return_value=False), \
+         patch("brainpack.cli.get_audio_step", return_value={}), \
+         patch("brainpack.cli.mark_audio_step"), \
+         patch("brainpack.cli.mark_failed"):
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    assert result.exit_code == 0, result.output
+    mock_download_audio.assert_not_called()
+    mock_download_podcast_audio.assert_not_called()
+    mock_transcribe.assert_called_once()
+    transcribe_path = mock_transcribe.call_args.args[0]
+    assert transcribe_path.parent == pack_dir / "audio"
+    assert transcribe_path.suffix == ".mp4"
 
 
 def test_phase_11_traceability_artifact_exists():

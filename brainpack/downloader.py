@@ -20,6 +20,21 @@ _TEXT_LIKE_SUFFIXES = {
     ".html",
     ".htm",
 }
+_LOCAL_AUDIO_SUFFIXES = {
+    ".mp3",
+    ".m4a",
+    ".wav",
+    ".aac",
+    ".flac",
+    ".ogg",
+}
+_LOCAL_VIDEO_SUFFIXES = {
+    ".mp4",
+    ".mov",
+    ".mkv",
+    ".m4v",
+    ".webm",
+}
 
 _MIN_AUDIO_BYTES = 10_000  # 10KB minimum for valid audio file
 
@@ -42,6 +57,10 @@ def detect_source_type(url: str) -> str:
         return "pack"
     if suffix in _TEXT_LIKE_SUFFIXES:
         return "local_text"
+    if suffix in _LOCAL_AUDIO_SUFFIXES:
+        return "local_audio"
+    if suffix in _LOCAL_VIDEO_SUFFIXES:
+        return "local_video"
     if candidate.exists() and candidate.is_file():
         return "local_file"
     if _YOUTUBE_RE.search(url):

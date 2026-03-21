@@ -183,6 +183,8 @@ def _display_status(status: str) -> str:
 _DISPLAY_TYPE = {
     "youtube": "video",
     "podcast": "audio",
+    "local_audio": "audio",
+    "local_video": "video",
     "text": "articles",
     "local_text": "articles",
     "article": "articles",

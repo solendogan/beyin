@@ -19,7 +19,7 @@ def infer_source_intent(source_input: str) -> dict[str, str]:
         return {"kind": "import", "source_type": "pack"}
     if source_type == "local_file":
         raise ValueError(
-            "Unsupported local source type. Use a minimal text-like file such as .txt, .md, or .html."
+            "Unsupported local source type. Use a text-like file such as .txt or .md, or a media file such as .mp3 or .mp4."
         )
     normalized_type = "article" if source_type == "local_text" else source_type
     return {"kind": "content", "source_type": normalized_type}

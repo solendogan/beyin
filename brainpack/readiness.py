@@ -52,7 +52,10 @@ def _youtube_build_issue() -> Optional[str]:
 
 def _has_audio_sources(config) -> bool:
     from brainpack.downloader import detect_source_type
-    return any(detect_source_type(source.url) in {"youtube", "podcast"} for source in config.sources)
+    return any(
+        detect_source_type(source.url) in {"youtube", "podcast", "local_audio", "local_video"}
+        for source in config.sources
+    )
 
 
 def _has_youtube_sources(config) -> bool:

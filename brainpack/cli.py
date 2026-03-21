@@ -1121,7 +1121,7 @@ def build(
                 typer.echo(f"  [embed] {title} — {new_count} chunks")
             report.record(title, "done", new=new_count)
 
-        else:  # youtube or podcast
+        else:  # youtube, podcast, or local media
             if source_type == "youtube" and youtube_issue:
                 typer.echo(f"  [warn] {youtube_issue}", err=True)
                 report.record(source_url[:40], "blocked", failure_reason=youtube_issue)
@@ -1138,8 +1138,13 @@ def build(
                 playlist_title, episodes = list_youtube_episodes(source_url, effective_limit)
                 if playlist_title:
                     state.setdefault("playlist_titles", {})[source_url] = playlist_title
-            else:  # podcast
+            elif source_type == "podcast":
                 playlist_title, episodes = None, list_podcast_episodes(source_url, effective_limit)
+            else:
+                local_path = Path(source_url).expanduser()
+                title = source.title or local_path.stem
+                playlist_title = None
+                episodes = [{"url": str(local_path), "title": title}]
 
             if not episodes:
                 typer.echo(f"  [warn] No episodes found for {source_url}", err=True)
@@ -1181,14 +1186,37 @@ def build(
                             save_state(pack_dir, state)
 
                 if audio_path is None:
-                    typer.echo(f"  [download] {episode_counter}")
-                    if source_type == "youtube":
-                        audio_path = download_audio(episode_url, audio_dir, episode_title, verbose=verbose)
+                    if source_type in {"local_audio", "local_video"}:
+                        candidate = Path(episode_url).expanduser()
+                        if candidate.exists() and candidate.is_file() and candidate.stat().st_size >= 10_000:
+                            audio_path = candidate
+                        else:
+                            typer.echo(
+                                f"  [warn] Missing or invalid local media source: {episode_url} — skipping",
+                                err=True,
+                            )
+                            mark_failed(
+                                state,
+                                episode_url,
+                                "missing or invalid local media source",
+                                source_id=source_id,
+                            )
+                            save_state(pack_dir, state)
+                            report.record(
+                                episode_title,
+                                "failed",
+                                failure_reason="missing or invalid local media source",
+                            )
+                            continue
+                        typer.echo(f"  [load] {episode_counter}")
                     else:
-                        audio_path = download_podcast_audio(episode_url, audio_dir, episode_title)
+                        typer.echo(f"  [download] {episode_counter}")
+                        if source_type == "youtube":
+                            audio_path = download_audio(episode_url, audio_dir, episode_title, verbose=verbose)
+                        else:
+                            audio_path = download_podcast_audio(episode_url, audio_dir, episode_title)
 
-                    if audio_path is None:
-                        # Retry once
+                    if audio_path is None and source_type not in {"local_audio", "local_video"}:
                         typer.echo(f"  [download] retrying {episode_counter}...")
                         if source_type == "youtube":
                             audio_path = download_audio(episode_url, audio_dir, episode_title, verbose=verbose)
