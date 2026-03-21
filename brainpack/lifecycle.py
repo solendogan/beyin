@@ -2,6 +2,8 @@
 import shutil
 from pathlib import Path
 
+from send2trash import send2trash
+
 _RUNTIME_DIRS = ("chroma", "audio", "transcripts")
 _RUNTIME_FILES = ("meta.json",)
 
@@ -17,5 +19,5 @@ def reset_pack_runtime(pack_dir: Path) -> None:
 
 
 def remove_installed_pack(pack_dir: Path) -> None:
-    """Delete one installed pack directory."""
-    shutil.rmtree(pack_dir, ignore_errors=True)
+    """Move one installed pack directory to the OS trash."""
+    send2trash(str(pack_dir))

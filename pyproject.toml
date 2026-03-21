@@ -16,6 +16,7 @@ dependencies = [
     "tiktoken>=0.7",
     "yt-dlp>=2025.11.12",
     "feedparser>=6.0",
+    "send2trash>=1.8",
     "faster-whisper>=1.0",
     'mlx-whisper>=0.4; sys_platform == "darwin"',
 ]

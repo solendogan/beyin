@@ -10,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 
 from brainpack import __version__
 from brainpack.authoring import add_source_to_pack
+from brainpack.lifecycle import remove_installed_pack
 from brainpack.cli import (
     add as _cli_add,
     build as _cli_build,
@@ -115,12 +116,12 @@ def status(pack: str) -> dict[str, Any]:
 
 
 @app.tool()
-def retrieve(pack: str, question: str) -> dict[str, Any]:
-    """Find the most relevant source passages for a question."""
+def retrieve(pack: str, query: str) -> dict[str, Any]:
+    """Find the most relevant source passages for a query."""
     return _tool_result(
         command="retrieve",
         pack=pack,
-        action=lambda: _retrieve_payload(pack, question, machine=True),
+        action=lambda: _retrieve_payload(pack, query, machine=True),
     )
 
 
@@ -179,6 +180,28 @@ def add_sources(pack: str, urls: list[str], model: str = "small", language: str 
         _cli_build(pack=pack, model=model, language=language)
 
     return _command_tool_result(command="add_sources", pack=pack, action=action)
+
+
+@app.tool()
+def remove(pack: str, confirm: bool = False) -> dict[str, Any]:
+    """Remove a pack and move it to the OS trash. Must be called with confirm=True to proceed."""
+    if not confirm:
+        pack_dir = packs_dir() / pack
+        if not pack_dir.exists():
+            return {"ok": False, "error": f"Pack '{pack}' not found."}
+        return {
+            "ok": True,
+            "data": {
+                "warning": f"This will move pack '{pack}' and all its data to the trash. Call again with confirm=True to proceed.",
+                "pack": pack,
+            },
+        }
+
+    return _command_tool_result(
+        command="remove",
+        pack=pack,
+        action=lambda: remove_installed_pack(packs_dir() / pack),
+    )
 
 
 def run_stdio_server() -> None:
