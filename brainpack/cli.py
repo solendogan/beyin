@@ -63,6 +63,7 @@ from brainpack.pack_state import (
     is_processed,
     load_state,
     mark_audio_step,
+    mark_empty,
     mark_failed,
     mark_processed,
     save_state,
@@ -1122,19 +1123,19 @@ def build(
             report.record(title, "done", new=new_count)
 
         else:  # youtube, podcast, or local media
-            if source_type == "youtube" and youtube_issue:
-                typer.echo(f"  [warn] {youtube_issue}", err=True)
-                report.record(source_url[:40], "blocked", failure_reason=youtube_issue)
-                continue
-            if not ffmpeg_available:
-                ffmpeg_reason = (
-                    "ffmpeg is required for audio builds. "
-                    "Install: brew install ffmpeg or visit https://ffmpeg.org/download.html"
-                )
-                typer.echo(f"  [warn] {ffmpeg_reason}", err=True)
-                report.record(source_url[:40], "blocked", failure_reason=ffmpeg_reason)
-                continue
             if source_type == "youtube":
+                if youtube_issue:
+                    typer.echo(f"  [warn] {youtube_issue}", err=True)
+                    report.record(source_url[:40], "blocked", failure_reason=youtube_issue)
+                    continue
+                if not ffmpeg_available:
+                    ffmpeg_reason = (
+                        "ffmpeg is required for audio builds. "
+                        "Install: brew install ffmpeg or visit https://ffmpeg.org/download.html"
+                    )
+                    typer.echo(f"  [warn] {ffmpeg_reason}", err=True)
+                    report.record(source_url[:40], "blocked", failure_reason=ffmpeg_reason)
+                    continue
                 playlist_title, episodes = list_youtube_episodes(source_url, effective_limit)
                 if playlist_title:
                     state.setdefault("playlist_titles", {})[source_url] = playlist_title
@@ -1153,6 +1154,7 @@ def build(
             total = len(episodes)
             for idx, episode in enumerate(episodes, start=1):
                 episode_url = episode["url"]
+                transcript_text = episode.get("transcript_text", "").strip()
                 episode_title = episode.get("title", "Unknown")
                 source_id = canonical_source_id(episode, source_type=source_type)
                 episode_counter = f"Episode {idx}/{total}: {episode_title}"
@@ -1186,7 +1188,9 @@ def build(
                             save_state(pack_dir, state)
 
                 if audio_path is None:
-                    if source_type in {"local_audio", "local_video"}:
+                    if transcript_text:
+                        pass
+                    elif source_type in {"local_audio", "local_video"}:
                         candidate = Path(episode_url).expanduser()
                         if candidate.exists() and candidate.is_file() and candidate.stat().st_size >= 10_000:
                             audio_path = candidate
@@ -1200,6 +1204,8 @@ def build(
                                 episode_url,
                                 "missing or invalid local media source",
                                 source_id=source_id,
+                                title=episode_title,
+                                parent_source_url=source_url,
                             )
                             save_state(pack_dir, state)
                             report.record(
@@ -1210,39 +1216,59 @@ def build(
                             continue
                         typer.echo(f"  [load] {episode_counter}")
                     else:
+                        if not ffmpeg_available:
+                            ffmpeg_reason = (
+                                "ffmpeg is required for audio builds. "
+                                "Install: brew install ffmpeg or visit https://ffmpeg.org/download.html"
+                            )
+                            typer.echo(f"  [warn] {ffmpeg_reason}", err=True)
+                            report.record(episode_title, "blocked", failure_reason=ffmpeg_reason)
+                            continue
                         typer.echo(f"  [download] {episode_counter}")
                         if source_type == "youtube":
                             audio_path = download_audio(episode_url, audio_dir, episode_title, verbose=verbose)
                         else:
                             audio_path = download_podcast_audio(episode_url, audio_dir, episode_title)
 
-                    if audio_path is None and source_type not in {"local_audio", "local_video"}:
+                    if (
+                        audio_path is None
+                        and not transcript_text
+                        and source_type not in {"local_audio", "local_video"}
+                    ):
                         typer.echo(f"  [download] retrying {episode_counter}...")
                         if source_type == "youtube":
                             audio_path = download_audio(episode_url, audio_dir, episode_title, verbose=verbose)
                         else:
                             audio_path = download_podcast_audio(episode_url, audio_dir, episode_title)
 
-                    if audio_path is None:
+                    if audio_path is None and not transcript_text:
                         typer.echo(
                             f"  [warn] Download failed for {episode_title} — skipping",
                             err=True,
                         )
-                        mark_failed(state, episode_url, "download failed after retry", source_id=source_id)
+                        mark_failed(
+                            state,
+                            episode_url,
+                            "download failed after retry",
+                            source_id=source_id,
+                            title=episode_title,
+                            parent_source_url=source_url,
+                        )
                         save_state(pack_dir, state)
                         report.record(episode_title, "failed", failure_reason="download failed after retry")
                         continue
 
-                    audio_path = _canonical_audio_path(audio_dir, source_id, audio_path)
-                    mark_audio_step(
-                        state,
-                        episode_url,
-                        "downloaded",
-                        episode_title,
-                        source_id=source_id,
-                        parent_source_url=source_url,
-                    )
-                    save_state(pack_dir, state)
+                    if audio_path is not None and source_type not in {"local_audio", "local_video"}:
+                        audio_path = _canonical_audio_path(audio_dir, source_id, audio_path)
+                        mark_audio_step(
+                            state,
+                            episode_url,
+                            "downloaded",
+                            episode_title,
+                            source_id=source_id,
+                            parent_source_url=source_url,
+                        )
+                        save_state(pack_dir, state)
 
                 # Step 2: transcribe
                 transcript_path = _transcript_path(transcripts_dir, source_id)
@@ -1263,16 +1289,28 @@ def build(
                         )
                         save_state(pack_dir, state)
                     else:
-                        typer.echo(f"  [transcribe] {episode_counter}")
-                        segments = transcribe_audio(audio_path, model_size=model_size, language=language, verbose=verbose)
+                        if transcript_text:
+                            typer.echo(f"  [ingest] {episode_counter}")
+                            transcript_chunks = chunk_text(transcript_text)
+                            segments = [{"text": chunk} for chunk in transcript_chunks]
+                        else:
+                            typer.echo(f"  [transcribe] {episode_counter}")
+                            segments = transcribe_audio(audio_path, model_size=model_size, language=language, verbose=verbose)
                         if not segments:
                             typer.echo(
                                 f"  [warn] Transcription failed for {episode_title} — skipping",
                                 err=True,
                             )
-                            mark_failed(state, episode_url, "transcription returned empty", source_id=source_id)
+                            mark_empty(
+                                state,
+                                episode_url,
+                                "transcription returned empty",
+                                source_id=source_id,
+                                title=episode_title,
+                                parent_source_url=source_url,
+                            )
                             save_state(pack_dir, state)
-                            report.record(episode_title, "failed", failure_reason="transcription returned empty")
+                            report.record(episode_title, "empty", failure_reason="transcription returned empty")
                             continue
                         _save_transcript_segments(transcript_path, segments)
                         mark_audio_step(
@@ -1294,6 +1332,29 @@ def build(
 
                 # Step 3: chunk + embed
                 chunks, range_metadata = _chunk_transcript_segments(segments)
+                if not chunks and transcript_text:
+                    transcript_chunks = chunk_text(transcript_text)
+                    if transcript_chunks:
+                        segments = [{"text": chunk} for chunk in transcript_chunks]
+                        _save_transcript_segments(transcript_path, segments)
+                        chunks = transcript_chunks
+                        range_metadata = [{} for _ in transcript_chunks]
+                if not chunks:
+                    typer.echo(
+                        f"  [warn] No indexable transcript chunks for {episode_title} — skipping",
+                        err=True,
+                    )
+                    mark_empty(
+                        state,
+                        episode_url,
+                        "no indexable transcript chunks",
+                        source_id=source_id,
+                        title=episode_title,
+                        parent_source_url=source_url,
+                    )
+                    save_state(pack_dir, state)
+                    report.record(episode_title, "empty", failure_reason="no indexable transcript chunks")
+                    continue
                 metadatas = []
                 for chunk_range in range_metadata:
                     metadata = {"url": episode_url, "title": episode_title, "source_id": source_id}
@@ -1526,6 +1587,22 @@ def status_command(
             return []
         return []
 
+    def _source_failures(url: str) -> list[dict]:
+        direct_sid = canonical_source_id(url)
+        failures: list[dict] = []
+        direct = processed_state.get(direct_sid)
+        if isinstance(direct, dict) and direct.get("status") == "failed":
+            failures.append(direct)
+        owned = [
+            entry for sid, entry in processed_state.items()
+            if sid != direct_sid
+            and isinstance(entry, dict)
+            and entry.get("status") == "failed"
+            and entry.get("parent_source_url") == url
+        ]
+        failures.extend(sorted(owned, key=lambda e: e.get("title") or e.get("url") or ""))
+        return failures
+
     # Header + separator
     typer.echo(_srow(dim("#"), dim("Status"), dim("Title")))
     typer.echo("  " + dim("─" * (term_w - 2)))
@@ -1536,6 +1613,7 @@ def status_command(
         sid = canonical_source_id(url)
         source_type = detect_source_type(url)
         source_audio_entries = _source_audio_entries(url, source_type)
+        source_failures = _source_failures(url)
 
         if sid in processed_state:
             entry = processed_state[sid]
@@ -1555,25 +1633,45 @@ def status_command(
             for line in wrap_text(url, W_TITLE):
                 typer.echo(_CONT + dim(line))
 
-        elif source_type in {"youtube", "podcast"} and source_audio_entries:
+        elif source_type in {"youtube", "podcast"} and (source_audio_entries or source_failures):
             embedded = sum(1 for e in source_audio_entries if e.get("stages", {}).get("embedded"))
-            total = len(source_audio_entries)
-            pl_status = green(f"{embedded}/{total} ready") if embedded == total else yellow(f"{embedded}/{total} ready")
+            total = len(source_audio_entries) + len(source_failures)
+            failed = len(source_failures)
+            status_text = f"{embedded}/{total} ready"
+            if failed:
+                status_text += f", {failed} failed"
+            pl_status = green(status_text) if embedded == total and failed == 0 else yellow(status_text)
             real_title = playlist_titles_state.get(url) or _PLAYLIST_LABEL.get(source_type, "Playlist")
             for j, line in enumerate(wrap_text(real_title, W_TITLE)):
                 typer.echo(_srow(str(i) if j == 0 else "", pl_status if j == 0 else "", line))
             for line in wrap_text(url, W_TITLE):
                 typer.echo(_CONT + dim(line))
             typer.echo()
-            for k, ep in enumerate(source_audio_entries, start=1):
-                ep_status = _ep_status(ep.get("stages", {}))
+            episode_rows = [
+                {
+                    "url": ep.get("url") or "",
+                    "title": ep.get("title") or ep.get("url") or "",
+                    "status": _ep_status(ep.get("stages", {})),
+                }
+                for ep in source_audio_entries
+            ] + [
+                {
+                    "url": ep.get("url") or "",
+                    "title": ep.get("title") or ep.get("url") or "",
+                    "status": red("failed"),
+                }
+                for ep in source_failures
+            ]
+            episode_rows.sort(key=lambda ep: ep["title"] or ep["url"])
+            for k, ep in enumerate(episode_rows, start=1):
+                ep_status = ep["status"]
                 ep_prefix = f"{k}. "
                 ep_indent = " " * len(ep_prefix)
-                ep_title_lines = wrap_text(ep.get("title") or "", W_TITLE - len(ep_prefix))
+                ep_title_lines = wrap_text(ep["title"], W_TITLE - len(ep_prefix))
                 for j, line in enumerate(ep_title_lines):
                     prefix = ep_prefix if j == 0 else ep_indent
                     typer.echo(_srow("", ep_status if j == 0 else "", prefix + line))
-                for line in wrap_text(ep.get("url") or "", W_TITLE - len(ep_indent)):
+                for line in wrap_text(ep["url"], W_TITLE - len(ep_indent)):
                     typer.echo(_CONT + dim(ep_indent + line))
 
         else:

@@ -19,7 +19,7 @@ class BuildEvent:
     """One source outcome recorded during the build loop."""
 
     title: str
-    status: str  # "done" | "skipped" | "failed" | "blocked"
+    status: str  # "done" | "skipped" | "empty" | "failed" | "blocked"
     new: int = 0
     skipped: int = 0
     failure_reason: str = ""
@@ -72,8 +72,12 @@ class BuildReport:
         return [e for e in self.events if e.status == "blocked"]
 
     @property
+    def empty_events(self) -> List[BuildEvent]:
+        return [e for e in self.events if e.status == "empty"]
+
+    @property
     def had_issues(self) -> bool:
-        return bool(self.failed_events or self.blocked_events)
+        return bool(self.failed_events or self.blocked_events or self.empty_events)
 
     # ------------------------------------------------------------------ result
 
@@ -85,7 +89,12 @@ class BuildReport:
         """
         if not self.events:
             return "success"
-        if self.blocked_events and not self.failed_events and self.total_new == 0:
+        if (
+            self.blocked_events
+            and not self.failed_events
+            and not self.empty_events
+            and self.total_new == 0
+        ):
             return "blocked"
         if self.had_issues:
             return "mixed"
@@ -97,6 +106,7 @@ class BuildReport:
         n = self.total_new
         failed = len(self.failed_events)
         blocked = len(self.blocked_events)
+        empty = len(self.empty_events)
         if self.result == "success":
             if n == 0:
                 return "Build complete — all sources up to date."
@@ -111,6 +121,8 @@ class BuildReport:
             parts.append(f"{n} indexed")
         if failed:
             parts.append(f"{failed} failed")
+        if empty:
+            parts.append(f"{empty} empty")
         if blocked:
             parts.append(f"{blocked} blocked")
         return "Build completed with issues: " + ", ".join(parts) + "."
@@ -145,9 +157,12 @@ class BuildReport:
         # mixed
         failed = len(self.failed_events)
         blocked = len(self.blocked_events)
+        empty = len(self.empty_events)
         issue_parts = []
         if failed:
             issue_parts.append(f"{failed} failed")
+        if empty:
+            issue_parts.append(f"{empty} empty")
         if blocked:
             issue_parts.append(f"{blocked} blocked")
         return (
@@ -158,7 +173,7 @@ class BuildReport:
 
     def render_issues_recap(self) -> Optional[str]:
         """Return a short recap of failed/blocked sources, or None if no issues."""
-        problem_events = self.failed_events + self.blocked_events
+        problem_events = self.failed_events + self.empty_events + self.blocked_events
         if not problem_events:
             return None
         lines = ["Issues:"]

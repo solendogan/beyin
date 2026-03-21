@@ -3,6 +3,7 @@ import hashlib
 import importlib
 import json
 import sys
+from types import SimpleNamespace
 import pytest
 import yaml
 from pathlib import Path
@@ -140,6 +141,38 @@ def _mark_pack_failed(pack_dir: Path):
                 "https://example.com/article": {"status": "failed"},
             },
             "audio_steps": {},
+        },
+    )
+
+
+def _mark_pack_mixed_result(
+    pack_dir: Path,
+    *,
+    last_build_at: str = "2026-03-21T10:00:00+00:00",
+):
+    """Persist a mixed-result build state with indexed content plus one failed source."""
+    from brainpack.inventory import pack_config_hash
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {
+                "url:done": {
+                    "status": "done",
+                    "url": "https://example.com/article",
+                    "title": "Ready source",
+                },
+                "url:failed": {
+                    "status": "failed",
+                    "url": "https://example.com/missed",
+                    "reason": "download failed after retry",
+                },
+            },
+            "audio_steps": {},
+            "last_build_at": last_build_at,
+            "last_built_pack_hash": pack_config_hash(pack_dir),
         },
     )
 
@@ -1216,6 +1249,38 @@ def test_build_local_path_unsupported_suffix_fails_clearly(tmp_path):
     assert "unsupported local source type" in result.output.lower()
 
 
+def test_list_podcast_episodes_keeps_transcript_only_entries(monkeypatch):
+    """RSS entries with substantial transcript text should be ingested even without audio enclosures."""
+    from brainpack.downloader import list_podcast_episodes
+
+    class _Entry(dict):
+        def __getattr__(self, name):
+            try:
+                return self[name]
+            except KeyError as exc:
+                raise AttributeError(name) from exc
+
+    entry = _Entry(
+        id="ep-1",
+        title="Transcript-first episode",
+        link="https://example.com/posts/ep-1",
+        content=[{"value": "<p>" + ("hello world " * 80) + "</p>"}],
+        links=[],
+        enclosures=[],
+    )
+
+    fake_feed = SimpleNamespace(entries=[entry])
+    monkeypatch.setitem(sys.modules, "feedparser", SimpleNamespace(parse=lambda _url: fake_feed))
+
+    episodes = list_podcast_episodes("https://example.com/feed.rss", limit=None)
+
+    assert len(episodes) == 1
+    assert episodes[0]["title"] == "Transcript-first episode"
+    assert episodes[0]["guid"] == "ep-1"
+    assert episodes[0]["entry_url"] == "https://example.com/posts/ep-1"
+    assert "transcript_text" in episodes[0]
+
+
 @pytest.mark.parametrize(
     ("pack_yaml", "settings_model", "build_args", "expected_model"),
     [
@@ -1352,7 +1417,7 @@ def test_build_local_media_source_transcribes_without_download(tmp_path):
     mock_download_podcast_audio.assert_not_called()
     mock_transcribe.assert_called_once()
     transcribe_path = mock_transcribe.call_args.args[0]
-    assert transcribe_path.parent == pack_dir / "audio"
+    assert transcribe_path == local_video
     assert transcribe_path.suffix == ".mp4"
 
 
@@ -1391,6 +1456,31 @@ def test_query_exits_0_and_prints_answer(tmp_pack_root):
 
     assert result.exit_code == 0, f"Exit code {result.exit_code}, output: {result.output}"
     assert "Test answer here" in result.output
+
+
+def test_query_allows_mixed_result_pack_with_existing_index(tmp_pack_root):
+    """query should work when a pack has indexed content even if some sources failed in the last build."""
+    from brainpack.cli import app
+
+    packs_root, pack_dir = tmp_pack_root
+    runner = CliRunner()
+    _mark_pack_mixed_result(pack_dir)
+
+    mock_result = {
+        "answer": "Cloud agents run remotely.",
+        "sources": [{"url": "https://example.com", "title": "Example Article"}],
+    }
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._query_provider_error", return_value=None), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.run_query", return_value=mock_result):
+
+        result = runner.invoke(app, ["query", "test-pack", "What are cloud agents?"])
+
+    assert result.exit_code == 0, result.output
+    assert "Cloud agents run remotely." in result.output
 
 
 def test_query_prints_sources_section(tmp_pack_root):
@@ -1898,6 +1988,115 @@ class TestAudioBuild:
         mock_download.assert_called_once()
         mock_transcribe.assert_called_once()
 
+    def test_build_podcast_source_uses_feed_transcript_without_audio(self, tmp_path):
+        """Podcast entries with transcript text should bypass download/transcription and not require ffmpeg."""
+        from brainpack.cli import app
+        packs_root = tmp_path / "brainpacks"
+        pack_dir = packs_root / "test-pack"
+        pack_dir.mkdir(parents=True)
+        (pack_dir / "pack.yaml").write_text(
+            "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+            "  - https://example.com/feed.rss\nembedding_model: all-MiniLM-L6-v2\n"
+        )
+
+        runner = CliRunner()
+        episode = {
+            "guid": "ep001",
+            "title": "Podcast Episode 1",
+            "url": "https://example.com/posts/ep1",
+            "entry_url": "https://example.com/posts/ep1",
+            "transcript_text": "podcast transcript " * 80,
+        }
+        mock_config = _make_config([SourceEntry(url="https://example.com/feed.rss")])
+
+        with patch("brainpack.cli._PACKS_DIR", packs_root), \
+             patch("brainpack.cli.load_config", return_value=mock_config), \
+             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("brainpack.cli.check_model_provenance"), \
+             patch("brainpack.cli.check_transcription_provenance"), \
+             patch("brainpack.cli.save_state"), \
+             patch("brainpack.cli.load_model", return_value=MagicMock()), \
+             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+             patch("brainpack.cli.detect_source_type", return_value="podcast"), \
+             patch("brainpack.cli.list_podcast_episodes", return_value=[episode]), \
+             patch("brainpack.cli._check_ffmpeg_available", return_value=False), \
+             patch("brainpack.cli.download_podcast_audio") as mock_download, \
+             patch("brainpack.cli.transcribe_audio") as mock_transcribe, \
+             patch("brainpack.cli.embed_and_store", return_value=1), \
+             patch("brainpack.cli.is_audio_step_done", return_value=False), \
+             patch("brainpack.cli.get_audio_step", return_value={}), \
+             patch("brainpack.cli.mark_audio_step"), \
+             patch("brainpack.cli.mark_failed"):
+
+            result = runner.invoke(app, ["build", "test-pack"])
+
+        assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
+        assert "[ingest] Episode 1/1: Podcast Episode 1" in result.output
+        mock_download.assert_not_called()
+        mock_transcribe.assert_not_called()
+
+    def test_build_podcast_transcript_text_persists_real_chunks(self, tmp_path):
+        """Transcript-aware RSS should split long transcript text into indexable chunks instead of saving one oversized segment."""
+        from brainpack.cli import app
+
+        packs_root = tmp_path / "brainpacks"
+        pack_dir = packs_root / "test-pack"
+        pack_dir.mkdir(parents=True)
+        (pack_dir / "pack.yaml").write_text(
+            "name: test-pack\n"
+            "description: Test\n"
+            "llm: ollama\n"
+            "sources:\n"
+            "  - https://example.com/feed.rss\n"
+            "embedding_model: all-MiniLM-L6-v2\n"
+        )
+
+        runner = CliRunner()
+        episode = {
+            "guid": "ep001",
+            "title": "Podcast Episode 1",
+            "url": "https://example.com/posts/ep1",
+            "entry_url": "https://example.com/posts/ep1",
+            "transcript_text": "\n".join(
+                [f"Sentence {i}. This is a realistic podcast transcript paragraph." for i in range(1, 80)]
+            ),
+        }
+        mock_config = _make_config([SourceEntry(url="https://example.com/feed.rss")])
+        captured = {}
+
+        def _capture_embed(collection, model, chunks, metadatas, url):
+            captured["chunks"] = chunks
+            captured["metadatas"] = metadatas
+            captured["url"] = url
+            return len(chunks)
+
+        with patch("brainpack.cli._PACKS_DIR", packs_root), \
+             patch("brainpack.cli.load_config", return_value=mock_config), \
+             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("brainpack.cli.check_model_provenance"), \
+             patch("brainpack.cli.check_transcription_provenance"), \
+             patch("brainpack.cli.save_state"), \
+             patch("brainpack.cli.load_model", return_value=MagicMock()), \
+             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+             patch("brainpack.cli.detect_source_type", return_value="podcast"), \
+             patch("brainpack.cli.list_podcast_episodes", return_value=[episode]), \
+             patch("brainpack.cli._check_ffmpeg_available", return_value=False), \
+             patch("brainpack.cli.download_podcast_audio") as mock_download, \
+             patch("brainpack.cli.transcribe_audio") as mock_transcribe, \
+             patch("brainpack.cli.embed_and_store", side_effect=_capture_embed), \
+             patch("brainpack.cli.is_audio_step_done", return_value=False), \
+             patch("brainpack.cli.get_audio_step", return_value={}), \
+             patch("brainpack.cli.mark_audio_step"), \
+             patch("brainpack.cli.mark_failed"):
+
+            result = runner.invoke(app, ["build", "test-pack"])
+
+        assert result.exit_code == 0, result.output
+        assert captured["chunks"]
+        assert all(chunk.strip() for chunk in captured["chunks"])
+        mock_download.assert_not_called()
+        mock_transcribe.assert_not_called()
+
     def test_build_model_flag_passed_to_transcribe(self, tmp_path):
         """build --model medium passes model_size='medium' to transcribe_audio."""
         from brainpack.cli import app
@@ -2386,6 +2585,7 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
         ("new-pack", "new", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build new-pack"),
         ("stale-pack", "needs-build", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build stale-pack"),
         ("error-pack", "error", {"OPENAI_API_KEY": "sk-test"}, "error", "brainpack build error-pack"),
+        ("partial-pack", "partial", {"OPENAI_API_KEY": "sk-test"}, "partial", "brainpack build partial-pack"),
     ],
 )
 def test_status_uses_onboarding_guidance_across_lifecycle_states(
@@ -2422,6 +2622,8 @@ def test_status_uses_onboarding_guidance_across_lifecycle_states(
         _mark_pack_needs_build(pack_dir)
     elif state_setup == "error":
         _mark_pack_failed(pack_dir)
+    elif state_setup == "partial":
+        _mark_pack_mixed_result(pack_dir)
 
     with patch("brainpack.cli._PACKS_DIR", packs_root), \
          patch.dict("os.environ", env_vars, clear=True), \
@@ -3039,6 +3241,64 @@ def test_status_audio_sources_do_not_repeat_unowned_partial_episodes(tmp_path):
     output = result.output
     assert output.count("Yazilim sektorundeki dolandiricilik") == 1
     assert "https://www.youtube.com/watch?v=yoXW3XD8li0" in output
+
+
+def test_status_podcast_source_shows_partial_counts_and_failed_episode_titles(tmp_path):
+    """status should show mixed podcast episode counts and preserve failed episode titles."""
+    from brainpack.cli import app
+    from brainpack.inventory import pack_config_hash
+    from brainpack.pack_state import save_state
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "demo-pack"
+    pack_dir.mkdir(parents=True)
+    feed_url = "https://example.com/feed.rss"
+    (pack_dir / "pack.yaml").write_text(
+        "name: demo-pack\n"
+        "description: demo\n"
+        "llm: ollama\n"
+        "sources:\n"
+        f"  - {feed_url}\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {
+                "podcast:ep-failed": {
+                    "source_id": "podcast:ep-failed",
+                    "url": "https://example.com/ep-failed.mp3",
+                    "title": "Failed Episode Title",
+                    "status": "failed",
+                    "reason": "download failed after retry",
+                    "parent_source_url": feed_url,
+                }
+            },
+            "audio_steps": {
+                "podcast:ep-ready": {
+                    "source_id": "podcast:ep-ready",
+                    "url": "https://example.com/ep-ready.mp3",
+                    "title": "Ready Episode Title",
+                    "parent_source_url": feed_url,
+                    "stages": {"embedded": True},
+                }
+            },
+            "last_build_at": "2026-03-21T10:00:00+00:00",
+            "last_built_pack_hash": pack_config_hash(pack_dir),
+        },
+    )
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["status", "demo-pack"])
+
+    assert result.exit_code == 0, result.output
+    output = result.output
+    assert "partial" in output
+    assert "1/2 ready, 1 failed" in output
+    assert "Ready Episode Title" in output
+    assert "Failed Episode Title" in output
 
 
 def test_list_json_stays_stable_and_prompt_free_for_installed_packs(tmp_path):

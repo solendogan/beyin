@@ -200,7 +200,7 @@ def _status_styled(status: str) -> str:
     label = _display_status(status)
     if status == "ready":
         return green(label)
-    if status in {"new", "needs-build", "blocked"}:
+    if status in {"new", "needs-build", "blocked", "partial"}:
         return yellow(label)
     if status == "error":
         return red(label)

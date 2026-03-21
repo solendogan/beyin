@@ -137,6 +137,32 @@ def _has_failed_sources(state: Dict[str, Any]) -> bool:
     return any(item.get("status") == "failed" for item in state.get("processed", {}).values())
 
 
+def _has_nonready_sources(state: Dict[str, Any]) -> bool:
+    return any(
+        item.get("status") in {"failed", "empty"}
+        for item in state.get("processed", {}).values()
+    )
+
+
+def _source_nonready_entries(processed: Dict[str, Any], url: str) -> list[dict]:
+    """Return non-ready processed entries that belong to a specific configured source."""
+    direct_sid = canonical_source_id(url)
+    direct = processed.get(direct_sid)
+    entries: list[dict] = []
+    if isinstance(direct, dict) and direct.get("status") in {"failed", "empty"}:
+        entries.append(direct)
+    owned = [
+        entry
+        for sid, entry in processed.items()
+        if sid != direct_sid
+        and isinstance(entry, dict)
+        and entry.get("status") in {"failed", "empty"}
+        and entry.get("parent_source_url") == url
+    ]
+    entries.extend(sorted(owned, key=lambda e: e.get("title") or e.get("url") or ""))
+    return entries
+
+
 def _format_when(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
@@ -220,13 +246,16 @@ def summarize_pack(
     last_build_hash = state.get("last_built_pack_hash")
     needs_build = bool(has_build and last_build_hash and last_build_hash != current_hash)
     is_new = not has_build
-    has_error = _has_failed_sources(state)
+    has_error = _has_nonready_sources(state)
     if pack_diverged_from_origin(pack_dir, origin):
         warnings.append("Local pack differs from the last synced origin.")
 
     if blockers:
         status = "blocked"
         next_action = f"brainpack status {config.id}"
+    elif has_error and has_build:
+        status = "partial"
+        next_action = f"brainpack build {config.id}"
     elif has_error:
         status = "error"
         next_action = f"brainpack build {config.id}"
@@ -330,13 +359,21 @@ def _serialize_sources(config: Any, state: Dict[str, Any]) -> list:
         sid = canonical_source_id(url)
         source_type = detect_source_type(url)
         source_audio_entries = _source_audio_entries(url, source_type)
+        source_nonready = _source_nonready_entries(processed, url)
 
         if sid in processed:
             entry = processed[sid]
+            entry_status = entry.get("status")
             result.append({
                 "url": url,
                 "title": entry.get("title") or url,
-                "status": "ready" if entry.get("status") == "done" else "failed",
+                "status": (
+                    "ready"
+                    if entry_status == "done"
+                    else "empty"
+                    if entry_status == "empty"
+                    else "failed"
+                ),
                 "type": source_type,
             })
         elif source_audio_entries and sid in audio_steps:
@@ -354,9 +391,11 @@ def _serialize_sources(config: Any, state: Dict[str, Any]) -> list:
                 "status": status,
                 "type": source_type,
             })
-        elif source_type in {"youtube", "podcast"} and source_audio_entries:
+        elif source_type in {"youtube", "podcast"} and (source_audio_entries or source_nonready):
             embedded = sum(1 for e in source_audio_entries if e.get("stages", {}).get("embedded"))
-            total = len(source_audio_entries)
+            total = len(source_audio_entries) + len(source_nonready)
+            failed = sum(1 for ep in source_nonready if ep.get("status") == "failed")
+            empty = sum(1 for ep in source_nonready if ep.get("status") == "empty")
             episodes = [
                 {
                     "url": ep.get("url", ""),
@@ -364,11 +403,24 @@ def _serialize_sources(config: Any, state: Dict[str, Any]) -> list:
                     "status": "ready" if ep.get("stages", {}).get("embedded") else "partial" if ep.get("stages", {}).get("transcribed") or ep.get("stages", {}).get("downloaded") else "pending",
                 }
                 for ep in source_audio_entries
+            ] + [
+                {
+                    "url": ep.get("url", ""),
+                    "title": ep.get("title") or ep.get("url", ""),
+                    "status": "empty" if ep.get("status") == "empty" else "failed",
+                }
+                for ep in source_nonready
             ]
+            episodes = sorted(episodes, key=lambda ep: ep.get("title") or ep.get("url") or "")
+            status = f"{embedded}/{total} ready"
+            if failed:
+                status += f", {failed} failed"
+            if empty:
+                status += f", {empty} empty"
             result.append({
                 "url": url,
                 "title": playlist_titles.get(url) or url,
-                "status": f"{embedded}/{total} ready",
+                "status": status,
                 "type": source_type,
                 "episodes": episodes,
             })
@@ -410,7 +462,7 @@ def human_guidance_command(summary: Dict[str, Any]) -> str:
     status = summary.get("status")
     if status == "blocked":
         return f"brainpack status {name}"
-    if status in {"new", "needs-build", "error"}:
+    if status in {"new", "needs-build", "error", "partial"}:
         return f"brainpack build {name}"
     return "brainpack mcp-server"
 
@@ -426,6 +478,8 @@ def next_action_reason(summary: Dict[str, Any]) -> str:
         return "Rebuild this pack so agent and local-mode retrieval use the latest indexed changes."
     if status == "error":
         return "Rebuild this pack after the last indexing failure before using it again."
+    if status == "partial":
+        return "This pack is usable now, but rebuilding may recover failed sources and improve coverage."
     if status == "ready":
         return "Connect an agent for the recommended path, or query the pack directly in local mode."
     return "Re-add or repair the pack definition before continuing."

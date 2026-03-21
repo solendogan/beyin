@@ -74,6 +74,25 @@ def _mark_pack_failed(pack_dir: Path) -> None:
     )
 
 
+def _mark_pack_mixed_result(pack_dir: Path, *, last_build_at: str) -> None:
+    from brainpack.inventory import pack_config_hash
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {
+                "url:done": {"status": "done", "url": "https://example.com/article", "title": "Done"},
+                "url:failed": {"status": "failed", "url": "https://example.com/missed", "reason": "download failed"},
+            },
+            "audio_steps": {},
+            "last_build_at": last_build_at,
+            "last_built_pack_hash": pack_config_hash(pack_dir),
+        },
+    )
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
@@ -285,6 +304,37 @@ async def test_mcp_retrieve_blocks_on_pack_state_preconditions(
     assert structured["ok"] is False
     assert structured["error"]["code"] == expected_code
     assert structured["error"]["message"] == expected_message
+
+
+@pytest.mark.anyio
+async def test_mcp_retrieve_allows_mixed_result_pack_with_successful_build(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "mixed-pack"
+    _write_pack(pack_dir, name="mixed-pack", llm="openai")
+    _mark_pack_mixed_result(pack_dir, last_build_at="2026-03-21T10:00:00+00:00")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {},
+        clear=True,
+    ), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.retrieve_evidence",
+        return_value=[{"text": "Cloud agents are remote-running agents.", "url": "https://example.com/article", "title": "Done", "rank": 1}],
+    ):
+        _, structured = await mcp_app.call_tool(
+            "retrieve",
+            {"pack": "mixed-pack", "question": "What are cloud agents?"},
+        )
+
+    assert structured["ok"] is True
+    assert structured["data"]["question"] == "What are cloud agents?"
+    assert len(structured["data"]["results"]) == 1
 
 
 @pytest.mark.anyio

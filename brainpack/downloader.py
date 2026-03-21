@@ -1,4 +1,5 @@
 """Audio source downloading — YouTube via yt-dlp, podcasts via feedparser + urllib."""
+import html
 import re
 import shutil
 import urllib.request
@@ -35,6 +36,7 @@ _LOCAL_VIDEO_SUFFIXES = {
     ".m4v",
     ".webm",
 }
+_MIN_PODCAST_TEXT_CHARS = 500
 
 _MIN_AUDIO_BYTES = 10_000  # 10KB minimum for valid audio file
 
@@ -150,10 +152,54 @@ def _make_progress_hook(title: str):
     return _hook
 
 
+def _strip_markup(value: str) -> str:
+    """Collapse HTML-ish content into plain text for transcript-aware RSS ingestion."""
+    text = html.unescape(value or "")
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</p\s*>", "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
+
+
+def _podcast_entry_text(entry) -> str:
+    """Return the most useful transcript/show-note text exposed by a feed entry."""
+    candidates: list[str] = []
+
+    for content in getattr(entry, "content", []) or []:
+        if isinstance(content, dict):
+            candidates.append(content.get("value", ""))
+        else:
+            candidates.append(getattr(content, "value", ""))
+
+    summary_detail = getattr(entry, "summary_detail", None)
+    if isinstance(summary_detail, dict):
+        candidates.append(summary_detail.get("value", ""))
+    else:
+        candidates.append(getattr(summary_detail, "value", ""))
+
+    candidates.extend(
+        [
+            entry.get("summary", ""),
+            entry.get("description", ""),
+            entry.get("subtitle", ""),
+        ]
+    )
+
+    normalized = [_strip_markup(candidate) for candidate in candidates if candidate]
+    normalized = [text for text in normalized if text]
+    if not normalized:
+        return ""
+    return max(normalized, key=len)
+
+
 def list_podcast_episodes(feed_url: str, limit: Optional[int]) -> list[dict]:
     """
     Parse RSS/Atom podcast feed and return episode list.
-    Skips entries without audio enclosures. Returns [] on failure. Never raises.
+    Uses transcript/show-note text when present; otherwise falls back to audio enclosures.
+    Returns [] on failure. Never raises.
     """
     import feedparser  # lazy import
     try:
@@ -163,6 +209,7 @@ def list_podcast_episodes(feed_url: str, limit: Optional[int]) -> list[dict]:
             entries = entries[:limit]
         episodes = []
         for entry in entries:
+            transcript_text = _podcast_entry_text(entry)
             enclosures = getattr(entry, "enclosures", [])
             audio_encs = [e for e in enclosures if e.get("type", "").startswith("audio/")]
             if not audio_encs:
@@ -172,12 +219,17 @@ def list_podcast_episodes(feed_url: str, limit: Optional[int]) -> list[dict]:
                     lnk for lnk in links
                     if lnk.get("rel") == "enclosure" and lnk.get("type", "").startswith("audio/")
                 ]
-            if not audio_encs:
+            if not audio_encs and len(transcript_text) < _MIN_PODCAST_TEXT_CHARS:
                 continue
+            entry_url = entry.get("link") or entry.get("id") or (
+                audio_encs[0].href if audio_encs else feed_url
+            )
             episodes.append({
-                "url": audio_encs[0].href,
+                "url": audio_encs[0].href if audio_encs else entry_url,
+                "entry_url": entry_url,
                 "title": entry.get("title", entry.get("id", "Unknown")),
-                "guid": entry.get("id", audio_encs[0].href),
+                "guid": entry.get("id", entry_url),
+                **({"transcript_text": transcript_text} if len(transcript_text) >= _MIN_PODCAST_TEXT_CHARS else {}),
             })
         return episodes
     except Exception:

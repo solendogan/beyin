@@ -134,15 +134,45 @@ def mark_failed(
     source: Any,
     reason: str,
     source_id: str | None = None,
+    title: str = "",
+    parent_source_url: str | None = None,
 ) -> None:
     """Record a source as failed so it is not retried on every build."""
     sid = _record_source_id(source, source_id=source_id)
-    state.setdefault("processed", {})[sid] = {
+    record = {
         "source_id": sid,
         "url": _extract_url(source),
         "status": "failed",
         "reason": reason,
     }
+    if title:
+        record["title"] = title
+    if parent_source_url:
+        record["parent_source_url"] = parent_source_url
+    state.setdefault("processed", {})[sid] = record
+
+
+def mark_empty(
+    state: Dict[str, Any],
+    source: Any,
+    reason: str,
+    source_id: str | None = None,
+    title: str = "",
+    parent_source_url: str | None = None,
+) -> None:
+    """Record a source as producing no indexable content without treating it as a hard failure."""
+    sid = _record_source_id(source, source_id=source_id)
+    record = {
+        "source_id": sid,
+        "url": _extract_url(source),
+        "status": "empty",
+        "reason": reason,
+    }
+    if title:
+        record["title"] = title
+    if parent_source_url:
+        record["parent_source_url"] = parent_source_url
+    state.setdefault("processed", {})[sid] = record
 
 
 def get_audio_step(

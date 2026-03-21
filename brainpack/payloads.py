@@ -171,8 +171,13 @@ def _load_query_runtime(
         typer.echo(provider_error, err=True)
         raise typer.Exit(code=1)
     summary = inspect_pack(pack_dir, _cli._pack_readiness_details)
+    state = _cli.load_state(pack_dir)
+    has_build = _has_successful_build(state)
+    current_hash = pack_config_hash(pack_dir)
+    last_build_hash = state.get("last_built_pack_hash")
+    needs_build = bool(has_build and last_build_hash and last_build_hash != current_hash)
     status = summary["status"]
-    if status == "new":
+    if status == "new" or not has_build:
         _raise_retrieval_precondition(
             pack,
             code="pack_not_built",
@@ -180,7 +185,7 @@ def _load_query_runtime(
             summary=summary,
             machine_command=machine_command,
         )
-    if status == "needs-build":
+    if status == "needs-build" or needs_build:
         _raise_retrieval_precondition(
             pack,
             code="pack_needs_build",
@@ -190,7 +195,7 @@ def _load_query_runtime(
             summary=summary,
             machine_command=machine_command,
         )
-    if status == "error":
+    if status == "error" and not has_build:
         _raise_retrieval_precondition(
             pack,
             code="pack_build_failed",
@@ -219,7 +224,7 @@ def _load_evidence_runtime(
     needs_build = bool(has_build and last_build_hash and last_build_hash != current_hash)
     has_error = _has_failed_build(state)
 
-    if has_error:
+    if has_error and not has_build:
         _raise_retrieval_precondition(
             pack,
             code="pack_build_failed",
