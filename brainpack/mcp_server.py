@@ -3,7 +3,6 @@
 import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
-from pathlib import Path
 from typing import Any
 
 import typer
@@ -20,6 +19,7 @@ from brainpack.payloads import (
     _retrieve_payload,
     _status_payload,
 )
+from brainpack.paths import packs_dir
 from brainpack.config import load_config, write_config
 from brainpack.machine_output import (
     build_error_envelope,
@@ -170,7 +170,7 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
 def add_sources(pack: str, urls: list[str], model: str = "small", language: str | None = None) -> dict[str, Any]:
     """Add source URLs to a pack and rebuild it."""
     def action() -> None:
-        pack_dir = Path.home() / ".brainpacks" / pack
+        pack_dir = packs_dir() / pack
         config = load_config(pack_dir)
         updated = config
         for url in urls:

@@ -88,6 +88,7 @@ from brainpack.payloads import (
     _query_payload,
     _status_payload,
 )
+from brainpack.paths import packs_dir
 from brainpack.readiness import (
     _check_ffmpeg_available,
     _check_ollama_reachable,
@@ -280,7 +281,7 @@ app = typer.Typer(
     )
 )
 
-_PACKS_DIR = Path.home() / ".brainpacks"
+_PACKS_DIR = packs_dir()
 _YTDLP_MIN_VERSION = "2025.11.12"
 
 

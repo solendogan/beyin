@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from brainpack.paths import settings_path
+
 SETTINGS_VERSION = 1
 _SETUP_PATHS = ["recommended", "custom"]
 _WHISPER_MODELS = ["small", "medium", "large"]
@@ -34,11 +36,6 @@ class BrainpackSettings:
     )
     preferred_whisper_model: str = DEFAULT_WHISPER_MODEL
     preferred_llm_model: str = DEFAULT_LLM_MODEL
-
-
-def settings_path() -> Path:
-    """Return the machine-level settings file path."""
-    return Path.home() / ".brainpacks" / "settings.json"
 
 
 def _default_settings() -> BrainpackSettings:
