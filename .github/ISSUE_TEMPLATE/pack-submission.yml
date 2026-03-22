@@ -7,7 +7,7 @@ body:
     id: name
     attributes:
       label: Pack name
-      placeholder: e.g. Lex Fridman Podcast
+      placeholder: e.g. Lex Fridman Podcast, Paul Graham Essays, My Favorite Tech Blog
     validations:
       required: true
 
@@ -23,10 +23,11 @@ body:
     id: sources
     attributes:
       label: Sources
-      description: YouTube URLs, podcast RSS feeds, or article URLs — one per line
+      description: YouTube URLs, podcast RSS feeds, blog post URLs, or any other web content — one per line
       placeholder: |
         https://youtube.com/watch?v=...
-        https://youtube.com/watch?v=...
+        https://example.com/blog/post
+        https://feeds.example.com/podcast.rss
     validations:
       required: true
 
@@ -42,7 +43,7 @@ body:
   - type: input
     id: author
     attributes:
-      label: Your name or handle
+      label: Your username
       placeholder: e.g. @username
     validations:
       required: false
