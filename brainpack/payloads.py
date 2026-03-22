@@ -281,18 +281,44 @@ def _query_payload(
 
 def _retrieve_payload(
     pack: str,
-    question: str,
+    queries: list[str],
     *,
     machine: bool = False,
 ) -> dict:
-    """Build a reusable retrieval-only payload for MCP."""
+    """Build a reusable retrieval-only payload for MCP. Runs all queries in parallel and merges results."""
+    import concurrent.futures
     from brainpack import cli as _cli
+    from brainpack.query import WEAK_MATCH_THRESHOLD, DEFAULT_EVIDENCE_RESULTS
     _, _, model, collection = _load_evidence_runtime(
         pack,
         machine_command="retrieve" if machine else None,
     )
-    results = _cli.retrieve_evidence(question=question, collection=collection, model=model)
-    return _build_retrieve_payload(question, results, machine=machine)
+
+    def _run(q: str):
+        return _cli.retrieve_evidence(question=q, collection=collection, model=model)
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        all_results = list(executor.map(_run, queries))
+
+    # Deduplicate across all query results, keep best (lowest) distance per chunk
+    seen: dict[str, dict] = {}
+    for results in all_results:
+        for item in results:
+            key = f"{item['url']}::{item['text'][:80]}"
+            if key not in seen or item.get("distance", 999) < seen[key].get("distance", 999):
+                seen[key] = item
+
+    merged = sorted(seen.values(), key=lambda x: x.get("distance", 999))
+    for i, item in enumerate(merged[:DEFAULT_EVIDENCE_RESULTS], start=1):
+        item["rank"] = i
+    merged = merged[:DEFAULT_EVIDENCE_RESULTS]
+
+    primary_question = queries[0]
+    payload = _build_retrieve_payload(primary_question, merged, machine=machine)
+    if merged and merged[0].get("distance", 0) > WEAK_MATCH_THRESHOLD:
+        payload["low_confidence"] = True
+        payload["low_confidence_hint"] = "Top match confidence is low. Try rephrasing your query for better results."
+    return payload
 
 
 def _list_payload(

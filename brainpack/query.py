@@ -4,8 +4,9 @@ from typing import Any, Dict, List, Tuple
 
 _ENC = None
 OpenAI = None
-DEFAULT_EVIDENCE_RESULTS = 8
+DEFAULT_EVIDENCE_RESULTS = 16
 ANSWER_RESULTS = 5
+WEAK_MATCH_THRESHOLD = 7.5
 
 
 def _encoding():
@@ -156,6 +157,62 @@ def retrieve_evidence(
         _evidence_item(chunk, meta, rank=index, distance=distance)
         for index, (chunk, meta, distance) in enumerate(zip(chunks, metadatas, distances), start=1)
     ]
+
+
+_QUERY_STOP_WORDS = {
+    "what", "how", "why", "when", "where", "which", "who", "is", "are",
+    "the", "a", "an", "to", "do", "does", "should", "can", "tell", "me",
+    "about", "for", "of", "in", "on", "with", "and", "or", "give", "show",
+    "explain", "describe", "list",
+}
+
+
+def _generate_query_variants(question: str) -> List[str]:
+    """Generate up to 3 semantic variants of a query for multi-query retrieval."""
+    variants = [question]
+    q_clean = question.lower().replace("?", "").replace(",", "").strip()
+
+    # Keyword-focused: strip stop words
+    keywords = [w for w in q_clean.split() if w not in _QUERY_STOP_WORDS]
+    keyword_str = " ".join(keywords)
+    if keywords and keyword_str != q_clean:
+        variants.append(keyword_str)
+
+    # Angle variant: reframe keywords from the opposite angle
+    # Use keyword_str (not q_clean) to avoid "how to why do X" or "what is how do X"
+    if keywords:
+        if q_clean.startswith("how"):
+            angle = f"what is {keyword_str}"
+        else:
+            angle = f"how to {keyword_str}"
+        if angle not in variants:
+            variants.append(angle)
+
+    return variants[:3]
+
+
+def multi_retrieve_evidence(
+    question: str,
+    collection,
+    model,
+    n_results: int = DEFAULT_EVIDENCE_RESULTS,
+) -> List[Dict[str, Any]]:
+    """Run retrieve_evidence for multiple query variants, deduplicate, and return top n_results."""
+    variants = _generate_query_variants(question)
+    seen: set[str] = set()
+    merged: List[Dict[str, Any]] = []
+
+    for variant in variants:
+        for item in retrieve_evidence(variant, collection, model, n_results=n_results):
+            key = f"{item['url']}::{item['text'][:80]}"
+            if key not in seen:
+                seen.add(key)
+                merged.append(item)
+
+    merged.sort(key=lambda x: x.get("distance", 999))
+    for i, item in enumerate(merged[:n_results], start=1):
+        item["rank"] = i
+    return merged[:n_results]
 
 
 def run_query(

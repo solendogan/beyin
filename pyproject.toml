@@ -24,6 +24,16 @@ dependencies = [
 [project.scripts]
 brainpack = "brainpack.cli:app"
 
+[tool.hatch.build.targets.wheel]
+exclude = [
+  "/packs",
+  "/benchmarks",
+  "/tests",
+  "/scripts",
+  "/notes",
+  "/.planning",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

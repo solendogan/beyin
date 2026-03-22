@@ -351,6 +351,12 @@ def retrieve_evidence(*args, **kwargs):
     return _retrieve_evidence(*args, **kwargs)
 
 
+def multi_retrieve_evidence(*args, **kwargs):
+    from brainpack.query import multi_retrieve_evidence as _multi_retrieve_evidence
+
+    return _multi_retrieve_evidence(*args, **kwargs)
+
+
 def _source_label(*args, **kwargs):
     from brainpack.query import _source_label as _query_source_label
 

@@ -1,6 +1,8 @@
 """Brainpack MCP server exposing machine-safe inventory and retrieval tools."""
 
+import json
 import tempfile
+import urllib.request
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from typing import Any
@@ -116,12 +118,20 @@ def status(pack: str) -> dict[str, Any]:
 
 
 @app.tool()
-def retrieve(pack: str, query: str) -> dict[str, Any]:
-    """Find the most relevant source passages for a query."""
+def retrieve(pack: str, queries: list[str]) -> dict[str, Any]:
+    """Find the most relevant source passages for one or more queries.
+
+    Pass multiple phrasings of the same question for better coverage — e.g.
+    the original query, a keyword-focused version, and a reframed angle.
+    All queries run in parallel internally; results are deduplicated and
+    ranked by relevance before being returned.
+
+    Example: queries=["when to show hard paywall", "paywall timing onboarding", "hard vs soft paywall LTV"]
+    """
     return _tool_result(
         command="retrieve",
         pack=pack,
-        action=lambda: _retrieve_payload(pack, query, machine=True),
+        action=lambda: _retrieve_payload(pack, queries, machine=True),
     )
 
 
@@ -201,6 +211,43 @@ def remove(pack: str, confirm: bool = False) -> dict[str, Any]:
         command="remove",
         pack=pack,
         action=lambda: remove_installed_pack(packs_dir() / pack),
+    )
+
+
+_REGISTRY_INDEX_URL = "https://raw.githubusercontent.com/buralog/brainpack/main/packs/index.json"
+
+
+@app.tool()
+def registry(query: str = "") -> dict[str, Any]:
+    """Browse the Brainpack community registry. Search by topic, tag, or keyword. Returns matching packs with install URLs."""
+    meta = {"surface": "mcp", "server_version": __version__}
+    try:
+        with urllib.request.urlopen(_REGISTRY_INDEX_URL, timeout=10) as response:
+            packs = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        return build_error_envelope(
+            command="registry",
+            error_code="registry_fetch_failed",
+            message=f"Could not fetch registry: {exc}",
+            meta=meta,
+        )
+
+    if query:
+        q = query.lower()
+        packs = [
+            p for p in packs
+            if q in p.get("name", "").lower()
+            or q in p.get("description", "").lower()
+            or any(q in t.lower() for t in p.get("tags", []))
+        ]
+
+    for p in packs:
+        p["install"] = f'Use the add tool with source="{p["url"]}" to install this pack.'
+
+    return build_success_envelope(
+        command="registry",
+        data={"packs": packs, "total": len(packs)},
+        meta=meta,
     )
 
 
