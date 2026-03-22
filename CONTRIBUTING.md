@@ -38,7 +38,7 @@ For larger changes, open an issue first to discuss the approach.
 
 ## Policy
 
-**What a pack is:** a list of URLs and some metadata. Nothing is stored in the pack itself — Brainpack downloads and processes everything on the user's own machine.
+**What a pack is:** a list of URLs and some metadata. Nothing is stored in the pack itself — all processing happens locally on the user's own machine.
 
 **What's allowed:** links to public YouTube videos, public articles, public websites. That's it.
 
