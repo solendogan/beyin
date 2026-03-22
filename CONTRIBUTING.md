@@ -2,7 +2,33 @@
 
 ## Adding a pack to the registry
 
-Open a [Pack Submission issue](../../issues/new?template=pack-submission.yml) and fill in the form. No fork or code required. If accepted, the pack will be added to the registry and available via `brainpack registry`.
+Open a [Pack Submission issue](../../issues/new?template=pack-submission.yml) and fill in the form. No fork or code required. If accepted, the pack will be added to the registry.
+
+### What makes a good pack
+
+- Focused on a clear topic or creator
+- Sources are public and unlikely to disappear
+- Description tells users what they'll be able to ask about
+- Tags help people discover it
+
+### What a pack must not include
+
+- Full video or audio files you do not own
+- Copied article bodies or transcripts
+- Paywalled content copied in full
+- Private or restricted content
+
+**References are fine. Hosted copies of third-party content are not.**
+
+### Test locally before submitting
+
+```bash
+brainpack add ./packs/your-pack-id.yaml
+brainpack build your-pack-id
+brainpack query your-pack-id "test question"
+```
+
+---
 
 ## Contributing code
 
