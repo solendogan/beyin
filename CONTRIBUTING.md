@@ -38,10 +38,12 @@ For larger changes, open an issue first to discuss the approach.
 
 ## Policy
 
-Packs contain source references only — URLs, metadata, tags. All processing happens on the user's machine.
+**What a pack is:** a list of URLs and some metadata. Nothing is stored in the pack itself — Brainpack downloads and processes everything on the user's own machine.
 
-Packs must not include copied article bodies, transcripts, audio or video files, paywalled content, or anything private or restricted. Linking to public content is fine. Hosting copies of it is not.
+**What's allowed:** links to public YouTube videos, public articles, public websites. That's it.
 
-We will remove packs that contain malware, impersonate creators, use deceptive descriptions, or reference illegal content.
+**What's not allowed:** pasting in full article text, uploading transcripts or audio files, linking to paywalled or private content you copied somewhere.
 
-By submitting a pack, you confirm you have the right to reference the included sources and that the information is accurate.
+**We will remove packs that:** spread malware, pretend to be someone they're not, use misleading descriptions, or link to illegal content.
+
+**By submitting:** you're confirming the sources are public and you're not copying content you don't have permission to share.
