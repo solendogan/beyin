@@ -11,16 +11,11 @@ Open a [Pack Submission issue](../../issues/new?template=pack-submission.yml) an
 - Description tells users what they'll be able to ask about
 - Tags help people discover it
 
-### What a pack must not include
-
-- Full video or audio files you do not own
-- Copied article bodies or transcripts
-- Paywalled content copied in full
-- Private or restricted content
-
-**References are fine. Hosted copies of third-party content are not.**
-
 ### Test locally before submitting
+
+The easiest way is through an AI agent with Brainpack's MCP server — just say "add this pack, build it, and ask it a test question" and it handles everything.
+
+Or via terminal:
 
 ```bash
 brainpack add ./packs/your-pack-id.yaml
@@ -38,3 +33,15 @@ brainpack query your-pack-id "test question"
 4. Open a PR — the template will guide you
 
 For larger changes, open an issue first to discuss the approach.
+
+---
+
+## Policy
+
+Packs contain source references only — URLs, metadata, tags. All processing happens on the user's machine.
+
+Packs must not include copied article bodies, transcripts, audio or video files, paywalled content, or anything private or restricted. Linking to public content is fine. Hosting copies of it is not.
+
+We will remove packs that contain malware, impersonate creators, use deceptive descriptions, or reference illegal content.
+
+By submitting a pack, you confirm you have the right to reference the included sources and that the information is accurate.
