@@ -1,5 +1,5 @@
 .planning/
-
+.claude/
 # Python
 __pycache__/
 .pytest_cache/
