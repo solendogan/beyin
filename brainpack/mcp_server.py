@@ -11,7 +11,7 @@ import typer
 from mcp.server.fastmcp import FastMCP
 
 from brainpack import __version__
-from brainpack.authoring import add_source_to_pack
+from brainpack.authoring import add_source_to_pack, remove_sources_from_pack
 from brainpack.lifecycle import remove_installed_pack
 from brainpack.cli import (
     add as _cli_add,
@@ -24,6 +24,8 @@ from brainpack.payloads import (
 )
 from brainpack.paths import packs_dir
 from brainpack.config import load_config, write_config
+from brainpack.inventory import serialize_pack_sources
+from brainpack.pack_state import load_state
 from brainpack.machine_output import (
     build_error_envelope,
     build_success_envelope,
@@ -179,7 +181,7 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
 
 @app.tool()
 def add_sources(pack: str, urls: list[str], model: str = "small", language: str | None = None) -> dict[str, Any]:
-    """Add source URLs to a pack and rebuild it."""
+    """Add one or more sources to a pack and rebuild it."""
     def action() -> None:
         pack_dir = packs_dir() / pack
         config = load_config(pack_dir)
@@ -190,6 +192,40 @@ def add_sources(pack: str, urls: list[str], model: str = "small", language: str 
         _cli_build(pack=pack, model=model, language=language)
 
     return _command_tool_result(command="add_sources", pack=pack, action=action)
+
+
+@app.tool()
+def remove_sources(
+    pack: str,
+    selectors: list[str],
+    rebuild: bool = False,
+    model: str = "small",
+    language: str | None = None,
+) -> dict[str, Any]:
+    """Remove sources from a pack by current index or visible source text. Rebuild only when requested."""
+    def action() -> None:
+        pack_dir = packs_dir() / pack
+        config = load_config(pack_dir)
+        state = load_state(pack_dir)
+        source_rows = serialize_pack_sources(config, state)
+        try:
+            updated, removed_rows = remove_sources_from_pack(
+                config,
+                selectors,
+                source_rows=source_rows,
+            )
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1)
+
+        write_config(updated, pack_dir / "pack.yaml", previous=config)
+        typer.echo(f"Removed {len(removed_rows)} source(s) from '{pack}'.")
+        if rebuild:
+            _cli_build(pack=pack, model=model, language=language)
+        else:
+            typer.echo(f"Next step: brainpack build {pack}")
+
+    return _command_tool_result(command="remove_sources", pack=pack, action=action)
 
 
 @app.tool()

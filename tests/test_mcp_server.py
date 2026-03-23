@@ -116,6 +116,9 @@ async def test_mcp_server_lists_expected_tools(mcp_app):
         "build",
         "add",
         "add_sources",
+        "remove_sources",
+        "remove",
+        "registry",
     ]
 
 
@@ -144,6 +147,7 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
         "data": {
             "packs": [
                 {
+                    "id": "alpha-pack",
                     "name": "alpha-pack",
                     "status": "ready",
                     "provider": "openai",
@@ -158,6 +162,41 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
         },
         "warnings": [],
     }
+
+
+@pytest.mark.anyio
+async def test_mcp_status_exposes_pack_id_and_indexed_sources(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "mobile-marketing"
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    (pack_dir / "pack.yaml").write_text(
+        "id: mobile-marketing-pack\n"
+        "name: Mobile Marketing\n"
+        "description: Test pack\n"
+        "llm: openai\n"
+        "sources:\n"
+        "  - url: https://example.com/article\n"
+        "    title: Great Article\n"
+        f"  - url: {tmp_path / 'notes.md'}\n"
+        "    title: Local Notes\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ):
+        _, structured = await mcp_app.call_tool("status", {"pack": "mobile-marketing"})
+
+    assert structured["ok"] is True
+    pack = structured["data"]["pack"]
+    assert pack["id"] == "mobile-marketing-pack"
+    assert pack["name"] == "Mobile Marketing"
+    assert pack["sources"][0]["index"] == 1
+    assert pack["sources"][0]["source"] == "https://example.com/article"
+    assert pack["sources"][1]["index"] == 2
+
 
 
 
@@ -468,6 +507,108 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
     # Build complete verdict with new always-on summary table format
     assert "Build complete" in structured["data"]["stdout"]
     assert "3" in structured["data"]["stdout"]  # chunk count appears in table or verdict
+
+
+@pytest.mark.anyio
+async def test_mcp_remove_sources_removes_by_index_without_rebuild_by_default(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "remove-pack"
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: remove-pack\n"
+        "description: Test pack\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - url: https://example.com/article-1\n"
+        "    title: One\n"
+        "  - url: https://example.com/article-2\n"
+        "    title: Two\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.mcp_server.packs_dir",
+        return_value=packs_root,
+    ), patch(
+        "brainpack.mcp_server._cli_build",
+    ) as mock_build:
+        _, structured = await mcp_app.call_tool(
+            "remove_sources",
+            {"pack": "remove-pack", "selectors": ["2"]},
+        )
+
+    assert structured["ok"] is True
+    assert not mock_build.called
+    assert "Next step: brainpack build remove-pack" in structured["data"]["stdout"]
+    raw = (pack_dir / "pack.yaml").read_text()
+    assert "article-1" in raw
+    assert "article-2" not in raw
+
+
+@pytest.mark.anyio
+async def test_mcp_remove_sources_removes_by_text_match(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "remove-pack"
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: remove-pack\n"
+        "description: Test pack\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - url: https://example.com/paywalls\n"
+        "    title: Paywall Strategy\n"
+        "  - url: https://example.com/ads\n"
+        "    title: Meta Ads Guide\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.mcp_server.packs_dir",
+        return_value=packs_root,
+    ), patch(
+        "brainpack.mcp_server._cli_build",
+    ):
+        _, structured = await mcp_app.call_tool(
+            "remove_sources",
+            {"pack": "remove-pack", "selectors": ["meta ads"]},
+        )
+
+    assert structured["ok"] is True
+    raw = (pack_dir / "pack.yaml").read_text()
+    assert "Paywall Strategy" in raw
+    assert "Meta Ads Guide" not in raw
+
+
+@pytest.mark.anyio
+async def test_mcp_remove_sources_can_rebuild_when_requested(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "remove-pack"
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: remove-pack\n"
+        "description: Test pack\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - url: https://example.com/article-1\n"
+        "    title: One\n"
+        "  - url: https://example.com/article-2\n"
+        "    title: Two\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
+        "brainpack.mcp_server.packs_dir",
+        return_value=packs_root,
+    ), patch(
+        "brainpack.mcp_server._cli_build",
+    ) as mock_build:
+        _, structured = await mcp_app.call_tool(
+            "remove_sources",
+            {"pack": "remove-pack", "selectors": ["2"], "rebuild": True},
+        )
+
+    assert structured["ok"] is True
+    assert mock_build.called
 
 
 def test_run_stdio_server_swallows_keyboard_interrupt():

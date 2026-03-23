@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 from brainpack.config import PackConfig, SourceEntry
 from brainpack.downloader import detect_source_type
@@ -63,6 +64,54 @@ def add_source_to_pack(config: PackConfig, source_input: str) -> PackConfig:
     )
 
 
+def remove_sources_from_pack(
+    config: PackConfig,
+    selectors: list[str],
+    *,
+    source_rows: list[dict[str, Any]] | None = None,
+) -> tuple[PackConfig, list[dict[str, Any]]]:
+    """Remove one or more sources from a pack by current index or text match."""
+    rows = source_rows or [
+        {
+            "index": i,
+            "source": source.url,
+            "url": source.url,
+            "title": source.title or source.url,
+            "type": detect_source_type(source.url),
+            "status": "pending",
+        }
+        for i, source in enumerate(config.sources, start=1)
+    ]
+
+    if not selectors:
+        raise ValueError("Provide at least one source selector to remove.")
+
+    matched_indexes: list[int] = []
+    matched_lookup: set[int] = set()
+
+    for raw_selector in selectors:
+        selector = raw_selector.strip()
+        if not selector:
+            continue
+
+        row = _match_source_selector(rows, selector)
+        row_index = int(row["index"])
+        if row_index not in matched_lookup:
+            matched_indexes.append(row_index)
+            matched_lookup.add(row_index)
+
+    if not matched_indexes:
+        raise ValueError("No sources matched the provided selectors.")
+
+    removed_rows = [row for row in rows if int(row["index"]) in matched_lookup]
+    updated_sources = [
+        source
+        for i, source in enumerate(config.sources, start=1)
+        if i not in matched_lookup
+    ]
+    return replace(config, sources=updated_sources), removed_rows
+
+
 def update_pack_metadata(
     config: PackConfig,
     *,
@@ -73,3 +122,50 @@ def update_pack_metadata(
         config,
         description=config.description if description is None else description,
     )
+
+
+def _match_source_selector(rows: list[dict[str, Any]], selector: str) -> dict[str, Any]:
+    if selector.isdigit():
+        idx = int(selector)
+        for row in rows:
+            if int(row["index"]) == idx:
+                return row
+        raise ValueError(f"Source index {idx} is out of range.")
+
+    selector_cf = selector.casefold()
+
+    def _fields(row: dict[str, Any]) -> list[str]:
+        return [
+            str(row.get("title") or ""),
+            str(row.get("source") or ""),
+            str(row.get("url") or ""),
+        ]
+
+    exact = [
+        row
+        for row in rows
+        if any(selector_cf == field.casefold() for field in _fields(row) if field)
+    ]
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        raise ValueError(_ambiguous_selector_message(selector, exact))
+
+    partial = [
+        row
+        for row in rows
+        if any(selector_cf in field.casefold() for field in _fields(row) if field)
+    ]
+    if len(partial) == 1:
+        return partial[0]
+    if len(partial) > 1:
+        raise ValueError(_ambiguous_selector_message(selector, partial))
+    raise ValueError(f"No source matched selector '{selector}'.")
+
+
+def _ambiguous_selector_message(selector: str, rows: list[dict[str, Any]]) -> str:
+    options = ", ".join(
+        f"#{row['index']} {row.get('title') or row.get('source') or row.get('url') or '<unknown>'}"
+        for row in rows[:5]
+    )
+    return f"Selector '{selector}' matched multiple sources: {options}"

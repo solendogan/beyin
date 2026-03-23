@@ -266,7 +266,13 @@ def test_local_mode_command_help_and_agent_server_help_use_new_positioning():
         (
             ["add-source"],
             "<pack>",
-            "Add one or more source URLs to an existing pack's pack.yaml.",
+            "Add one or more sources to an existing pack's pack.yaml.",
+            "--build",
+        ),
+        (
+            ["remove-source"],
+            "<pack>",
+            "Remove one or more sources from an existing pack by index or text match.",
             "--build",
         ),
         (
@@ -995,6 +1001,75 @@ def test_manage_flow_cancel_preserves_existing_pack_definition(tmp_path):
 
     assert completed is False
     assert (pack_dir / "pack.yaml").read_text() == original
+
+
+def test_remove_source_command_removes_by_index(tmp_path):
+    """remove-source should drop the selected current source index and preserve the others."""
+    from brainpack.cli import app
+    from brainpack.config import PackConfig, write_config
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    write_config(
+        PackConfig(
+            id="test-pack",
+            name="test-pack",
+            description="Test pack",
+            llm="ollama",
+            sources=[
+                SourceEntry(url="https://example.com/article-1", title="Article One"),
+                SourceEntry(url="https://example.com/article-2", title="Article Two"),
+                SourceEntry(url=str(tmp_path / "notes.md"), title="Local Notes"),
+            ],
+        ),
+        pack_dir / "pack.yaml",
+    )
+
+    runner = CliRunner()
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["remove-source", "test-pack", "2"])
+
+    config = load_config(pack_dir)
+
+    assert result.exit_code == 0, result.output
+    assert "Removed 1 source(s)" in result.output
+    assert [source.url for source in config.sources] == [
+        "https://example.com/article-1",
+        str(tmp_path / "notes.md"),
+    ]
+
+
+def test_remove_source_command_removes_by_text_match(tmp_path):
+    """remove-source should allow matching a source by visible title text."""
+    from brainpack.cli import app
+    from brainpack.config import PackConfig, write_config
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    write_config(
+        PackConfig(
+            id="test-pack",
+            name="test-pack",
+            description="Test pack",
+            llm="ollama",
+            sources=[
+                SourceEntry(url="https://example.com/article-1", title="Winning Paywalls"),
+                SourceEntry(url="https://example.com/article-2", title="Meta Ads Guide"),
+            ],
+        ),
+        pack_dir / "pack.yaml",
+    )
+
+    runner = CliRunner()
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["remove-source", "test-pack", "meta ads"])
+
+    config = load_config(pack_dir)
+
+    assert result.exit_code == 0, result.output
+    assert [source.url for source in config.sources] == [
+        "https://example.com/article-1",
+    ]
 
 
 def test_build_exits_0(tmp_pack_root):

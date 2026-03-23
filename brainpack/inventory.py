@@ -321,6 +321,7 @@ def inspect_pack(
 def serialize_pack_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
     """Return the stable public machine payload for one pack summary."""
     return {
+        "id": summary["id"],
         "name": summary["name"],
         "status": summary["status"],
         "provider": summary["provider"],
@@ -333,7 +334,7 @@ def serialize_pack_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _serialize_sources(config: Any, state: Dict[str, Any]) -> list:
+def serialize_pack_sources(config: Any, state: Dict[str, Any]) -> list:
     """Build a detailed sources list from config and build state."""
     processed = state.get("processed", {})
     audio_steps = state.get("audio_steps", {})
@@ -354,7 +355,7 @@ def _serialize_sources(config: Any, state: Dict[str, Any]) -> list:
         return []
 
     result = []
-    for source in config.sources:
+    for source_index, source in enumerate(config.sources, start=1):
         url = source.url
         sid = canonical_source_id(url)
         source_type = detect_source_type(url)
@@ -365,8 +366,10 @@ def _serialize_sources(config: Any, state: Dict[str, Any]) -> list:
             entry = processed[sid]
             entry_status = entry.get("status")
             result.append({
+                "index": source_index,
+                "source": url,
                 "url": url,
-                "title": entry.get("title") or url,
+                "title": entry.get("title") or source.title or url,
                 "status": (
                     "ready"
                     if entry_status == "done"
@@ -386,8 +389,10 @@ def _serialize_sources(config: Any, state: Dict[str, Any]) -> list:
             else:
                 status = "pending"
             result.append({
+                "index": source_index,
+                "source": url,
                 "url": url,
-                "title": entry.get("title") or url,
+                "title": entry.get("title") or source.title or url,
                 "status": status,
                 "type": source_type,
             })
@@ -418,16 +423,20 @@ def _serialize_sources(config: Any, state: Dict[str, Any]) -> list:
             if empty:
                 status += f", {empty} empty"
             result.append({
+                "index": source_index,
+                "source": url,
                 "url": url,
-                "title": playlist_titles.get(url) or url,
+                "title": source.title or playlist_titles.get(url) or url,
                 "status": status,
                 "type": source_type,
                 "episodes": episodes,
             })
         else:
             result.append({
+                "index": source_index,
+                "source": url,
                 "url": url,
-                "title": url,
+                "title": source.title or url,
                 "status": "pending",
                 "type": source_type,
             })
@@ -450,7 +459,7 @@ def serialize_pack_detail(summary: Dict[str, Any]) -> Dict[str, Any]:
             "last_update_summary": [
                 str(item) for item in summary.get("last_update_summary", [])
             ],
-            "sources": _serialize_sources(config, state) if config else [],
+            "sources": serialize_pack_sources(config, state) if config else [],
         }
     )
     return payload

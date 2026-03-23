@@ -16,7 +16,7 @@ import typer
 from typer.core import TyperCommand
 
 from brainpack import __version__
-from brainpack.authoring import build_new_pack_config
+from brainpack.authoring import build_new_pack_config, remove_sources_from_pack
 from brainpack.chunker import chunk_text, count_tokens
 from brainpack.config import (
     PackConfig,
@@ -51,6 +51,7 @@ from brainpack.inventory import (
     resolve_pack_origin,
     save_pack_origin,
     serialize_pack_detail,
+    serialize_pack_sources,
     serialize_pack_summary,
     summarize_pack_changes,
     utc_now_iso,
@@ -662,7 +663,8 @@ def help(
         (
             "Manage sources",
             [
-                ("add-source", "Append one or more source URLs to a pack"),
+                ("add-source", "Append one or more sources to a pack"),
+                ("remove-source", "Remove one or more sources from a pack"),
             ],
         ),
         (
@@ -1871,7 +1873,10 @@ def update(
 @app.command(name="add-source", cls=BrainpackCommand)
 def add_source_command(
     pack: str = typer.Argument(..., help="Pack name to add sources to"),
-    urls: List[str] = typer.Argument(..., help="One or more URLs to add (YouTube, playlist, article, podcast)"),
+    urls: List[str] = typer.Argument(
+        ...,
+        help="One or more sources to add (URLs or supported local file paths)",
+    ),
     build_after: bool = typer.Option(
         False,
         "--build",
@@ -1879,7 +1884,7 @@ def add_source_command(
         help="Run build immediately after adding sources.",
     ),
 ) -> None:
-    """Add one or more source URLs to an existing pack's pack.yaml."""
+    """Add one or more sources to an existing pack's pack.yaml."""
     from brainpack.config import SourceEntry, write_config
     pack_dir = _resolve_pack_dir(pack)
     previous = load_config(pack_dir)
@@ -1910,6 +1915,49 @@ def add_source_command(
         typer.echo(f"  + [{source_type}] {url}")
     if skipped:
         typer.echo(f"Skipped {len(skipped)} already-present source(s).")
+
+    if build_after:
+        typer.echo("")
+        build(pack=pack, model=None, language=None, reset=False, verbose=False)
+
+
+@app.command(name="remove-source", cls=BrainpackCommand)
+def remove_source_command(
+    pack: str = typer.Argument(..., help="Pack name to remove sources from"),
+    selectors: List[str] = typer.Argument(
+        ...,
+        help="One or more source selectors to remove (current index or visible title/source text)",
+    ),
+    build_after: bool = typer.Option(
+        False,
+        "--build",
+        "-b",
+        help="Run build immediately after removing sources.",
+    ),
+) -> None:
+    """Remove one or more sources from an existing pack by index or text match."""
+    pack_dir = _resolve_pack_dir(pack)
+    previous = load_config(pack_dir)
+    state = load_state(pack_dir)
+    source_rows = serialize_pack_sources(previous, state)
+
+    try:
+        updated_config, removed_rows = remove_sources_from_pack(
+            previous,
+            selectors,
+            source_rows=source_rows,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    write_config(updated_config, pack_dir / "pack.yaml", previous=previous)
+
+    typer.echo(f"Removed {len(removed_rows)} source(s) from '{pack}':")
+    for row in removed_rows:
+        typer.echo(
+            f"  - #{row['index']} [{row.get('type', 'unknown')}] {row.get('title') or row.get('source') or row.get('url')}"
+        )
 
     if build_after:
         typer.echo("")
