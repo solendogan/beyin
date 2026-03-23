@@ -159,7 +159,7 @@ def _model_description(value: str) -> str:
 def _print_setup_intro(*, first_run: bool) -> None:
     title = "Start your first setup now" if first_run else "Update Brainpack settings"
     intro_lines = [
-        "Turn your favorite content into local queryable context.",
+        "Turn your favorite content into local queryable packs.",
         f"Detected machine: {_machine_label()}",
     ]
     footer_lines = [
