@@ -2,7 +2,7 @@
 
 # Brainpack
 
-**Turn YouTube videos, articles, podcasts, and local files into searchable knowledge packs. Then let your AI agent query them over MCP.**
+**Build local, queryable packs from text extracted from videos, articles, podcasts, and local files. Query them through MCP with your AI agent, or use a local model to explore them directly.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
@@ -12,32 +12,75 @@
 
 ---
 
-## What is Brainpack?
+<details>
+<summary><strong>Table of Contents</strong></summary>
 
-You follow creators. You save articles. You have local docs you never re-read.
+- [What is Brainpack?](#what-is-brainpack)
+- [Use It Through Your AI Agent](#use-it-through-your-ai-agent)
+- [Quick Start](#quick-start)
+- [Example Usage with MCP](#example-usage-with-mcp)
+- [MCP Tools Reference](#mcp-tools-reference)
+- [All Commands](#all-commands)
+- [Local Model (Ollama)](#local-model-ollama)
+- [Troubleshooting](#troubleshooting)
+- [Development (from the repo)](#development-from-the-repo)
+- [Behind the Scenes](#behind-the-scenes)
+- [Contributing](#contributing)
+- [Legal](#legal)
+- [License](#license)
 
-Brainpack indexes all of that into a local, private knowledge pack. Your agent can then pull answers from those packs during normal conversation, without you having to paste context, summarize videos, or remember where you read something.
-
-**The main workflow:**
-
-1. Build a pack from your sources
-2. Connect Brainpack to your agent via MCP
-3. Ask your agent questions and it retrieves from your packs automatically
+</details>
 
 ---
 
-## MCP: The Main Way to Use Brainpack
+## What is Brainpack?
 
-> If you already use Claude Code, Codex, Cursor, or any other AI coding agent, this is the path. You do not need to learn any new commands.
+Brainpack is a local-first tool for turning useful information into queryable knowledge packs.
 
-Once Brainpack is connected as an MCP server, your agent can:
+Useful information shows up everywhere, but it rarely stays usable.
 
-- create and manage packs
-- add new sources (URLs, local files, YouTube videos)
-- build and update packs
+You come across valuable information worth keeping, but it remains tied to the format where you found it. A video contains insights you want to reference later. An article has details you may want to use again. A saved post, note, or file can hold something important long after you first saw it.
+
+Brainpack was built to turn that scattered information into something structured, local, and queryable through your AI agent, so the useful parts stay accessible whenever you need them.
+
+**How it works**
+1. Build a pack from your sources
+2. Connect Brainpack to your agent through MCP
+3. Ask questions normally while your agent retrieves from your packs automatically
+
+For the easiest workflow, see [Use It Through Your AI Agent](#use-it-through-your-ai-agent).
+
+#### Supported Sources
+
+| Type | Examples |
+|------|----------|
+| Web articles | Any public URL |
+| YouTube | Videos and playlists |
+| Podcasts | RSS feed URLs |
+| Local text | `.txt`, `.md`, `.rst`, `.html` |
+| Local audio | `.mp3`, `.m4a`, `.wav` |
+| Local video | `.mp4`, `.mov`, `.mkv`, `.webm` |
+
+
+> Brainpack is built for local processing on your own machine. Use it with content you are allowed to process, preferably public, permitted sources or material you own or have rights to use. Avoid copied, paywalled, private, restricted, or illegally shared content.
+
+---
+
+## Use It Through Your AI Agent
+
+The easiest way to use Brainpack is through MCP with the AI agent you already use.
+
+Once Brainpack is connected, you do not need to run commands or manage packs manually in the terminal. You can just talk to your agent and let it handle Brainpack through MCP behind the scenes.
+
+You can ask your agent to:
+
+- create, build, update and manage packs
+- add new sources to a pack by providing URLs or local files
+- check your local packs and their status
+- check available packs in the pack hub
 - retrieve relevant results in response to your questions
 
-You just talk to your agent normally. It handles the rest.
+See [Example Prompts](#example-prompts) below for common ways to use it.
 
 ---
 
@@ -55,7 +98,7 @@ Verify your setup:
 brainpack check-deps
 ```
 
-**Only needed for YouTube, audio, and video sources. Skip if you only use articles and local text:**
+**Only needed for video and audio sources. Skip if you only use articles and local text:**
 
 **yt-dlp** (any OS):
 ```bash
@@ -169,66 +212,19 @@ Go to **Manage MCP Servers** → **View raw config** and add:
 
 The command is `brainpack mcp-server`. It runs a stdio MCP server, compatible with any agent that supports the MCP protocol.
 
----
+## Example Usage with MCP
 
-### Step 3: Ask your agent
-
-Once connected, just talk to your agent:
-
-```
-Create a new Brainpack pack called "ai-research" and add this article: https://example.com/article. Then build the pack.
-```
-
-```
-Add this YouTube video to my "ai-research" pack and rebuild it: https://youtube.com/watch?v=...
-```
-
-```
-What does my "ai-research" pack say about retrieval-augmented generation?
-```
-
-Your agent calls the right MCP tools behind the scenes. You never need to touch the terminal for day-to-day use.
-
----
-
-## How Packs Work
-
-1. Brainpack fetches or loads your source content
-2. It extracts text or generates transcripts (for audio/video)
-3. It chunks the content into indexed segments
-4. It embeds those chunks into a local vector store
-5. At query time, it retrieves the best-matching results
-
-Everything is local. No data is sent anywhere. Packs are just files on your disk.
-
-Brainpack uses a multilingual embedding model by default, so it works well for non-English content too, not just English sources.
-
----
-
-## Example Prompts
+Once Brainpack is connected through MCP, you can talk to your agent naturally. You do not need to memorize commands or even say "Brainpack" every time. Just ask for what you want, and your agent can handle the pack workflow behind the scenes.
 
 | What you want | What to say |
 |---------------|-------------|
-| Build a new pack | `Create a Brainpack pack called "my-pack", add this source: [URL], and build it.` |
-| Add to an existing pack | `Add [URL] to my "my-pack" Brainpack pack and rebuild it.` |
-| Ask a question | `Search my "my-pack" Brainpack pack for everything it says about [topic].` |
-| Add a YouTube playlist | `Add this YouTube playlist to a new Brainpack pack called "podcast-notes" and build it: [URL]` |
 | Check your packs | `List my Brainpack packs and show me their status.` |
-
----
-
-## Supported Sources
-
-| Type | Examples |
-|------|----------|
-| Web articles | Any public URL |
-| YouTube | Videos and playlists |
-| Podcasts | RSS feed URLs |
-| Local text | `.txt`, `.md`, `.rst`, `.html` |
-| Local audio | `.mp3`, `.m4a`, `.wav` |
-| Local video | `.mp4`, `.mov`, `.mkv`, `.webm` |
-
-Local files stay in place. Brainpack reads them where they are and does not move them.
+| Ask about a pack | `What's in my "mobile-marketing" pack? Show me the sources too.` |
+| Ask a question about a pack | `Any useful info about onboarding screens in my "mobile-marketing" pack?` |
+| Build a new pack | `Create a new pack called "ai-helper-tools" and add this URL I found: https://.... Then build the pack.` |
+| Add a source to an existing pack | `I have a useful PDF about how to automate my app builds. It's in my Documents folder. Add it to the "ai-helper-tools" pack and rebuild it.` |
+| Manage the response | `Ask the "ai-helper-tools" pack what I should do about designing a new landing page. Include sources in the response and any timestamps if they exist.` |
+| Remove a pack | `Remove that pack about mobile marketing stuff.` |
 
 ---
 
@@ -244,6 +240,7 @@ These are the tools Brainpack exposes to your agent. Your agent uses them automa
 | `add` | Add a pack from a path, URL, or YAML |
 | `add_sources` | Append new source URLs to a pack and rebuild |
 | `build` | Build or update a pack |
+| `remove` | Remove an installed pack |
 
 ---
 
@@ -318,7 +315,7 @@ A `partial` pack may still be usable. Rebuilding recovers any failed sources.
 - Verify the server is registered: `claude mcp list`
 - Make sure the same Brainpack installation is used by both CLI and the MCP server
 
-### YouTube or audio builds fail
+### Video or audio builds fail
 
 - Check that `ffmpeg` is installed: `ffmpeg -version`
 - Check that `yt-dlp` is installed and current: `yt-dlp --version`
@@ -372,6 +369,19 @@ uv run pytest tests/test_cli.py tests/test_mcp_server.py
 
 ---
 
+## Behind the Scenes
+
+1. Brainpack fetches or loads your source content
+2. It extracts text or generates transcripts (for audio/video)
+3. It chunks the content into indexed segments
+4. It embeds those chunks into a local vector store
+5. At query time, it retrieves the best-matching results
+
+Everything is local. No data is sent anywhere. Packs are just files on your disk.
+
+Brainpack uses a multilingual embedding model by default, so it works well for non-English content too, not just English sources.
+
+---
 ## Contributing
 
 Issues and pull requests are welcome at [github.com/buralog/brainpack](https://github.com/buralog/brainpack).
@@ -380,7 +390,10 @@ Issues and pull requests are welcome at [github.com/buralog/brainpack](https://g
 
 ## Legal
 
-This project is intended for educational and personal productivity use. Users are responsible for ensuring their use of any content (YouTube videos, blog posts, etc.) complies with applicable copyright laws and the terms of service of the respective platforms. Brainpack does not host, copy, or redistribute any content — it is a local processing bridge that operates entirely on the user's own machine.
+Brainpack does not host, publish, or redistribute third-party content. Public packs contain only source manifests and metadata. Any retrieval, transcription, indexing, or embedding of source material happens locally on the end user's own machine.
+
+Users are responsible for ensuring that their use of Brainpack complies with applicable laws, copyright rules, and the terms of service of the source platforms.
+
 
 ## License
 

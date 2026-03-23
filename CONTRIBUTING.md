@@ -2,7 +2,11 @@
 
 ## Adding a pack to the registry
 
-Open a [Pack Submission issue](../../issues/new?template=pack-submission.yml) and fill in the form. No fork or code required. If accepted, the pack will be added to the registry.
+Submitting a pack is simple: open a [Pack Submission issue](../../issues/new?template=pack-submission.yml), paste the sources, add a short description, and submit it. No fork or code required.
+
+If the pack is a good fit, it will be added to the registry.
+
+Maintainers can refer to [REGISTRY-FORMAT.md](REGISTRY-FORMAT.md) for the final pack file structure, versioning, and registry metadata format.
 
 ### What makes a good pack
 
@@ -10,6 +14,13 @@ Open a [Pack Submission issue](../../issues/new?template=pack-submission.yml) an
 - Sources are public and unlikely to disappear
 - Description tells users what they'll be able to ask about
 - Tags help people discover it
+
+### What to prepare
+
+- A clear pack name
+- A short description
+- Public source URLs
+- A few tags if relevant
 
 ### Test locally before submitting
 
@@ -38,12 +49,47 @@ For larger changes, open an issue first to discuss the approach.
 
 ## Policy
 
-**What a pack is:** a list of URLs and some metadata. Nothing is stored in the pack itself — all processing happens locally on the user's own machine.
+Packs in this repository contain only source manifests and metadata. Brainpack does not host third-party content, and all retrieval, transcription, indexing, and embedding happen locally on the user's own machine.
 
-**What's allowed:** links to public YouTube videos, public articles, public websites. That's it.
+### Allowed
 
-**What's not allowed:** pasting in full article text, uploading transcripts or audio files, linking to paywalled or private content you copied somewhere.
+- Public YouTube videos and playlists
+- Public articles, websites, and RSS feeds
+- Metadata such as descriptions, tags, and contributor info
 
-**We will remove packs that:** spread malware, pretend to be someone they're not, use misleading descriptions, or link to illegal content.
+### Not allowed
 
-**By submitting:** you're confirming the sources are public and you're not copying content you don't have permission to share.
+- Full copied article text or transcripts without permission
+- Uploaded audio or video files you do not own
+- Paywalled, private, login-protected, or restricted content
+- Credentials, tokens, cookies, or session data
+- User-built embeddings or vector indexes inside packs
+
+References are fine. Hosted copies of third-party content are not.
+
+### By submitting
+
+- You confirm the sources are public or otherwise permitted to reference
+- You are not copying content you do not have permission to share
+- The information is accurate to the best of your knowledge
+
+### We may remove packs that
+
+- Spread malware or harmful material
+- Impersonate creators or brands
+- Use misleading descriptions
+- Reference illegal content
+- Primarily reproduce or mirror third-party content
+
+### Preferred sources
+
+- publicly accessible sources
+- first-party documentation
+- open-source content
+- Creative Commons or other openly licensed material
+
+### Removal requests
+
+If you are a creator or rights holder and believe a pack references your content in a way that causes harm, contact us. We may review, edit, or remove the pack as appropriate.
+
+Maintainers may reject or remove packs at their discretion.
