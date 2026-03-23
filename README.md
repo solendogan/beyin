@@ -4,9 +4,10 @@
 
 **Build local, queryable packs from text extracted from videos, articles, podcasts, and local files. Query them through MCP with your AI agent, or use a local model to explore them directly.**
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/brainpack?style=for-the-badge)](https://pypi.org/project/brainpack/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-compatible-6f42c1?style=for-the-badge)](https://modelcontextprotocol.io)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
 </div>
 
@@ -61,7 +62,6 @@ For the easiest workflow, see [Use It Through Your AI Agent](#use-it-through-you
 | Local audio | `.mp3`, `.m4a`, `.wav` |
 | Local video | `.mp4`, `.mov`, `.mkv`, `.webm` |
 
-
 > Brainpack is built for local processing on your own machine. Use it with content you are allowed to process, preferably public, permitted sources or material you own or have rights to use. Avoid copied, paywalled, private, restricted, or illegally shared content.
 
 ---
@@ -80,7 +80,7 @@ You can ask your agent to:
 - check available packs in the pack hub
 - retrieve relevant results in response to your questions
 
-See [Example Prompts](#example-prompts) below for common ways to use it.
+See [Example Usage with MCP](#example-usage-with-mcp) below for common ways to use it.
 
 ---
 
@@ -212,9 +212,13 @@ Go to **Manage MCP Servers** → **View raw config** and add:
 
 The command is `brainpack mcp-server`. It runs a stdio MCP server, compatible with any agent that supports the MCP protocol.
 
+---
+
 ## Example Usage with MCP
 
 Once Brainpack is connected through MCP, you can talk to your agent naturally. You do not need to memorize commands or even say "Brainpack" every time. Just ask for what you want, and your agent can handle the pack workflow behind the scenes.
+
+> Some prompts that mention local files or folders, such as your Documents or Downloads folder, may require your AI agent to have read access to those locations first.
 
 | What you want | What to say |
 |---------------|-------------|
@@ -223,6 +227,7 @@ Once Brainpack is connected through MCP, you can talk to your agent naturally. Y
 | Ask a question about a pack | `Any useful info about onboarding screens in my "mobile-marketing" pack?` |
 | Build a new pack | `Create a new pack called "ai-helper-tools" and add this URL I found: https://.... Then build the pack.` |
 | Add a source to an existing pack | `I have a useful PDF about how to automate my app builds. It's in my Documents folder. Add it to the "ai-helper-tools" pack and rebuild it.` |
+| Remove a source from a pack | `Show me the sources in "mobile-marketing", then remove source 2 from that pack.` |
 | Manage the response | `Ask the "ai-helper-tools" pack what I should do about designing a new landing page. Include sources in the response and any timestamps if they exist.` |
 | Remove a pack | `Remove that pack about mobile marketing stuff.` |
 
@@ -238,7 +243,8 @@ These are the tools Brainpack exposes to your agent. Your agent uses them automa
 | `status` | Show details and readiness for a pack |
 | `retrieve` | Return relevant results for a query |
 | `add` | Add a pack from a path, URL, or YAML |
-| `add_sources` | Append new source URLs to a pack and rebuild |
+| `add_sources` | Append new sources to a pack and rebuild |
+| `remove_sources` | Remove one or more sources from a pack |
 | `build` | Build or update a pack |
 | `remove` | Remove an installed pack |
 
@@ -256,7 +262,8 @@ These are the tools Brainpack exposes to your agent. Your agent uses them automa
 | `brainpack list` | List all installed packs |
 | `brainpack status <pack>` | Show pack details and readiness |
 | `brainpack query <pack> "question"` | Ask a question directly (requires Ollama) |
-| `brainpack add-source <pack> <url>` | Add a new source to an installed pack |
+| `brainpack add-source <pack> <source>` | Add a new source to an installed pack |
+| `brainpack remove-source <pack> <selector>` | Remove a source from an installed pack by index or text match |
 | `brainpack mcp-server` | Start the MCP server |
 | `brainpack settings` | View and configure settings |
 | `brainpack check-deps` | Verify runtime dependencies |
@@ -382,9 +389,12 @@ Everything is local. No data is sent anywhere. Packs are just files on your disk
 Brainpack uses a multilingual embedding model by default, so it works well for non-English content too, not just English sources.
 
 ---
+
 ## Contributing
 
 Issues and pull requests are welcome at [github.com/buralog/brainpack](https://github.com/buralog/brainpack).
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for pack submissions, pack policy, and code contribution guidelines.
 
 ---
 
