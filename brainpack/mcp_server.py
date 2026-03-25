@@ -164,46 +164,40 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
             meta={"surface": "mcp", "server_version": __version__},
         )
 
-    def _expand_after_add(pack_dir_path) -> None:
-        """After add, expand any playlist/RSS sources into individual titled entries."""
-        from brainpack.downloader import expand_playlist_sources
-        try:
-            config = load_config(pack_dir_path)
-        except Exception:
-            return
-        expanded_sources = []
-        changed = False
-        for entry in config.sources:
-            expansion = expand_playlist_sources(entry.url)
-            if expansion:
-                from brainpack.config import SourceEntry
-                existing_urls = {e.url for e in expanded_sources}
-                for ep in expansion:
-                    if ep.get("url") and ep["url"] not in existing_urls:
-                        expanded_sources.append(SourceEntry(url=ep["url"], title=ep.get("title")))
-                changed = True
-            else:
-                expanded_sources.append(entry)
-        if changed:
-            from dataclasses import replace as _dc_replace
-            updated = _dc_replace(config, sources=expanded_sources)
-            write_config(updated, pack_dir_path / "pack.yaml", previous=config)
-            typer.echo(
-                f"Expanded to {len(expanded_sources)} source(s). "
-                "Review with the status tool and call build when ready."
-            )
-
     if yaml is not None:
         def action() -> None:
+            import yaml as _yaml
+            from brainpack.downloader import expand_playlist_sources
+            try:
+                data = _yaml.safe_load(yaml)
+            except Exception:
+                data = None
+
+            expanded_yaml = yaml
+            if isinstance(data, dict) and "sources" in data:
+                new_sources = []
+                changed = False
+                for s in data.get("sources") or []:
+                    url = s.get("url") if isinstance(s, dict) else s
+                    expansion = expand_playlist_sources(url) if url else None
+                    if expansion:
+                        for ep in expansion:
+                            new_sources.append({"url": ep["url"], "title": ep.get("title") or ep["url"]})
+                        changed = True
+                    else:
+                        new_sources.append(s)
+                if changed:
+                    data["sources"] = new_sources
+                    expanded_yaml = _yaml.dump(data, allow_unicode=True)
+                    typer.echo(
+                        f"Expanded to {len(new_sources)} source(s). "
+                        "Review with the status tool and call build when ready."
+                    )
+
             with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=True, encoding="utf-8") as handle:
-                handle.write(yaml)
+                handle.write(expanded_yaml)
                 handle.flush()
                 _cli_add(source=handle.name)
-            # Expand playlist/RSS sources after add
-            import re
-            m = re.search(r"^id:\s*(.+)$", yaml, re.MULTILINE)
-            if m:
-                _expand_after_add(packs_dir() / m.group(1).strip())
 
         return _command_tool_result(command="add", action=action)
 
