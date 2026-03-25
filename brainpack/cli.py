@@ -884,6 +884,52 @@ def _source_rows(config, state: dict) -> list[tuple[str, str, str]]:
     return rows
 
 
+def _select_podcast_episodes(episodes: list[dict], source_url: str) -> list[dict]:
+    """Split episodes into text-only and audio-required. Auto-include text episodes,
+    prompt the user to pick which audio episodes to download."""
+    text_eps = [ep for ep in episodes if ep.get("transcript_text", "").strip()]
+    audio_eps = [ep for ep in episodes if not ep.get("transcript_text", "").strip()]
+
+    if not audio_eps:
+        return episodes  # all have transcripts — no prompt needed
+
+    total = len(episodes)
+    typer.echo(f"\nFound {total} episode(s) in feed: {source_url}")
+    if text_eps:
+        typer.echo(f"  {len(text_eps)} episode(s) have transcripts and will be processed automatically.")
+    typer.echo(f"  {len(audio_eps)} episode(s) require audio download + transcription:\n")
+    for i, ep in enumerate(audio_eps, start=1):
+        typer.echo(f"  {i}. {ep.get('title', 'Unknown')}")
+
+    typer.echo(
+        "\nEnter episode numbers to download (e.g. 1,3,5), a range (e.g. 1-5), "
+        "'all', or 'skip' to skip audio downloads:"
+    )
+    raw = typer.prompt("Selection", default="skip").strip().lower()
+
+    selected_audio: list[dict] = []
+    if raw == "all":
+        selected_audio = audio_eps
+    elif raw and raw != "skip":
+        indexes: set[int] = set()
+        for part in raw.split(","):
+            part = part.strip()
+            if "-" in part:
+                try:
+                    start, end = part.split("-", 1)
+                    indexes.update(range(int(start), int(end) + 1))
+                except ValueError:
+                    pass
+            elif part.isdigit():
+                indexes.add(int(part))
+        selected_audio = [ep for i, ep in enumerate(audio_eps, start=1) if i in indexes]
+        if not selected_audio:
+            typer.echo("  No valid episodes selected — skipping audio downloads.")
+
+    typer.echo("")
+    return text_eps + selected_audio
+
+
 def _prompt_create_config() -> PackConfig:
     """Collect the non-TTY fallback guided creation inputs."""
     source_input = typer.prompt("Source URL or local path").strip()
@@ -1174,6 +1220,8 @@ def build(
                     state.setdefault("playlist_titles", {})[source_url] = playlist_title
             elif source_type == "podcast":
                 playlist_title, episodes = None, list_podcast_episodes(source_url, effective_limit)
+                if episodes:
+                    episodes = _select_podcast_episodes(episodes, source_url)
             else:
                 local_path = Path(source_url).expanduser()
                 title = source.title or local_path.stem
