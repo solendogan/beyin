@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import re
 from typing import Any
 
 from brainpack.config import PackConfig, SourceEntry
@@ -92,37 +93,9 @@ def remove_sources_from_pack(
     source_rows: list[dict[str, Any]] | None = None,
 ) -> tuple[PackConfig, list[dict[str, Any]]]:
     """Remove one or more sources from a pack by current index or text match."""
-    rows = source_rows or [
-        {
-            "index": i,
-            "source": source.url,
-            "url": source.url,
-            "title": source.title or source.url,
-            "type": detect_source_type(source.url),
-            "status": "pending",
-        }
-        for i, source in enumerate(config.sources, start=1)
-    ]
-
-    if not selectors:
-        raise ValueError("Provide at least one source selector to remove.")
-
-    matched_indexes: list[int] = []
-    matched_lookup: set[int] = set()
-
-    for raw_selector in selectors:
-        selector = raw_selector.strip()
-        if not selector:
-            continue
-
-        row = _match_source_selector(rows, selector)
-        row_index = int(row["index"])
-        if row_index not in matched_lookup:
-            matched_indexes.append(row_index)
-            matched_lookup.add(row_index)
-
-    if not matched_indexes:
-        raise ValueError("No sources matched the provided selectors.")
+    rows = source_rows or _default_source_rows(config)
+    matched_indexes = resolve_source_indexes(rows, selectors)
+    matched_lookup = set(matched_indexes)
 
     removed_rows = [row for row in rows if int(row["index"]) in matched_lookup]
     updated_sources = [
@@ -143,6 +116,82 @@ def update_pack_metadata(
         config,
         description=config.description if description is None else description,
     )
+
+
+def resolve_source_indexes(
+    rows: list[dict[str, Any]],
+    selectors: list[str],
+) -> list[int]:
+    """Resolve source selectors to unique current indexes while preserving order."""
+    if not selectors:
+        raise ValueError("Provide at least one source selector.")
+
+    matched_indexes: list[int] = []
+    matched_lookup: set[int] = set()
+    max_index = len(rows)
+
+    for raw_selector in selectors:
+        selector = raw_selector.strip()
+        if not selector:
+            continue
+
+        range_match = re.fullmatch(r"(\d+)\s*-\s*(\d+)", selector)
+        if range_match:
+            start = int(range_match.group(1))
+            end = int(range_match.group(2))
+            if start > end:
+                raise ValueError(f"Invalid source range '{selector}'. Use ascending ranges like 1-3.")
+            if start < 1 or end > max_index:
+                raise ValueError(f"Source range {selector} is out of range.")
+            for idx in range(start, end + 1):
+                if idx not in matched_lookup:
+                    matched_indexes.append(idx)
+                    matched_lookup.add(idx)
+            continue
+
+        row = _match_source_selector(rows, selector)
+        row_index = int(row["index"])
+        if row_index not in matched_lookup:
+            matched_indexes.append(row_index)
+            matched_lookup.add(row_index)
+
+    if not matched_indexes:
+        raise ValueError("No sources matched the provided selectors.")
+
+    return matched_indexes
+
+
+def select_sources_from_pack(
+    config: PackConfig,
+    selectors: list[str],
+    *,
+    source_rows: list[dict[str, Any]] | None = None,
+) -> tuple[PackConfig, list[dict[str, Any]]]:
+    """Return a config limited to the selected current sources without mutating the source order."""
+    rows = source_rows or _default_source_rows(config)
+    matched_indexes = resolve_source_indexes(rows, selectors)
+    selected_lookup = set(matched_indexes)
+    selected_rows = [row for row in rows if int(row["index"]) in selected_lookup]
+    selected_sources = [
+        source
+        for i, source in enumerate(config.sources, start=1)
+        if i in selected_lookup
+    ]
+    return replace(config, sources=selected_sources), selected_rows
+
+
+def _default_source_rows(config: PackConfig) -> list[dict[str, Any]]:
+    return [
+        {
+            "index": i,
+            "source": source.url,
+            "url": source.url,
+            "title": source.title or source.url,
+            "type": detect_source_type(source.url),
+            "status": "pending",
+        }
+        for i, source in enumerate(config.sources, start=1)
+    ]
 
 
 def _match_source_selector(rows: list[dict[str, Any]], selector: str) -> dict[str, Any]:

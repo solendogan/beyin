@@ -1100,6 +1100,74 @@ def test_remove_source_command_removes_by_text_match(tmp_path):
     ]
 
 
+def test_build_can_limit_to_selected_source_indexes_without_mutating_pack(tmp_path):
+    """build --source should process only the selected current sources and keep pack.yaml unchanged."""
+    from brainpack.cli import app
+    from brainpack.config import PackConfig, write_config
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "test-pack"
+    original_sources = [
+        SourceEntry(url="https://example.com/article-1", title="Article One"),
+        SourceEntry(url="https://example.com/article-2", title="Article Two"),
+        SourceEntry(url="https://example.com/article-3", title="Article Three"),
+    ]
+    write_config(
+        PackConfig(
+            id="test-pack",
+            name="test-pack",
+            description="Test pack",
+            llm="ollama",
+            sources=original_sources,
+        ),
+        pack_dir / "pack.yaml",
+    )
+
+    runner = CliRunner()
+    fetch_calls: list[str] = []
+
+    def _fetch(url: str):
+        fetch_calls.append(url)
+        return f"content for {url}", f"title for {url}"
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.check_model_provenance"), \
+         patch("brainpack.cli._has_audio_sources", return_value=False), \
+         patch("brainpack.cli.detect_source_type", return_value="article"), \
+         patch("brainpack.cli.is_processed", return_value=False), \
+         patch("brainpack.cli.fetch_article", side_effect=_fetch), \
+         patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
+         patch("brainpack.cli.embed_and_store", return_value=1):
+        result = runner.invoke(app, ["build", "test-pack", "--source", "1-2"])
+
+    config = load_config(pack_dir)
+    state = json.loads((pack_dir / "meta.json").read_text())
+
+    assert result.exit_code == 0, result.output
+    assert "Building 2 selected source(s)" in result.output
+    assert fetch_calls == [
+        "https://example.com/article-1",
+        "https://example.com/article-2",
+    ]
+    assert [source.url for source in config.sources] == [source.url for source in original_sources]
+    assert state["last_build_result"] == "partial-selection"
+    assert state.get("last_built_pack_hash") is None
+    assert state.get("last_build_at") is None
+
+
+def test_build_help_shows_source_selector_flag():
+    """build --help should advertise the non-destructive source selector flag."""
+    from brainpack.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["build", "--help"])
+
+    assert result.exit_code == 0
+    assert "--source" in result.output
+
+
 def test_build_exits_0(tmp_pack_root):
     """build command with mocked pipeline exits 0."""
     from brainpack.cli import app

@@ -16,7 +16,11 @@ import typer
 from typer.core import TyperCommand
 
 from brainpack import __version__
-from brainpack.authoring import build_new_pack_config, remove_sources_from_pack
+from brainpack.authoring import (
+    build_new_pack_config,
+    remove_sources_from_pack,
+    select_sources_from_pack,
+)
 from brainpack.chunker import chunk_text, count_tokens
 from brainpack.config import (
     PackConfig,
@@ -1056,6 +1060,12 @@ def create() -> None:
 @app.command(cls=BrainpackCommand)
 def build(
     pack: str = typer.Argument(..., help="Pack name (directory under ~/.brainpacks/)"),
+    sources: Optional[List[str]] = typer.Option(
+        None,
+        "--source",
+        "-s",
+        help="Build only selected current sources by index, range, or visible text match. Repeat to include multiple selections.",
+    ),
     model: Optional[str] = typer.Option(
         None,
         "--model",
@@ -1087,6 +1097,23 @@ def build(
     config = load_config(pack_dir)
     state = load_state(pack_dir)
     current_pack_hash = pack_config_hash(pack_dir)
+    full_config = config
+    selected_sources = None
+    if sources:
+        source_rows = serialize_pack_sources(config, state)
+        try:
+            config, selected_sources = select_sources_from_pack(
+                config,
+                list(sources),
+                source_rows=source_rows,
+            )
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(
+            f"Building {len(config.sources)} selected source(s) from '{full_config.id}' "
+            f"(out of {len(full_config.sources)} total)."
+        )
     build_defaults = resolve_build_defaults(
         cli_model=model,
         cli_language=language,
@@ -1497,9 +1524,16 @@ def build(
         typer.echo(issues_recap)
 
     # --- Persist recap state for later status inspection ---
-    state["last_build_result"] = report.result
-    state["last_build_summary"] = report.summary_line
-    if not report.had_issues:
+    full_build = len(config.sources) == len(full_config.sources)
+    partial_selection = bool(sources) and not full_build
+    state["last_build_result"] = "partial-selection" if partial_selection and not report.had_issues else report.result
+    state["last_build_summary"] = (
+        f"Partial build complete — {len(config.sources)} selected source(s) processed. "
+        f"Run `brainpack build {full_config.id}` to finish the remaining sources."
+        if partial_selection and not report.had_issues
+        else report.summary_line
+    )
+    if not report.had_issues and full_build:
         state["last_build_at"] = utc_now_iso()
         state["last_built_pack_hash"] = current_pack_hash
     save_state(pack_dir, state)
