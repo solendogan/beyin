@@ -340,6 +340,12 @@ def load_text_like_source(*args, **kwargs):
     return _load_text_like_source(*args, **kwargs)
 
 
+def load_document_source(*args, **kwargs):
+    from brainpack.ingester import load_document_source as _load_document_source
+
+    return _load_document_source(*args, **kwargs)
+
+
 def run_query(*args, **kwargs):
     from brainpack.query import run_query as _run_query
 
@@ -1073,7 +1079,7 @@ def build(
         effective_limit = source.limit if source.limit is not None else config.episode_limit
         source_type = detect_source_type(source_url)
 
-        if source_type in {"article", "local_text", "local_file", "pack"}:
+        if source_type in {"article", "local_text", "local_document", "local_file", "pack"}:
             if is_processed(state, source_url):
                 typer.echo(f"  [skip] {source_url}")
                 report.record(source_url[:40], "skipped", skipped=1)
@@ -1093,6 +1099,24 @@ def build(
                     result = None
                     failure_reason = f"missing local source: {source_url}"
                     failure_message = f"Missing local source: {source_url} — skipping"
+                except ValueError as exc:
+                    result = None
+                    failure_reason = str(exc)
+                    failure_message = f"{exc} — skipping"
+                else:
+                    failure_message = ""
+            elif source_type == "local_document":
+                typer.echo(f"  [load] {source_url}")
+                try:
+                    result = load_document_source(source_url)
+                except FileNotFoundError:
+                    result = None
+                    failure_reason = f"missing local source: {source_url}"
+                    failure_message = f"Missing local source: {source_url} — skipping"
+                except ImportError as exc:
+                    result = None
+                    failure_reason = str(exc)
+                    failure_message = f"{exc} — skipping"
                 except ValueError as exc:
                     result = None
                     failure_reason = str(exc)
@@ -1431,7 +1455,7 @@ def query(
 
 @app.command(name="check-deps", cls=BrainpackCommand)
 def check_deps() -> None:
-    """Check current user-facing dependencies: ffmpeg and yt-dlp."""
+    """Check runtime dependencies: ffmpeg, yt-dlp, and optional document libs."""
     failures = []
 
     # Check ffmpeg
@@ -1461,6 +1485,23 @@ def check_deps() -> None:
                 "  Upgrade: pip install --upgrade yt-dlp"
             )
         failures.append("yt-dlp")
+
+    # Check optional document libs
+    typer.echo("")
+    typer.echo("Optional (document sources):")
+    _doc_deps = [
+        ("pdfplumber", ".pdf", "pip install pdfplumber"),
+        ("docx", ".docx", "pip install python-docx"),
+        ("pptx", ".pptx", "pip install python-pptx"),
+        ("ebooklib", ".epub", "pip install ebooklib"),
+        ("openpyxl", ".xlsx", "pip install openpyxl"),
+    ]
+    for module, ext, hint in _doc_deps:
+        try:
+            __import__(module)
+            typer.echo(f"  {module}: found ({ext})")
+        except ImportError:
+            typer.echo(f"  {module}: not installed ({ext})  →  {hint}")
 
     if failures:
         raise typer.Exit(code=1)

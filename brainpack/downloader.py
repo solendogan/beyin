@@ -36,6 +36,14 @@ _LOCAL_VIDEO_SUFFIXES = {
     ".m4v",
     ".webm",
 }
+_DOCUMENT_SUFFIXES = {
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".epub",
+    ".xlsx",
+    ".csv",
+}
 _MIN_PODCAST_TEXT_CHARS = 500
 
 _MIN_AUDIO_BYTES = 10_000  # 10KB minimum for valid audio file
@@ -59,6 +67,8 @@ def detect_source_type(url: str) -> str:
         return "pack"
     if suffix in _TEXT_LIKE_SUFFIXES:
         return "local_text"
+    if suffix in _DOCUMENT_SUFFIXES:
+        return "local_document"
     if suffix in _LOCAL_AUDIO_SUFFIXES:
         return "local_audio"
     if suffix in _LOCAL_VIDEO_SUFFIXES:

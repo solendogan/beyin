@@ -17,12 +17,11 @@
 <summary><strong>Table of Contents</strong></summary>
 
 - [What is Brainpack?](#what-is-brainpack)
-- [Use It Through Your AI Agent](#use-it-through-your-ai-agent)
 - [Quick Start](#quick-start)
 - [Example Usage with MCP](#example-usage-with-mcp)
 - [MCP Tools Reference](#mcp-tools-reference)
 - [All Commands](#all-commands)
-- [Local Model (Ollama)](#local-model-ollama)
+- [Query with a Local Model](#query-with-a-local-model)
 - [Troubleshooting](#troubleshooting)
 - [Development (from the repo)](#development-from-the-repo)
 - [Behind the Scenes](#behind-the-scenes)
@@ -45,11 +44,24 @@ You come across valuable information worth keeping, but it remains tied to the f
 Brainpack was built to turn that scattered information into something structured, local, and queryable through your AI agent, so the useful parts stay accessible whenever you need them.
 
 **How it works**
+
+The easiest way to use Brainpack is through MCP with the AI agent you already use.
+
 1. Build a pack from your sources
 2. Connect Brainpack to your agent through MCP
-3. Ask questions normally while your agent retrieves from your packs automatically
+3. Ask questions naturally — your agent handles retrieval from your packs automatically
 
-For the easiest workflow, see [Use It Through Your AI Agent](#use-it-through-your-ai-agent).
+Once connected, you do not need to run commands or manage packs manually in the terminal. You can ask your agent to:
+
+- create, build, update and manage packs
+- add new sources to a pack by providing URLs or local files
+- check your local packs and their status
+- check available packs in the pack hub
+- retrieve relevant results in response to your questions
+
+You can also query packs directly with a local model — no external API or agent needed. See [Query with a Local Model](#query-with-a-local-model).
+
+For setup, see [Quick Start](#quick-start).
 
 #### Supported Sources
 
@@ -59,28 +71,11 @@ For the easiest workflow, see [Use It Through Your AI Agent](#use-it-through-you
 | YouTube | Videos and playlists |
 | Podcasts | RSS feed URLs |
 | Local text | `.txt`, `.md`, `.rst`, `.html` |
+| Local documents | `.pdf`, `.docx`, `.pptx`, `.epub`, `.xlsx`, `.csv` (optional deps) |
 | Local audio | `.mp3`, `.m4a`, `.wav` |
 | Local video | `.mp4`, `.mov`, `.mkv`, `.webm` |
 
 > Brainpack is built for local processing on your own machine. Use it with content you are allowed to process, preferably public, permitted sources or material you own or have rights to use. Avoid copied, paywalled, private, restricted, or illegally shared content.
-
----
-
-## Use It Through Your AI Agent
-
-The easiest way to use Brainpack is through MCP with the AI agent you already use.
-
-Once Brainpack is connected, you do not need to run commands or manage packs manually in the terminal. You can just talk to your agent and let it handle Brainpack through MCP behind the scenes.
-
-You can ask your agent to:
-
-- create, build, update and manage packs
-- add new sources to a pack by providing URLs or local files
-- check your local packs and their status
-- check available packs in the pack hub
-- retrieve relevant results in response to your questions
-
-See [Example Usage with MCP](#example-usage-with-mcp) below for common ways to use it.
 
 ---
 
@@ -272,11 +267,11 @@ These are the tools Brainpack exposes to your agent. Your agent uses them automa
 
 ---
 
-## Local Model (Ollama)
+## Query with a Local Model
 
-You can use Brainpack with a local model too, without sending anything to an external API. This lets you query your packs entirely on your own machine.
+You can query your packs with a local model using Ollama, without sending anything to an external API. Everything stays on your machine.
 
-> **If you only use Brainpack through an MCP-connected agent (Claude Code, Codex, etc.), you do not need Ollama.** Your agent is the LLM. Brainpack just retrieves results for it.
+> **If you use Brainpack through an MCP-connected agent (Claude Code, Codex, etc.), you do not need Ollama.** Your agent is the LLM. Brainpack just retrieves results for it.
 
 **Setup:**
 
