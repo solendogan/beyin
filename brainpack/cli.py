@@ -1824,10 +1824,6 @@ def status_command(
                 typer.echo()
                 if next_source.parent_url:
                     typer.echo(f"  {dim('─' * (term_w - 4))}")
-                    header = next_source.parent_title or next_source.parent_url
-                    typer.echo(f"  {bold(header)}")
-                    typer.echo(f"  {dim(next_source.parent_url)}")
-                    typer.echo()
             else:
                 typer.echo()
 

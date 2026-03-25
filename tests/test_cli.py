@@ -3318,6 +3318,40 @@ def test_status_audio_sources_do_not_repeat_unowned_partial_episodes(tmp_path):
     assert "https://www.youtube.com/watch?v=yoXW3XD8li0" in output
 
 
+def test_status_playlist_group_headers_are_not_duplicated(tmp_path):
+    """status should print each later playlist/feed group header only once."""
+    from brainpack.cli import app
+
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "demo-pack"
+    pack_dir.mkdir(parents=True)
+    playlist_a = "https://www.youtube.com/playlist?list=PLA"
+    playlist_b = "https://www.youtube.com/playlist?list=PLB"
+    (pack_dir / "pack.yaml").write_text(
+        "name: demo-pack\n"
+        "description: demo\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - url: https://www.youtube.com/watch?v=a1\n"
+        "    title: Video A1\n"
+        f"    parent_url: {playlist_a}\n"
+        "    parent_title: Playlist A\n"
+        "  - url: https://www.youtube.com/watch?v=b1\n"
+        "    title: Video B1\n"
+        f"    parent_url: {playlist_b}\n"
+        "    parent_title: Playlist B\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    runner = CliRunner()
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["status", "demo-pack"])
+
+    assert result.exit_code == 0
+    assert result.output.count("Playlist A") == 1
+    assert result.output.count("Playlist B") == 1
+
+
 def test_status_podcast_source_shows_partial_counts_and_failed_episode_titles(tmp_path):
     """status should show mixed podcast episode counts and preserve failed episode titles."""
     from brainpack.cli import app
