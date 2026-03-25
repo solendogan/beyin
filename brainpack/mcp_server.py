@@ -181,7 +181,7 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
 
 @app.tool()
 def add_sources(pack: str, urls: list[str], model: str = "small", language: str | None = None) -> dict[str, Any]:
-    """Add one or more sources to a pack and rebuild it."""
+    """Add one or more sources to a pack. Rebuilds automatically for single sources. For playlists or RSS feeds, sources are expanded and saved individually — review with status tool, then call build when ready."""
     def action() -> None:
         pack_dir = packs_dir() / pack
         config = load_config(pack_dir)
@@ -193,10 +193,10 @@ def add_sources(pack: str, urls: list[str], model: str = "small", language: str 
         if new_count > 1:
             typer.echo(
                 f"Added {new_count} source(s) to '{pack}'. "
-                "Use the status tool to review sources before building, "
-                "or call build when ready."
+                "Review sources with the status tool and call build when ready."
             )
-        _cli_build(pack=pack, model=model, language=language)
+        else:
+            _cli_build(pack=pack, model=model, language=language)
 
     return _command_tool_result(command="add_sources", pack=pack, action=action)
 
