@@ -13,6 +13,7 @@ class SourceEntry:
     url: str
     title: Optional[str] = None
     limit: Optional[int] = None
+    parent_url: Optional[str] = None  # playlist/feed URL this was expanded from
 
 
 @dataclass
@@ -191,7 +192,7 @@ def _parse_config_from_raw(raw: dict) -> PackConfig:
         if isinstance(s, str):
             sources.append(SourceEntry(url=s))
         elif isinstance(s, dict):
-            sources.append(SourceEntry(url=s["url"], title=s.get("title"), limit=s.get("limit")))
+            sources.append(SourceEntry(url=s["url"], title=s.get("title"), limit=s.get("limit"), parent_url=s.get("parent_url")))
 
     # id falls back to name for backward compat
     name = raw.get("name", "")

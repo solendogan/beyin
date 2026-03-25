@@ -182,7 +182,7 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
                     expansion = expand_playlist_sources(url) if url else None
                     if expansion:
                         for ep in expansion:
-                            new_sources.append({"url": ep["url"], "title": ep.get("title") or ep["url"]})
+                            new_sources.append({"url": ep["url"], "title": ep.get("title") or ep["url"], "parent_url": url})
                         changed = True
                     else:
                         new_sources.append(s)

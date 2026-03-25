@@ -1735,7 +1735,13 @@ def status_command(
     typer.echo("  " + dim("─" * (term_w - 2)))
 
     sources = config.sources
+    last_parent: str | None = "UNSET"
     for i, source in enumerate(sources, start=1):
+        if source.parent_url != last_parent:
+            last_parent = source.parent_url
+            if source.parent_url:
+                typer.echo(f"  {dim(source.parent_url)}")
+                typer.echo()
         url = source.url
         sid = canonical_source_id(url)
         source_type = detect_source_type(url)
@@ -1802,11 +1808,24 @@ def status_command(
                     typer.echo(_CONT + dim(ep_indent + line))
 
         else:
-            for j, line in enumerate(wrap_text(url, W_TITLE)):
+            display_title = source.title or url
+            for j, line in enumerate(wrap_text(display_title, W_TITLE)):
                 typer.echo(_srow(str(i) if j == 0 else "", dim("pending") if j == 0 else "", line))
+            if source.title:
+                for line in wrap_text(url, W_TITLE):
+                    typer.echo(_CONT + dim(line))
 
         if i < len(sources):
-            typer.echo()
+            # Print group separator when parent_url changes between sources
+            next_source = sources[i]
+            if source.parent_url != next_source.parent_url:
+                typer.echo()
+                if next_source.parent_url:
+                    typer.echo(f"  {dim('─' * (term_w - 4))}")
+                    typer.echo(f"  {dim(next_source.parent_url)}")
+                    typer.echo()
+            else:
+                typer.echo()
 
     typer.echo()
 
