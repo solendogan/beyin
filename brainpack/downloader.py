@@ -49,6 +49,9 @@ _MIN_PODCAST_TEXT_CHARS = 500
 _MIN_AUDIO_BYTES = 10_000  # 10KB minimum for valid audio file
 
 
+_REMOTE_AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".ogg", ".aac", ".flac"}
+
+
 def detect_source_type(url: str) -> str:
     """Return a narrow source classification for build and authoring flows. Never raises."""
     lowered = url.lower()
@@ -59,6 +62,11 @@ def detect_source_type(url: str) -> str:
             return "youtube"
         if _RSS_HINTS_RE.search(url):
             return "podcast"
+        # Remote audio file (e.g. direct podcast CDN links)
+        from urllib.parse import urlparse
+        path = urlparse(url).path.lower()
+        if any(path.endswith(ext) for ext in _REMOTE_AUDIO_EXTENSIONS):
+            return "podcast_audio"
         return "article"
 
     candidate = Path(url).expanduser()
@@ -298,3 +306,40 @@ def download_podcast_audio(audio_url: str, out_dir: Path, title: str = "") -> Op
         if out_path.exists():
             out_path.unlink()
         return None
+
+
+def expand_playlist_sources(url: str) -> list[dict] | None:
+    """
+    If url is a YouTube playlist or RSS feed, fetch its items and return
+    a list of {"url": ..., "title": ...} dicts for individual sources.
+
+    Returns None for non-expandable URLs (single video, article, etc.).
+    Never raises.
+    """
+    source_type = detect_source_type(url)
+
+    if source_type == "youtube":
+        try:
+            playlist_title, episodes = list_youtube_episodes(url, limit=None)
+        except Exception:
+            return None
+        if not playlist_title or not episodes:
+            return None  # single video — don't expand
+        return [{"url": ep["url"], "title": ep["title"]} for ep in episodes if ep.get("url")]
+
+    if source_type == "podcast":
+        try:
+            episodes = list_podcast_episodes(url, limit=None)
+        except Exception:
+            return None
+        if not episodes:
+            return None
+        result = []
+        for ep in episodes:
+            if ep.get("mode") == "article" or ep.get("transcript_text"):
+                result.append({"url": ep.get("entry_url") or ep["url"], "title": ep["title"]})
+            else:
+                result.append({"url": ep["url"], "title": ep["title"]})
+        return result or None
+
+    return None

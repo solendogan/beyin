@@ -1225,12 +1225,11 @@ def build(
                 playlist_title, episodes = list_youtube_episodes(source_url, effective_limit)
                 if playlist_title:
                     state.setdefault("playlist_titles", {})[source_url] = playlist_title
-                    if episodes:
-                        episodes = _select_episodes_for_download(episodes, playlist_title or source_url, label="video")
             elif source_type == "podcast":
                 playlist_title, episodes = None, list_podcast_episodes(source_url, effective_limit)
-                if episodes:
-                    episodes = _select_episodes_for_download(episodes, source_url, label="episode")
+            elif source_type == "podcast_audio":
+                playlist_title = None
+                episodes = [{"url": source_url, "title": source.title or source_url}]
             else:
                 local_path = Path(source_url).expanduser()
                 title = source.title or local_path.stem
@@ -2004,36 +2003,31 @@ def add_source_command(
     ),
 ) -> None:
     """Add one or more sources to an existing pack's pack.yaml."""
-    from brainpack.config import SourceEntry, write_config
+    from brainpack.config import write_config
+    from brainpack.authoring import add_source_to_pack as _add_source
     pack_dir = _resolve_pack_dir(pack)
     previous = load_config(pack_dir)
 
-    existing_urls = {s.url for s in previous.sources}
-    added = []
-    skipped = []
+    updated_config = previous
     for url in urls:
-        if url in existing_urls:
-            skipped.append(url)
-        else:
-            added.append(url)
+        updated_config = _add_source(updated_config, url)
 
-    if not added:
-        typer.echo("All provided URLs are already in this pack.")
-        for u in skipped:
-            typer.echo(f"  already present: {u}")
+    new_count = len(updated_config.sources) - len(previous.sources)
+    if new_count == 0:
+        typer.echo("All provided sources are already in this pack.")
         return
 
-    new_sources = list(previous.sources) + [SourceEntry(url=u) for u in added]
-    from dataclasses import replace as _dc_replace
-    updated_config = _dc_replace(previous, sources=new_sources)
     write_config(updated_config, pack_dir / "pack.yaml", previous=previous)
 
-    typer.echo(f"Added {len(added)} source(s) to '{pack}':")
-    for url in added:
-        source_type = detect_source_type(url)
-        typer.echo(f"  + [{source_type}] {url}")
-    if skipped:
-        typer.echo(f"Skipped {len(skipped)} already-present source(s).")
+    typer.echo(f"Added {new_count} source(s) to '{pack}':")
+    new_sources = updated_config.sources[len(previous.sources):]
+    for entry in new_sources:
+        source_type = detect_source_type(entry.url)
+        label = f"{entry.title} — {entry.url}" if entry.title else entry.url
+        typer.echo(f"  + [{source_type}] {label}")
+
+    if new_count > 1 and not build_after:
+        typer.echo(f"\nPack has {new_count} new source(s). Review with `brainpack status {pack}`, then run `brainpack build {pack}` when ready.")
 
     if build_after:
         typer.echo("")

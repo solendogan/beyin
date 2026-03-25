@@ -188,7 +188,14 @@ def add_sources(pack: str, urls: list[str], model: str = "small", language: str 
         updated = config
         for url in urls:
             updated = add_source_to_pack(updated, url)
+        new_count = len(updated.sources) - len(config.sources)
         write_config(updated, pack_dir / "pack.yaml")
+        if new_count > 1:
+            typer.echo(
+                f"Added {new_count} source(s) to '{pack}'. "
+                "Use the status tool to review sources before building, "
+                "or call build when ready."
+            )
         _cli_build(pack=pack, model=model, language=language)
 
     return _command_tool_result(command="add_sources", pack=pack, action=action)

@@ -6,7 +6,7 @@ from dataclasses import replace
 from typing import Any
 
 from brainpack.config import PackConfig, SourceEntry
-from brainpack.downloader import detect_source_type
+from brainpack.downloader import detect_source_type, expand_playlist_sources
 
 
 def infer_source_intent(source_input: str) -> dict[str, str]:
@@ -39,29 +39,50 @@ def build_new_pack_config(
         raise ValueError(
             "Existing pack imports belong on `brainpack add <path-or-url-or-id>`, not `brainpack create`."
         )
+    source = source_input.strip()
+    expanded = expand_playlist_sources(source)
+    sources = (
+        [SourceEntry(url=ep["url"], title=ep.get("title")) for ep in expanded]
+        if expanded
+        else [SourceEntry(url=source)]
+    )
     return PackConfig(
         id=name,
         name=name,
         description=description,
         llm=llm,
-        sources=[SourceEntry(url=source_input.strip())],
+        sources=sources,
     )
 
 
 def add_source_to_pack(config: PackConfig, source_input: str) -> PackConfig:
-    """Append one authored content source to an existing pack config."""
+    """Append one authored content source to an existing pack config.
+
+    If source_input is a YouTube playlist or RSS feed, expands it into
+    individual titled sources instead of storing the playlist URL.
+    """
     intent = infer_source_intent(source_input)
     if intent["kind"] != "content":
         raise ValueError(
             "Adding an existing pack belongs on `brainpack add <path-or-url-or-id>`, not manage pack."
         )
     source = source_input.strip()
-    if any(existing.url == source for existing in config.sources):
+    existing_urls = {e.url for e in config.sources}
+
+    expanded = expand_playlist_sources(source)
+    if expanded:
+        new_entries = [
+            SourceEntry(url=ep["url"], title=ep.get("title"))
+            for ep in expanded
+            if ep.get("url") and ep["url"] not in existing_urls
+        ]
+        if not new_entries:
+            return config
+        return replace(config, sources=[*config.sources, *new_entries])
+
+    if source in existing_urls:
         return config
-    return replace(
-        config,
-        sources=[*config.sources, SourceEntry(url=source)],
-    )
+    return replace(config, sources=[*config.sources, SourceEntry(url=source)])
 
 
 def remove_sources_from_pack(
