@@ -182,7 +182,7 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
                     expansion = expand_playlist_sources(url) if url else None
                     if expansion:
                         for ep in expansion:
-                            new_sources.append({"url": ep["url"], "title": ep.get("title") or ep["url"], "parent_url": url})
+                            new_sources.append({"url": ep["url"], "title": ep.get("title") or ep["url"], "parent_url": url, "parent_title": ep.get("parent_title")})
                         changed = True
                     else:
                         new_sources.append(s)
@@ -198,6 +198,21 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
                 handle.write(expanded_yaml)
                 handle.flush()
                 _cli_add(source=handle.name)
+
+            # If we expanded sources, the pack.yaml hash changed after _cli_add recorded it.
+            # Update origin hash so the "differs from last synced origin" warning doesn't fire.
+            if isinstance(data, dict) and changed:
+                pack_id = data.get("id", "")
+                if pack_id:
+                    from brainpack.inventory import load_pack_origin, save_pack_origin, pack_config_hash
+                    pack_dir_path = packs_dir() / pack_id
+                    try:
+                        origin = load_pack_origin(pack_dir_path)
+                        if origin.get("source"):
+                            origin["last_synced_pack_hash"] = pack_config_hash(pack_dir_path)
+                            save_pack_origin(pack_dir_path, origin)
+                    except Exception:
+                        pass
 
         return _command_tool_result(command="add", action=action)
 

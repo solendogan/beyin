@@ -1740,6 +1740,8 @@ def status_command(
         if source.parent_url != last_parent:
             last_parent = source.parent_url
             if source.parent_url:
+                header = source.parent_title or source.parent_url
+                typer.echo(f"  {bold(header)}")
                 typer.echo(f"  {dim(source.parent_url)}")
                 typer.echo()
         url = source.url
@@ -1822,6 +1824,8 @@ def status_command(
                 typer.echo()
                 if next_source.parent_url:
                     typer.echo(f"  {dim('─' * (term_w - 4))}")
+                    header = next_source.parent_title or next_source.parent_url
+                    typer.echo(f"  {bold(header)}")
                     typer.echo(f"  {dim(next_source.parent_url)}")
                     typer.echo()
             else:

@@ -42,7 +42,7 @@ def build_new_pack_config(
     source = source_input.strip()
     expanded = expand_playlist_sources(source)
     sources = (
-        [SourceEntry(url=ep["url"], title=ep.get("title"), parent_url=source) for ep in expanded]
+        [SourceEntry(url=ep["url"], title=ep.get("title"), parent_url=source, parent_title=ep.get("parent_title")) for ep in expanded]
         if expanded
         else [SourceEntry(url=source)]
     )
@@ -72,7 +72,7 @@ def add_source_to_pack(config: PackConfig, source_input: str) -> PackConfig:
     expanded = expand_playlist_sources(source)
     if expanded:
         new_entries = [
-            SourceEntry(url=ep["url"], title=ep.get("title"), parent_url=source)
+            SourceEntry(url=ep["url"], title=ep.get("title"), parent_url=source, parent_title=ep.get("parent_title"))
             for ep in expanded
             if ep.get("url") and ep["url"] not in existing_urls
         ]

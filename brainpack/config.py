@@ -14,6 +14,7 @@ class SourceEntry:
     title: Optional[str] = None
     limit: Optional[int] = None
     parent_url: Optional[str] = None  # playlist/feed URL this was expanded from
+    parent_title: Optional[str] = None  # playlist/feed title
 
 
 @dataclass
@@ -71,10 +72,12 @@ def config_to_raw(config: PackConfig) -> dict:
     raw["embedding_model"] = config.embedding_model
     raw["episode_limit"] = config.episode_limit
     raw["sources"] = [
-        s.url if s.limit is None and s.title is None else {
+        s.url if s.limit is None and s.title is None and s.parent_url is None else {
             "url": s.url,
             **({"title": s.title} if s.title else {}),
             **({"limit": s.limit} if s.limit is not None else {}),
+            **({"parent_url": s.parent_url} if s.parent_url else {}),
+            **({"parent_title": s.parent_title} if s.parent_title else {}),
         }
         for s in config.sources
     ]
@@ -192,7 +195,7 @@ def _parse_config_from_raw(raw: dict) -> PackConfig:
         if isinstance(s, str):
             sources.append(SourceEntry(url=s))
         elif isinstance(s, dict):
-            sources.append(SourceEntry(url=s["url"], title=s.get("title"), limit=s.get("limit"), parent_url=s.get("parent_url")))
+            sources.append(SourceEntry(url=s["url"], title=s.get("title"), limit=s.get("limit"), parent_url=s.get("parent_url"), parent_title=s.get("parent_title")))
 
     # id falls back to name for backward compat
     name = raw.get("name", "")

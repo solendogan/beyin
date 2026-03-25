@@ -325,7 +325,7 @@ def expand_playlist_sources(url: str) -> list[dict] | None:
             return None
         if not playlist_title or not episodes:
             return None  # single video — don't expand
-        return [{"url": ep["url"], "title": ep["title"]} for ep in episodes if ep.get("url")]
+        return [{"url": ep["url"], "title": ep["title"], "parent_title": playlist_title} for ep in episodes if ep.get("url")]
 
     if source_type == "podcast":
         try:
