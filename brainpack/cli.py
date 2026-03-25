@@ -409,7 +409,7 @@ def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False)
         if summary:
             if status == "blocked":
                 _echo(f"    {yellow('!')}  Unblock: {lifecycle_command}")
-            elif status in {"new", "needs-build", "error"}:
+            elif status in {"new", "needs-build", "partially-ready", "error"}:
                 _echo(f"    {dim('->')} Next: {lifecycle_command}")
             elif status == "ready":
                 _echo(f"    {green('OK')} {pack_name} is ready for agent use")

@@ -177,6 +177,34 @@ def _mark_pack_mixed_result(
     )
 
 
+def _mark_pack_partially_ready(
+    pack_dir: Path,
+    *,
+    ready_url: str = "https://example.com/article-1",
+    last_build_at: str = "2026-03-21T10:00:00+00:00",
+):
+    """Persist a partial-progress build state with some ready sources and some pending."""
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {
+                ready_url: {
+                    "status": "done",
+                    "url": ready_url,
+                    "title": "Ready source",
+                },
+            },
+            "audio_steps": {},
+            "last_build_at": last_build_at,
+            "last_built_pack_hash": "outdated-hash",
+            "last_build_result": "partial-selection",
+        },
+    )
+
+
 def test_help_frames_agent_and_local_modes():
     """brainpack --help should frame the product around agent and local-model use."""
     from brainpack.cli import app
@@ -1764,6 +1792,7 @@ def test_query_unbuilt_pack_redirects_to_build(tmp_pack_root):
     ("command", "status_setup", "expected_command"),
     [
         ("query", "needs-build", "brainpack build test-pack"),
+        ("query", "partially-ready", "brainpack build test-pack"),
         ("query", "error", "brainpack build test-pack"),
     ],
 )
@@ -1781,6 +1810,17 @@ def test_retrieval_preconditions_share_onboarding_guidance(
 
     if status_setup == "needs-build":
         _mark_pack_needs_build(pack_dir)
+    elif status_setup == "partially-ready":
+        (pack_dir / "pack.yaml").write_text(
+            "name: test-pack\n"
+            "description: demo\n"
+            "llm: ollama\n"
+            "sources:\n"
+            "  - https://example.com/article-1\n"
+            "  - https://example.com/article-2\n"
+            "embedding_model: all-MiniLM-L6-v2\n"
+        )
+        _mark_pack_partially_ready(pack_dir)
     elif status_setup == "error":
         _mark_pack_failed(pack_dir)
 
@@ -2659,8 +2699,9 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
         ("ready-pack", "ready", {"OPENAI_API_KEY": "sk-test"}, "ready", "brainpack mcp-server"),
         ("new-pack", "new", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build new-pack"),
         ("stale-pack", "needs-build", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build stale-pack"),
+        ("partially-ready-pack", "partially-ready", {"OPENAI_API_KEY": "sk-test"}, "partially-ready", "brainpack build partially-ready-pack"),
         ("error-pack", "error", {"OPENAI_API_KEY": "sk-test"}, "error", "brainpack build error-pack"),
-        ("partial-pack", "partial", {"OPENAI_API_KEY": "sk-test"}, "partial", "brainpack build partial-pack"),
+        ("partial-pack", "partial", {"OPENAI_API_KEY": "sk-test"}, "partially-ready", "brainpack build partial-pack"),
     ],
 )
 def test_status_uses_onboarding_guidance_across_lifecycle_states(
@@ -2684,7 +2725,8 @@ def test_status_uses_onboarding_guidance_across_lifecycle_states(
         "description: test\n"
         "llm: openai\n"
         "sources:\n"
-        "  - https://example.com/article\n"
+        "  - https://example.com/article-1\n"
+        "  - https://example.com/article-2\n"
     )
     save_pack_origin(
         pack_dir,
@@ -2695,6 +2737,8 @@ def test_status_uses_onboarding_guidance_across_lifecycle_states(
         _mark_pack_ready(pack_dir)
     elif state_setup == "needs-build":
         _mark_pack_needs_build(pack_dir)
+    elif state_setup == "partially-ready":
+        _mark_pack_partially_ready(pack_dir)
     elif state_setup == "error":
         _mark_pack_failed(pack_dir)
     elif state_setup == "partial":

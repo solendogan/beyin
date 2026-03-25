@@ -93,6 +93,28 @@ def _mark_pack_mixed_result(pack_dir: Path, *, last_build_at: str) -> None:
     )
 
 
+def _mark_pack_partially_ready(pack_dir: Path, *, last_build_at: str) -> None:
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {
+                "https://example.com/article-1": {
+                    "status": "done",
+                    "url": "https://example.com/article-1",
+                    "title": "Done",
+                },
+            },
+            "audio_steps": {},
+            "last_build_at": last_build_at,
+            "last_built_pack_hash": "outdated-hash",
+            "last_build_result": "partial-selection",
+        },
+    )
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
@@ -302,6 +324,11 @@ async def test_mcp_retrieve_allows_built_ollama_pack_without_reachability_check(
         ("missing", "pack_not_found", "Pack 'state-pack' is not installed."),
         ("new", "pack_not_built", "Pack 'state-pack' is not built yet."),
         (
+            "partially-ready",
+            "pack_needs_build",
+            "Pack 'state-pack' is not fully built yet and needs a rebuild before retrieve can continue.",
+        ),
+        (
             "needs-build",
             "pack_needs_build",
             "Pack 'state-pack' changed after its last build and needs a rebuild before retrieve can continue.",
@@ -324,7 +351,14 @@ async def test_mcp_retrieve_blocks_on_pack_state_preconditions(
     pack_dir = packs_root / "state-pack"
 
     if state_setup != "missing":
-        _write_pack(pack_dir, name="state-pack", llm="openai")
+        _write_pack(
+            pack_dir,
+            name="state-pack",
+            llm="openai",
+            sources=["https://example.com/article-1", "https://example.com/article-2"],
+        )
+        if state_setup == "partially-ready":
+            _mark_pack_partially_ready(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
         if state_setup == "needs-build":
             _mark_pack_stale(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
         elif state_setup == "error":
@@ -337,7 +371,7 @@ async def test_mcp_retrieve_blocks_on_pack_state_preconditions(
     ):
         _, structured = await mcp_app.call_tool(
             "retrieve",
-            {"pack": "state-pack", "question": "What happened?"},
+            {"pack": "state-pack", "queries": ["What happened?"]},
         )
 
     assert structured["ok"] is False

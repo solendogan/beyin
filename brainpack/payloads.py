@@ -185,12 +185,14 @@ def _load_query_runtime(
             summary=summary,
             machine_command=machine_command,
         )
-    if status == "needs-build" or needs_build:
+    if status in {"needs-build", "partially-ready"} or needs_build:
         _raise_retrieval_precondition(
             pack,
             code="pack_needs_build",
             message=(
-                f"Pack '{pack}' changed after its last build and needs a rebuild before query can continue."
+                f"Pack '{pack}' is not fully built yet and needs a rebuild before query can continue."
+                if status == "partially-ready"
+                else f"Pack '{pack}' changed after its last build and needs a rebuild before query can continue."
             ),
             summary=summary,
             machine_command=machine_command,
@@ -217,12 +219,14 @@ def _load_evidence_runtime(
     from brainpack import cli as _cli
     pack_dir = _cli._resolve_pack_dir(pack, machine_command=machine_command)
     config = _cli.load_config(pack_dir)
+    summary = inspect_pack(pack_dir, _cli._pack_readiness_details)
     state = _cli.load_state(pack_dir)
     has_build = _has_successful_build(state)
     current_hash = pack_config_hash(pack_dir)
     last_build_hash = state.get("last_built_pack_hash")
     needs_build = bool(has_build and last_build_hash and last_build_hash != current_hash)
     has_error = _has_failed_build(state)
+    status = summary["status"]
 
     if has_error and not has_build:
         _raise_retrieval_precondition(
@@ -240,14 +244,16 @@ def _load_evidence_runtime(
             summary=_retrieval_precondition_summary("new", pack),
             machine_command=machine_command,
         )
-    if needs_build:
+    if status == "partially-ready" or needs_build:
         _raise_retrieval_precondition(
             pack,
             code="pack_needs_build",
             message=(
-                f"Pack '{pack}' changed after its last build and needs a rebuild before retrieve can continue."
+                f"Pack '{pack}' is not fully built yet and needs a rebuild before retrieve can continue."
+                if status == "partially-ready"
+                else f"Pack '{pack}' changed after its last build and needs a rebuild before retrieve can continue."
             ),
-            summary=_retrieval_precondition_summary("needs-build", pack),
+            summary=summary if status == "partially-ready" else _retrieval_precondition_summary("needs-build", pack),
             machine_command=machine_command,
         )
     model = _cli.load_model(config.embedding_model)

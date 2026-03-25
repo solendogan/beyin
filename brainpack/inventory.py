@@ -1,6 +1,7 @@
 """Pack inventory and shared-pack provenance helpers."""
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
@@ -13,6 +14,7 @@ from brainpack.source_ids import canonical_source_id
 _ORIGIN_FILE = "origin.json"
 _MARKETPLACE_MAP_FILE = "marketplace-map.json"
 _ORIGIN_SCHEMA_VERSION = 2
+_READY_RATIO_RE = re.compile(r"^(\d+)/(\d+) ready(?:, \d+ failed)?(?:, \d+ empty)?$")
 
 
 def utc_now_iso() -> str:
@@ -163,6 +165,35 @@ def _source_nonready_entries(processed: Dict[str, Any], url: str) -> list[dict]:
     return entries
 
 
+def _pack_source_progress(config: PackConfig, state: Dict[str, Any]) -> Dict[str, int]:
+    """Summarize source-level readiness for one configured pack."""
+    rows = serialize_pack_sources(config, state)
+    ready = 0
+    failed = 0
+
+    for row in rows:
+        status = str(row.get("status") or "")
+        if status == "ready":
+            ready += 1
+            continue
+        if status in {"failed", "empty"}:
+            failed += 1
+            continue
+        match = _READY_RATIO_RE.match(status)
+        if match:
+            completed, total = int(match.group(1)), int(match.group(2))
+            if "failed" in status or "empty" in status:
+                failed += 1
+            elif total > 0 and completed == total:
+                ready += 1
+
+    return {
+        "total": len(rows),
+        "ready": ready,
+        "failed": failed,
+    }
+
+
 def _format_when(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
@@ -245,8 +276,25 @@ def summarize_pack(
     current_hash = pack_config_hash(pack_dir)
     last_build_hash = state.get("last_built_pack_hash")
     needs_build = bool(has_build and last_build_hash and last_build_hash != current_hash)
+    partial_selection = (
+        state.get("last_build_result") == "partial-selection"
+        and last_build_hash != current_hash
+    )
     is_new = not has_build
     has_error = _has_nonready_sources(state)
+    observed_source_state = bool(state.get("processed") or state.get("audio_steps"))
+    source_progress = _pack_source_progress(config, state) if observed_source_state else {
+        "total": len(config.sources),
+        "ready": 0,
+        "failed": 0,
+    }
+    all_sources_ready = (
+        observed_source_state
+        and source_progress["total"] > 0
+        and source_progress["ready"] == source_progress["total"]
+        and source_progress["failed"] == 0
+    )
+    some_sources_ready = source_progress["ready"] > 0
     if pack_diverged_from_origin(pack_dir, origin):
         warnings.append("Local pack differs from the last synced origin.")
 
@@ -254,16 +302,25 @@ def summarize_pack(
         status = "blocked"
         next_action = f"brainpack status {config.id}"
     elif has_error and has_build:
-        status = "partial"
+        status = "partially-ready"
         next_action = f"brainpack build {config.id}"
     elif has_error:
         status = "error"
+        next_action = f"brainpack build {config.id}"
+    elif (partial_selection or needs_build) and some_sources_ready and not all_sources_ready:
+        status = "partially-ready"
+        next_action = f"brainpack build {config.id}"
+    elif partial_selection:
+        status = "needs-build"
         next_action = f"brainpack build {config.id}"
     elif is_new:
         status = "new"
         next_action = f"brainpack build {config.id}"
     elif needs_build:
         status = "needs-build"
+        next_action = f"brainpack build {config.id}"
+    elif some_sources_ready and not all_sources_ready:
+        status = "partially-ready"
         next_action = f"brainpack build {config.id}"
     else:
         status = "ready"
@@ -471,7 +528,7 @@ def human_guidance_command(summary: Dict[str, Any]) -> str:
     status = summary.get("status")
     if status == "blocked":
         return f"brainpack status {name}"
-    if status in {"new", "needs-build", "error", "partial"}:
+    if status in {"new", "needs-build", "partially-ready", "error"}:
         return f"brainpack build {name}"
     return "brainpack mcp-server"
 
@@ -485,10 +542,10 @@ def next_action_reason(summary: Dict[str, Any]) -> str:
         return "Build this pack before Brainpack can serve it to an agent or local model."
     if status == "needs-build":
         return "Rebuild this pack so agent and local-mode retrieval use the latest indexed changes."
+    if status == "partially-ready":
+        return "Build the remaining sources before using this pack so retrieval covers the full configured set."
     if status == "error":
         return "Rebuild this pack after the last indexing failure before using it again."
-    if status == "partial":
-        return "This pack is usable now, but rebuilding may recover failed sources and improve coverage."
     if status == "ready":
         return "Connect an agent for the recommended path, or query the pack directly in local mode."
     return "Re-add or repair the pack definition before continuing."

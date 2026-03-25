@@ -200,7 +200,7 @@ def _status_styled(status: str) -> str:
     label = _display_status(status)
     if status == "ready":
         return green(label)
-    if status in {"new", "needs-build", "blocked", "partial"}:
+    if status in {"new", "needs-build", "partially-ready", "blocked"}:
         return yellow(label)
     if status == "error":
         return red(label)
@@ -243,7 +243,7 @@ def _render_pack_table(summaries: list[dict], *, limit: Optional[int] = None) ->
 
     term_w = min(_shutil.get_terminal_size((80, 24)).columns, 100)
     W_ID = min(max(len(s["id"]) for s in rows), 24)
-    W_STATUS = 11  # fits "needs-build"
+    W_STATUS = 15  # fits "partially-ready"
     W_SRCS = 7
     W_DESC = max(10, term_w - W_ID - W_STATUS - W_SRCS - 8)
 
