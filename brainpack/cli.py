@@ -887,8 +887,8 @@ def _source_rows(config, state: dict) -> list[tuple[str, str, str]]:
 def _select_podcast_episodes(episodes: list[dict], source_url: str) -> list[dict]:
     """Split episodes into text-only and audio-required. Auto-include text episodes,
     prompt the user to pick which audio episodes to download."""
-    text_eps = [ep for ep in episodes if ep.get("transcript_text", "").strip()]
-    audio_eps = [ep for ep in episodes if not ep.get("transcript_text", "").strip()]
+    text_eps = [ep for ep in episodes if ep.get("transcript_text", "").strip() or ep.get("mode") == "article"]
+    audio_eps = [ep for ep in episodes if not ep.get("transcript_text", "").strip() and ep.get("mode") != "article"]
 
     if not audio_eps:
         return episodes  # all have transcripts — no prompt needed
@@ -1267,6 +1267,27 @@ def build(
                                 parent_source_url=source_url,
                             )
                             save_state(pack_dir, state)
+
+                if episode.get("mode") == "article":
+                    typer.echo(f"  [fetch] {episode_counter}")
+                    article_result = fetch_article(episode_url)
+                    if article_result is None:
+                        typer.echo(f"  [warn] Could not extract text from {episode_url} — skipping", err=True)
+                        mark_failed(state, episode_url, "article fetch failed", source_id=source_id, title=episode_title, parent_source_url=source_url)
+                        save_state(pack_dir, state)
+                        report.record(episode_title, "failed", failure_reason="article fetch failed")
+                        continue
+                    art_text, art_title = article_result
+                    chunks = chunk_text(art_text)
+                    metadatas = [{"url": episode_url, "title": art_title} for _ in chunks]
+                    model_obj, collection = _get_embed_resources()
+                    new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=episode_url)
+                    mark_audio_step(state, episode_url, "embedded", art_title, source_id=source_id, parent_source_url=source_url)
+                    save_state(pack_dir, state)
+                    if verbose:
+                        typer.echo(f"  [embed] {art_title} — {new_count} chunks")
+                    report.record(art_title, "done", new=new_count)
+                    continue
 
                 if audio_path is None:
                     if transcript_text:

@@ -207,8 +207,12 @@ def _podcast_entry_text(entry) -> str:
 
 def list_podcast_episodes(feed_url: str, limit: Optional[int]) -> list[dict]:
     """
-    Parse RSS/Atom podcast feed and return episode list.
-    Uses transcript/show-note text when present; otherwise falls back to audio enclosures.
+    Parse RSS/Atom feed and return episode list.
+
+    Podcast feeds (entries with audio enclosures): returns audio episodes.
+    Text feeds (blogs, news — no audio enclosures): returns article entries
+    with mode="article" so the build pipeline fetches them as articles.
+
     Returns [] on failure. Never raises.
     """
     import feedparser  # lazy import
@@ -217,7 +221,10 @@ def list_podcast_episodes(feed_url: str, limit: Optional[int]) -> list[dict]:
         entries = feed.entries
         if limit is not None:
             entries = entries[:limit]
+
+        # First pass: collect audio episodes (standard podcast behavior)
         episodes = []
+        any_audio = False
         for entry in entries:
             transcript_text = _podcast_entry_text(entry)
             enclosures = getattr(entry, "enclosures", [])
@@ -229,6 +236,8 @@ def list_podcast_episodes(feed_url: str, limit: Optional[int]) -> list[dict]:
                     lnk for lnk in links
                     if lnk.get("rel") == "enclosure" and lnk.get("type", "").startswith("audio/")
                 ]
+            if audio_encs:
+                any_audio = True
             if not audio_encs and len(transcript_text) < _MIN_PODCAST_TEXT_CHARS:
                 continue
             entry_url = entry.get("link") or entry.get("id") or (
@@ -241,7 +250,29 @@ def list_podcast_episodes(feed_url: str, limit: Optional[int]) -> list[dict]:
                 "guid": entry.get("id", entry_url),
                 **({"transcript_text": transcript_text} if len(transcript_text) >= _MIN_PODCAST_TEXT_CHARS else {}),
             })
-        return episodes
+
+        if episodes:
+            return episodes
+
+        # No audio found — treat as a text RSS feed (blog, news, etc.)
+        # Return article entries for the build pipeline to fetch as articles.
+        if not any_audio:
+            text_entries = []
+            for entry in entries:
+                entry_url = entry.get("link") or entry.get("id") or ""
+                title = entry.get("title", entry.get("id", "Unknown"))
+                if not entry_url:
+                    continue
+                text_entries.append({
+                    "url": entry_url,
+                    "entry_url": entry_url,
+                    "title": title,
+                    "guid": entry.get("id", entry_url),
+                    "mode": "article",
+                })
+            return text_entries
+
+        return []
     except Exception:
         return []
 
