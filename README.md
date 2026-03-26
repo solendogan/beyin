@@ -59,9 +59,7 @@ Once connected, you do not need to run commands or manage packs manually in the 
 - check available packs in the pack hub
 - retrieve relevant results in response to your questions
 
-You can also query packs directly with a local model — no external API or agent needed. See [Query with a Local Model](#query-with-a-local-model).
-
-For setup, see [Quick Start](#quick-start).
+You can also query packs directly with a local model, no external API or agent needed. See [Query with a Local Model](#query-with-a-local-model).
 
 #### Supported Sources
 
