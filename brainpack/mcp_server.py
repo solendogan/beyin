@@ -1,13 +1,14 @@
 """Brainpack MCP server exposing machine-safe inventory and retrieval tools."""
 
 import json
-import tempfile
 import urllib.request
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
+from pathlib import Path
 from typing import Any
 
 import typer
+import yaml as pyyaml
 from mcp.server.fastmcp import FastMCP
 
 from brainpack import __version__
@@ -23,7 +24,7 @@ from brainpack.payloads import (
     _status_payload,
 )
 from brainpack.paths import packs_dir
-from brainpack.config import load_config, write_config
+from brainpack.config import _parse_config_from_raw, PackConfig, load_config, write_config
 from brainpack.inventory import serialize_pack_sources
 from brainpack.pack_state import load_state
 from brainpack.machine_output import (
@@ -33,6 +34,55 @@ from brainpack.machine_output import (
 )
 
 app = FastMCP("Brainpack", json_response=True)
+
+
+def _normalize_inline_yaml(raw_yaml: str) -> tuple[PackConfig, int]:
+    """Parse inline YAML and expand playlist/feed sources before install."""
+    data = pyyaml.safe_load(raw_yaml)
+    if not isinstance(data, dict):
+        raise ValueError("Inline YAML must define a pack object.")
+
+    from brainpack.downloader import expand_playlist_sources
+
+    changed = False
+    new_sources: list[Any] = []
+    for source in data.get("sources") or []:
+        url = source.get("url") if isinstance(source, dict) else source
+        expansion = expand_playlist_sources(url) if url else None
+        if expansion:
+            for episode in expansion:
+                new_sources.append(
+                    {
+                        "url": episode["url"],
+                        "title": episode.get("title") or episode["url"],
+                        "parent_url": url,
+                        "parent_title": episode.get("parent_title"),
+                    }
+                )
+            changed = True
+        else:
+            new_sources.append(source)
+    if "sources" in data:
+        data["sources"] = new_sources
+
+    return _parse_config_from_raw(data), len(new_sources) if changed else 0
+
+
+def _install_inline_yaml(raw_yaml: str) -> tuple[str, int]:
+    """Install an inline pack YAML directly into the local packs directory."""
+    config, expanded_count = _normalize_inline_yaml(raw_yaml)
+    if not config.id:
+        raise ValueError("Pack YAML must include a name or id.")
+
+    dest_dir = packs_dir() / config.id
+    if dest_dir.exists():
+        raise ValueError(
+            f"Pack '{config.id}' is already installed. Use update or remove it first."
+        )
+
+    dest_dir.mkdir(parents=True)
+    write_config(config, dest_dir / "pack.yaml")
+    return config.id, expanded_count
 
 
 def _is_expected_stdio_shutdown(exc: BaseException) -> bool:
@@ -166,53 +216,21 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
 
     if yaml is not None:
         def action() -> None:
-            import yaml as _yaml
-            from brainpack.downloader import expand_playlist_sources
             try:
-                data = _yaml.safe_load(yaml)
-            except Exception:
-                data = None
+                pack_id, expanded_count = _install_inline_yaml(yaml)
+            except ValueError as exc:
+                typer.echo(f"Error: {exc}", err=True)
+                raise typer.Exit(code=1)
 
-            expanded_yaml = yaml
-            if isinstance(data, dict) and "sources" in data:
-                new_sources = []
-                changed = False
-                for s in data.get("sources") or []:
-                    url = s.get("url") if isinstance(s, dict) else s
-                    expansion = expand_playlist_sources(url) if url else None
-                    if expansion:
-                        for ep in expansion:
-                            new_sources.append({"url": ep["url"], "title": ep.get("title") or ep["url"], "parent_url": url, "parent_title": ep.get("parent_title")})
-                        changed = True
-                    else:
-                        new_sources.append(s)
-                if changed:
-                    data["sources"] = new_sources
-                    expanded_yaml = _yaml.dump(data, allow_unicode=True)
-                    typer.echo(
-                        f"Expanded to {len(new_sources)} source(s). "
-                        "Review with the status tool and call build when ready."
-                    )
-
-            with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=True, encoding="utf-8") as handle:
-                handle.write(expanded_yaml)
-                handle.flush()
-                _cli_add(source=handle.name)
-
-            # If we expanded sources, the pack.yaml hash changed after _cli_add recorded it.
-            # Update origin hash so the "differs from last synced origin" warning doesn't fire.
-            if isinstance(data, dict) and changed:
-                pack_id = data.get("id", "")
-                if pack_id:
-                    from brainpack.inventory import load_pack_origin, save_pack_origin, pack_config_hash
-                    pack_dir_path = packs_dir() / pack_id
-                    try:
-                        origin = load_pack_origin(pack_dir_path)
-                        if origin.get("source"):
-                            origin["last_synced_pack_hash"] = pack_config_hash(pack_dir_path)
-                            save_pack_origin(pack_dir_path, origin)
-                    except Exception:
-                        pass
+            if expanded_count > 0:
+                typer.echo(
+                    f"Expanded to {expanded_count} source(s). "
+                    "Review with the status tool and call build when ready."
+                )
+            typer.echo(
+                f"Pack '{pack_id}' added to {packs_dir() / pack_id}/\n"
+                f"Run `brainpack build {pack_id}` to ingest sources."
+            )
 
         return _command_tool_result(command="add", action=action)
 

@@ -438,9 +438,7 @@ def _render_home_screen() -> None:
     summaries = list_packs(_PACKS_DIR, _pack_readiness_details)
     settings = load_settings()
 
-    for line in render_header(version=__version__, step="Your local knowledge base"):
-        typer.echo(line)
-    typer.echo(f"  {dim('Query your content with an agent or local model.')}")
+    typer.echo(f"  {bold('Brainpack')} {dim(f'v{__version__}')}")
     typer.echo("")
 
     # Settings section
@@ -452,6 +450,9 @@ def _render_home_screen() -> None:
         ("Local model", settings.preferred_llm_model),
     ]
     for line in render_rows(settings_rows):
+        typer.echo(line)
+    typer.echo("")
+    for line in _render_dependency_section():
         typer.echo(line)
     typer.echo("")
 
@@ -533,6 +534,58 @@ def _settings_display_rows(settings) -> list[tuple[str, str]]:
     ]
 
 
+def _dependency_display_rows() -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[str]]:
+    """Return runtime and file-type dependency rows plus hard failures."""
+    failures: list[str] = []
+
+    if shutil.which("ffmpeg"):
+        ffmpeg_status = "found"
+    else:
+        ffmpeg_status = "NOT FOUND  →  brew install ffmpeg"
+        failures.append("ffmpeg")
+
+    ok, version = _ytdlp_version_ok()
+    if ok:
+        ytdlp_status = f"found ({version})"
+    elif version == "unknown":
+        ytdlp_status = "NOT FOUND  →  pip install --upgrade yt-dlp"
+        failures.append("yt-dlp")
+    else:
+        ytdlp_status = f"OUTDATED ({version} < {_YTDLP_MIN_VERSION})  →  pip install --upgrade yt-dlp"
+        failures.append("yt-dlp")
+
+    runtime_rows = [
+        ("Audio/video", f"ffmpeg: {ffmpeg_status}"),
+        ("Audio/video", f"yt-dlp: {ytdlp_status}"),
+    ]
+
+    file_type_rows: list[tuple[str, str]] = []
+    for label, module, hint in [
+        ("PDF (.pdf)", "pdfplumber", "pip install pdfplumber"),
+        ("DOCX (.docx)", "docx", "pip install python-docx"),
+        ("PPTX (.pptx)", "pptx", "pip install python-pptx"),
+        ("EPUB (.epub)", "ebooklib", "pip install ebooklib"),
+        ("XLSX (.xlsx)", "openpyxl", "pip install openpyxl"),
+    ]:
+        try:
+            __import__(module)
+            status = f"{module}: found"
+        except ImportError:
+            status = f"{module}: not installed  →  {hint}"
+        file_type_rows.append((label, status))
+
+    return runtime_rows, file_type_rows, failures
+
+
+def _render_dependency_section(*, title: str = "Dependencies") -> list[str]:
+    runtime_rows, file_type_rows, _ = _dependency_display_rows()
+    lines = [f"  {bold(title)}", f"  {dim('─' * 38)}"]
+    lines.extend(render_rows(runtime_rows))
+    lines.append("")
+    lines.extend(render_rows(file_type_rows))
+    return lines
+
+
 @app.command(name="settings", cls=BrainpackCommand)
 def settings_command() -> None:
     """Show current settings and edit them interactively in a terminal."""
@@ -545,6 +598,9 @@ def settings_command() -> None:
         typer.echo(line)
     typer.echo("")
     for line in render_rows(_settings_display_rows(current)):
+        typer.echo(line)
+    typer.echo("")
+    for line in _render_dependency_section():
         typer.echo(line)
     typer.echo("")
 
@@ -648,7 +704,8 @@ def help(
     term_w = min(shutil.get_terminal_size((80, 24)).columns, 100)
 
     typer.echo(f"{bold('Brainpack')} {dim(f'v{__version__}')}")
-    typer.echo(f"{dim('Build local knowledge packs for agents and local model retrieval.')}")
+    typer.echo("")
+    typer.echo(f"{dim('Tip: append --help to any command for usage and options, e.g. brainpack build --help')}")
     typer.echo("")
 
     sections: list[tuple[str, list[tuple[str, str]]]] = [
@@ -1567,52 +1624,15 @@ def query(
 @app.command(name="check-deps", cls=BrainpackCommand)
 def check_deps() -> None:
     """Check runtime dependencies: ffmpeg, yt-dlp, and optional document libs."""
-    failures = []
+    runtime_rows, file_type_rows, failures = _dependency_display_rows()
 
-    # Check ffmpeg
-    if shutil.which("ffmpeg"):
-        typer.echo("ffmpeg: found")
-    else:
-        typer.echo(
-            "ffmpeg: NOT FOUND\n"
-            "  Install: brew install ffmpeg\n"
-            "  Or: https://ffmpeg.org/download.html"
-        )
-        failures.append("ffmpeg")
+    for label, value in runtime_rows:
+        typer.echo(f"{label}: {value}")
 
-    # Check yt-dlp version
-    ok, version = _ytdlp_version_ok()
-    if ok:
-        typer.echo(f"yt-dlp: found ({version})")
-    else:
-        if version == "unknown":
-            typer.echo(
-                "yt-dlp: NOT FOUND or version unknown\n"
-                "  Install/upgrade: pip install --upgrade yt-dlp"
-            )
-        else:
-            typer.echo(
-                f"yt-dlp: OUTDATED ({version} < {_YTDLP_MIN_VERSION})\n"
-                "  Upgrade: pip install --upgrade yt-dlp"
-            )
-        failures.append("yt-dlp")
-
-    # Check optional document libs
     typer.echo("")
-    typer.echo("Optional (document sources):")
-    _doc_deps = [
-        ("pdfplumber", ".pdf", "pip install pdfplumber"),
-        ("docx", ".docx", "pip install python-docx"),
-        ("pptx", ".pptx", "pip install python-pptx"),
-        ("ebooklib", ".epub", "pip install ebooklib"),
-        ("openpyxl", ".xlsx", "pip install openpyxl"),
-    ]
-    for module, ext, hint in _doc_deps:
-        try:
-            __import__(module)
-            typer.echo(f"  {module}: found ({ext})")
-        except ImportError:
-            typer.echo(f"  {module}: not installed ({ext})  →  {hint}")
+    typer.echo("Document sources:")
+    for label, value in file_type_rows:
+        typer.echo(f"  {label}: {value}")
 
     if failures:
         raise typer.Exit(code=1)

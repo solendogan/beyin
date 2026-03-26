@@ -506,6 +506,33 @@ async def test_mcp_add_rejects_source_and_yaml_together(mcp_app, tmp_path):
 
 
 @pytest.mark.anyio
+async def test_mcp_add_yaml_installs_local_pack_without_temp_origin(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    inline_yaml = (
+        "name: inline-pack\n"
+        "description: Inline test pack\n"
+        "sources:\n"
+        "  - url: https://example.com/article\n"
+    )
+
+    with patch("brainpack.mcp_server.packs_dir", return_value=packs_root), patch(
+        "brainpack.cli._PACKS_DIR",
+        packs_root,
+    ):
+        _, structured = await mcp_app.call_tool(
+            "add",
+            {"yaml": inline_yaml},
+        )
+
+    pack_dir = packs_root / "inline-pack"
+    assert structured["ok"] is True
+    assert pack_dir.exists()
+    assert (pack_dir / "pack.yaml").exists()
+    assert not (pack_dir / "origin.json").exists()
+    assert "Run `brainpack build inline-pack`" in structured["data"]["stdout"]
+
+
+@pytest.mark.anyio
 async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
     packs_root = tmp_path / "brainpacks"
     pack_dir = packs_root / "build-pack"

@@ -228,10 +228,11 @@ def test_help_command_alias_shows_top_level_framing():
 
     assert result.exit_code == 0
     assert "Brainpack v0.1.0" in result.output
+    assert "append --help to any command" in result.output
     assert "agent" in result.output.lower()
-    assert "local model" in result.output.lower()
     assert "Pack lifecycle:" in result.output
     assert "Inspect and retrieve:" in result.output
+    assert "Key flags" not in result.output
     assert "https://github.com/buralog/brainpack" in result.output
 
 
@@ -349,6 +350,7 @@ def test_no_arg_home_screen_guides_first_run(tmp_path):
     assert "Brainpack v0.1.0" in result.output
     assert "No packs installed yet" in result.output
     assert "Settings" in result.output
+    assert "Dependencies" in result.output
     assert "Local model" in result.output
     assert "brainpack create" in result.output
     assert "brainpack settings" in result.output
@@ -392,7 +394,9 @@ def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
     assert help_result.exit_code == 0
     assert "Usage:" not in home_result.output
     assert "Commands:" not in home_result.output
-    assert "Your local knowledge base" in home_result.output
+    assert "Brainpack v0.1.0" in home_result.output
+    assert "Home" not in home_result.output
+    assert "Your local knowledge base" not in home_result.output
     assert home_result.output != help_result.output
 
 
@@ -666,6 +670,8 @@ def test_settings_command_shows_table_in_non_tty(
     assert result.exit_code == 0
     assert "Brainpack Settings" in result.output
     assert "Transcription" in result.output
+    assert "Dependencies" in result.output
+    assert "PDF (.pdf)" in result.output
     assert "brainpack settings" in result.output
 
 
