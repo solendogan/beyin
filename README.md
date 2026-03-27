@@ -11,28 +11,6 @@
 
 </div>
 
----
-
-<details>
-<summary><strong>Table of Contents</strong></summary>
-
-- [What is Brainpack?](#what-is-brainpack)
-- [Quick Start](#quick-start)
-- [Example Usage with MCP](#example-usage-with-mcp)
-- [MCP Tools Reference](#mcp-tools-reference)
-- [All Commands](#all-commands)
-- [Query with a Local Model](#query-with-a-local-model)
-- [Troubleshooting](#troubleshooting)
-- [Development (from the repo)](#development-from-the-repo)
-- [Behind the Scenes](#behind-the-scenes)
-- [Contributing](#contributing)
-- [Legal](#legal)
-- [License](#license)
-
-</details>
-
----
-
 ## What is Brainpack?
 
 Brainpack is a local-first tool for turning useful information into queryable knowledge packs.
@@ -43,7 +21,18 @@ You come across valuable information worth keeping, but it remains tied to the f
 
 Brainpack was built to turn that scattered information into something structured, local, and queryable through your AI agent, so the useful parts stay accessible whenever you need them.
 
-**How it works**
+## ✨ Features
+
+- 🎯 Multi-query expansion — generates query variants for better retrieval
+- 📦 Local-first — everything stays on your machine, nothing sent externally
+- 🔗 MCP compatible — works with Claude Code, Codex, Cursor, Windsurf, Zed and more
+- 🌍 50+ languages — multilingual embedding model out of the box
+- 🎬 Rich source support — YouTube, podcasts, PDFs, articles, local files
+- 🤖 Ollama support — use fully offline with a local model
+- ⚡ No dashboard — manage everything by just talking to your agent
+
+
+## **How it works**
 
 The easiest way to use Brainpack is through MCP with the AI agent you already use.
 
