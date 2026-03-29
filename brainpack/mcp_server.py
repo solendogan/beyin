@@ -192,7 +192,7 @@ def retrieve(pack: str, queries: list[str]) -> dict[str, Any]:
 @app.tool()
 def build(
     pack: str,
-    model: str = "small",
+    model: str | None = None,
     language: str | None = None,
 ) -> dict[str, Any]:
     """Build or update a pack."""
@@ -248,7 +248,7 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
 
 
 @app.tool()
-def add_sources(pack: str, urls: list[str], model: str = "small", language: str | None = None) -> dict[str, Any]:
+def add_sources(pack: str, urls: list[str], model: str | None = None, language: str | None = None) -> dict[str, Any]:
     """Add one or more sources to a pack. Rebuilds automatically for single sources. For playlists or RSS feeds, sources are expanded and saved individually — review with status tool, then call build when ready."""
     def action() -> None:
         pack_dir = packs_dir() / pack
@@ -274,7 +274,7 @@ def remove_sources(
     pack: str,
     selectors: list[str],
     rebuild: bool = False,
-    model: str = "small",
+    model: str | None = None,
     language: str | None = None,
 ) -> dict[str, Any]:
     """Remove sources from a pack by current index or visible source text. Rebuild only when requested."""
