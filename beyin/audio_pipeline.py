@@ -1,4 +1,4 @@
-"""Audio and transcript file helpers for the Beyin build pipeline."""
+"""Audio and transcript file helpers for the beyin build pipeline."""
 from __future__ import annotations
 
 import json

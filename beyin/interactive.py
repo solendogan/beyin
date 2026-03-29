@@ -1,4 +1,4 @@
-"""TTY-only interactive helpers for Beyin."""
+"""TTY-only interactive helpers for beyin."""
 
 from __future__ import annotations
 
@@ -157,7 +157,7 @@ def _model_description(value: str) -> str:
 
 
 def _print_setup_intro(*, first_run: bool) -> None:
-    title = "Start your first setup now" if first_run else "Update Beyin settings"
+    title = "Start your first setup now" if first_run else "Update beyin settings"
     intro_lines = [
         "Turn your favorite content into local queryable packs.",
         f"Detected machine: {_machine_label()}",
@@ -204,7 +204,7 @@ def _print_create_intro() -> None:
     _print_screen(
         "Create a new pack",
         [
-            "Start with one source. Beyin infers the content path from the value you paste.",
+            "Start with one source. beyin infers the content path from the value you paste.",
         ],
         footer_lines=[
             "After creation, run `beyin build <name>` to index the source into local retrieval memory.",

@@ -1,4 +1,4 @@
-"""Global Beyin settings helpers."""
+"""Global beyin settings helpers."""
 
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ def save_settings(settings: BeyinSettings) -> None:
 
 
 def needs_initial_setup() -> bool:
-    """Return True when Beyin should consider the first-run setup path."""
+    """Return True when beyin should consider the first-run setup path."""
     return not load_settings().setup_completed
 
 

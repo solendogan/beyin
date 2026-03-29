@@ -1,4 +1,4 @@
-"""Beyin MCP server exposing machine-safe inventory and retrieval tools."""
+"""beyin MCP server exposing machine-safe inventory and retrieval tools."""
 
 import json
 import urllib.request
@@ -34,7 +34,7 @@ from beyin.machine_output import (
     capture_machine_command,
 )
 
-app = FastMCP("Beyin", json_response=True)
+app = FastMCP("beyin", json_response=True)
 
 
 def _packs_root() -> Path:
@@ -336,7 +336,7 @@ _REGISTRY_INDEX_URL = "https://raw.githubusercontent.com/buralog/beyin/main/pack
 
 @app.tool()
 def registry(query: str = "") -> dict[str, Any]:
-    """Browse the Beyin community registry. Search by topic, tag, or keyword. Returns matching packs with install URLs."""
+    """Browse the beyin community registry. Search by topic, tag, or keyword. Returns matching packs with install URLs."""
     meta = {"surface": "mcp", "server_version": __version__}
     try:
         with urllib.request.urlopen(_REGISTRY_INDEX_URL, timeout=10) as response:
@@ -369,9 +369,9 @@ def registry(query: str = "") -> dict[str, Any]:
 
 
 def run_stdio_server() -> None:
-    """Run the Beyin MCP server over stdio."""
+    """Run the beyin MCP server over stdio."""
     import sys
-    print("Beyin MCP server running on stdio.", file=sys.stderr)
+    print("beyin MCP server running on stdio.", file=sys.stderr)
     try:
         app.run(transport="stdio")
     except BaseException as exc:

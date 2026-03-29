@@ -1,4 +1,4 @@
-# Contributing to Beyin
+# Contributing to beyin
 
 ## Adding a pack to the registry
 
@@ -24,7 +24,7 @@ Maintainers can refer to [REGISTRY-FORMAT.md](REGISTRY-FORMAT.md) for the final 
 
 ### Test locally before submitting
 
-The easiest way is through an AI agent with Beyin's MCP server — just say "add this pack, build it, and ask it a test question" and it handles everything.
+The easiest way is through an AI agent with beyin's MCP server — just say "add this pack, build it, and ask it a test question" and it handles everything.
 
 Or via terminal:
 
@@ -49,7 +49,7 @@ For larger changes, open an issue first to discuss the approach.
 
 ## Policy
 
-Packs in this repository contain only source manifests and metadata. Beyin does not host third-party content, and all retrieval, transcription, indexing, and embedding happen locally on the user's own machine.
+Packs in this repository contain only source manifests and metadata. beyin does not host third-party content, and all retrieval, transcription, indexing, and embedding happen locally on the user's own machine.
 
 ### Allowed
 

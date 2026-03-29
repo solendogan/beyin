@@ -1,4 +1,4 @@
-"""Beyin CLI — build and query commands."""
+"""beyin CLI — build and query commands."""
 import io
 import json
 import os
@@ -258,7 +258,7 @@ def _render_missing_parameter_error(
     if param is None:
         raise exc
 
-    typer.echo(f"{bold('Beyin')} {dim(f'v{__version__}')}", err=True)
+    typer.echo(f"{bold('beyin')} {dim(f'v{__version__}')}", err=True)
     typer.echo("", err=True)
     typer.echo(f"{red('Error:')} Missing required argument: {_missing_parameter_label(param)}", err=True)
     typer.echo("", err=True)
@@ -282,7 +282,7 @@ class BeyinCommand(TyperCommand):
 
 app = typer.Typer(
     help=(
-        "Beyin — use with an agent for evidence retrieval, or run query in local model mode"
+        "beyin — use with an agent for evidence retrieval, or run query in local model mode"
     )
 )
 
@@ -444,7 +444,7 @@ def _render_home_screen() -> None:
     summaries = list_packs(_PACKS_DIR, _pack_readiness_details)
     settings = load_settings()
 
-    typer.echo(f"  {bold('Beyin')} {dim(f'v{__version__}')}")
+    typer.echo(f"  {bold('beyin')} {dim(f'v{__version__}')}")
     typer.echo("")
 
     # Settings section
@@ -514,7 +514,7 @@ def run_create_flow() -> bool:
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
-    """Render the home screen when Beyin runs without a subcommand."""
+    """Render the home screen when beyin runs without a subcommand."""
     if ctx.invoked_subcommand is None:
         existing = list_packs(_PACKS_DIR, _pack_readiness_details)
         if needs_initial_setup() and is_interactive_session() and not existing:
@@ -600,7 +600,7 @@ def settings_command() -> None:
     current = load_settings()
 
     # Always show current settings as a table
-    for line in render_header(version=__version__, step="Beyin Settings"):
+    for line in render_header(version=__version__, step="beyin Settings"):
         typer.echo(line)
     typer.echo("")
     for line in render_rows(_settings_display_rows(current)):
@@ -709,7 +709,7 @@ def help(
     """Show top-level help using a friendly command alias."""
     term_w = min(shutil.get_terminal_size((80, 24)).columns, 100)
 
-    typer.echo(f"{bold('Beyin')} {dim(f'v{__version__}')}")
+    typer.echo(f"{bold('beyin')} {dim(f'v{__version__}')}")
     typer.echo("")
     typer.echo(f"{dim('Tip: append --help to any command for usage and options, e.g. beyin build --help')}")
     typer.echo("")
@@ -749,9 +749,9 @@ def help(
         (
             "Settings and support",
             [
-                ("settings", "View or edit Beyin settings"),
+                ("settings", "View or edit beyin settings"),
                 ("check-deps", "Check ffmpeg and yt-dlp availability"),
-                ("about", "Show a short Beyin overview"),
+                ("about", "Show a short beyin overview"),
                 ("help", "Show this command guide"),
             ],
         ),
@@ -791,14 +791,14 @@ def help(
 
 @app.command(cls=BeyinCommand)
 def about() -> None:
-    """Show a short overview of Beyin."""
-    typer.echo(f"{bold('Beyin')} {dim(f'v{__version__}')}")
+    """Show a short overview of beyin."""
+    typer.echo(f"{bold('beyin')} {dim(f'v{__version__}')}")
     typer.echo("")
-    typer.echo("Beyin turns your own sources into local knowledge packs.")
+    typer.echo("beyin turns your own sources into local knowledge packs.")
     typer.echo("Connect them to coding agents over MCP so tools like Codex or Claude Code can query them")
     typer.echo("and answer questions with your own context.")
     typer.echo("")
-    typer.echo("You can also use Beyin directly on your machine.")
+    typer.echo("You can also use beyin directly on your machine.")
     typer.echo("Ask questions with your configured local model, such as Ollama, and get answers")
     typer.echo("grounded in the sources you added.")
     typer.echo("")
@@ -2321,7 +2321,7 @@ def remove_command(
 
 @app.command(name="mcp-server", cls=BeyinCommand)
 def mcp_server_command() -> None:
-    """Run Beyin as a local stdio server for agents on the same machine."""
+    """Run beyin as a local stdio server for agents on the same machine."""
     from beyin.mcp_server import run_stdio_server
 
     run_stdio_server()

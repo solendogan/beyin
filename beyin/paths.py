@@ -1,4 +1,4 @@
-"""Shared path resolution for Beyin runtime state."""
+"""Shared path resolution for beyin runtime state."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def beyin_home() -> Path:
-    """Return the canonical Beyin runtime root directory."""
+    """Return the canonical beyin runtime root directory."""
     value = os.environ.get("BEYIN_HOME")
     if value:
         return Path(value).expanduser()

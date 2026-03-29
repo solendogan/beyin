@@ -1,4 +1,4 @@
-"""Runtime loaders and payload builders for Beyin query/retrieve/status surfaces."""
+"""Runtime loaders and payload builders for beyin query/retrieve/status surfaces."""
 from __future__ import annotations
 
 from pathlib import Path

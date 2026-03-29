@@ -25,7 +25,7 @@ def test_help_command_alias_shows_top_level_framing():
     result = runner.invoke(app, ["help"])
 
     assert result.exit_code == 0
-    assert "Beyin v0.1.0" in result.output
+    assert "beyin v0.1.0" in result.output
     assert "append --help to any command" in result.output
     assert "agent" in result.output.lower()
     assert "Pack lifecycle:" in result.output
@@ -124,7 +124,7 @@ def test_missing_required_arguments_show_help_without_help_option(argv, missing_
     result = runner.invoke(app, argv)
 
     assert result.exit_code == 2
-    assert "Beyin v0.1.0" in result.output
+    assert "beyin v0.1.0" in result.output
     assert f"Missing required argument: {missing_label}" in result.output
     assert "Usage:" in result.output
     assert help_needle in result.output

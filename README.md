@@ -1,6 +1,6 @@
 <div align="center">
 
-# Beyin
+# beyin
 
 **Build local, queryable packs from text extracted from videos, articles, podcasts, and local files. Query them through MCP with your AI agent, or use a local model to explore them directly.**
 
@@ -11,15 +11,15 @@
 
 </div>
 
-## What is Beyin?
+## What is beyin?
 
-Beyin is a local-first tool for turning useful information into queryable knowledge packs.
+beyin is a local-first tool for turning useful information into queryable knowledge packs.
 
 Useful information shows up everywhere, but it rarely stays usable.
 
 You come across valuable information worth keeping, but it remains tied to the format where you found it. A video contains insights you want to reference later. An article has details you may want to use again. A saved post, note, or file can hold something important long after you first saw it.
 
-Beyin was built to turn that scattered information into something structured, local, and queryable through your AI agent, so the useful parts stay accessible whenever you need them.
+beyin was built to turn that scattered information into something structured, local, and queryable through your AI agent, so the useful parts stay accessible whenever you need them.
 
 ## ✨ Features
 
@@ -34,10 +34,10 @@ Beyin was built to turn that scattered information into something structured, lo
 
 ## **How it works**
 
-The easiest way to use Beyin is through MCP with the AI agent you already use.
+The easiest way to use beyin is through MCP with the AI agent you already use.
 
 1. Build a pack from your sources
-2. Connect Beyin to your agent through MCP
+2. Connect beyin to your agent through MCP
 3. Ask questions naturally — your agent handles retrieval from your packs automatically
 
 Once connected, you do not need to run commands or manage packs manually in the terminal. You can ask your agent to:
@@ -62,7 +62,7 @@ You can also query packs directly with a local model, no external API or agent n
 | Local audio | `.mp3`, `.m4a`, `.wav` |
 | Local video | `.mp4`, `.mov`, `.mkv`, `.webm` |
 
-> Beyin is built for local processing on your own machine. Use it with content you are allowed to process, preferably public, permitted sources or material you own or have rights to use. Avoid copied, paywalled, private, restricted, or illegally shared content.
+> beyin is built for local processing on your own machine. Use it with content you are allowed to process, preferably public, permitted sources or material you own or have rights to use. Avoid copied, paywalled, private, restricted, or illegally shared content.
 
 ---
 
@@ -198,13 +198,13 @@ The command is `beyin mcp-server`. It runs a stdio MCP server, compatible with a
 
 ## Example Usage with MCP
 
-Once Beyin is connected through MCP, you can talk to your agent naturally. You do not need to memorize commands or even say "Beyin" every time. Just ask for what you want, and your agent can handle the pack workflow behind the scenes.
+Once beyin is connected through MCP, you can talk to your agent naturally. You do not need to memorize commands or even say "beyin" every time. Just ask for what you want, and your agent can handle the pack workflow behind the scenes.
 
 > Some prompts that mention local files or folders, such as your Documents or Downloads folder, may require your AI agent to have read access to those locations first.
 
 | What you want | What to say |
 |---------------|-------------|
-| Check your packs | `List my Beyin packs and show me their status.` |
+| Check your packs | `List my beyin packs and show me their status.` |
 | Ask about a pack | `What's in my "mobile-marketing" pack? Show me the sources too.` |
 | Ask a question about a pack | `Any useful info about onboarding screens in my "mobile-marketing" pack?` |
 | Build a new pack | `Create a new pack called "ai-helper-tools" and add this URL I found: https://.... Then build the pack.` |
@@ -217,7 +217,7 @@ Once Beyin is connected through MCP, you can talk to your agent naturally. You d
 
 ## MCP Tools Reference
 
-These are the tools Beyin exposes to your agent. Your agent uses them automatically. You do not need to call them yourself.
+These are the tools beyin exposes to your agent. Your agent uses them automatically. You do not need to call them yourself.
 
 | Tool | What it does |
 |------|-------------|
@@ -258,7 +258,7 @@ These are the tools Beyin exposes to your agent. Your agent uses them automatica
 
 You can query your packs with a local model using Ollama, without sending anything to an external API. Everything stays on your machine.
 
-> **If you use Beyin through an MCP-connected agent (Claude Code, Codex, etc.), you do not need Ollama.** Your agent is the LLM. Beyin just retrieves results for it.
+> **If you use beyin through an MCP-connected agent (Claude Code, Codex, etc.), you do not need Ollama.** Your agent is the LLM. beyin just retrieves results for it.
 
 **Setup:**
 
@@ -300,9 +300,9 @@ A `partial` pack may still be usable. Rebuilding recovers any failed sources.
 ### MCP is connected but retrieval is not working
 
 - Make sure the pack was built: `beyin status my-pack`
-- Restart your agent after adding Beyin for the first time
+- Restart your agent after adding beyin for the first time
 - Verify the server is registered: `claude mcp list`
-- Make sure the same Beyin installation is used by both CLI and the MCP server
+- Make sure the same beyin installation is used by both CLI and the MCP server
 
 ### Video or audio builds fail
 
@@ -360,7 +360,7 @@ uv run pytest tests/test_cli.py tests/test_mcp_server.py
 
 ## Behind the Scenes
 
-1. Beyin fetches or loads your source content
+1. beyin fetches or loads your source content
 2. It extracts text or generates transcripts (for audio/video)
 3. It chunks the content into indexed segments
 4. It embeds those chunks into a local vector store
@@ -368,7 +368,7 @@ uv run pytest tests/test_cli.py tests/test_mcp_server.py
 
 Everything is local. No data is sent anywhere. Packs are just files on your disk.
 
-Beyin uses a multilingual embedding model by default, so it works well for non-English content too, not just English sources.
+beyin uses a multilingual embedding model by default, so it works well for non-English content too, not just English sources.
 
 ---
 
@@ -382,9 +382,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for pack submissions, pack policy, and co
 
 ## Legal
 
-Beyin does not host, publish, or redistribute third-party content. Public packs contain only source manifests and metadata. Any retrieval, transcription, indexing, or embedding of source material happens locally on the end user's own machine.
+beyin does not host, publish, or redistribute third-party content. Public packs contain only source manifests and metadata. Any retrieval, transcription, indexing, or embedding of source material happens locally on the end user's own machine.
 
-Users are responsible for ensuring that their use of Beyin complies with applicable laws, copyright rules, and the terms of service of the source platforms.
+Users are responsible for ensuring that their use of beyin complies with applicable laws, copyright rules, and the terms of service of the source platforms.
 
 
 ## License

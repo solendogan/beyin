@@ -24,7 +24,7 @@ def test_no_arg_home_screen_guides_first_run(tmp_path):
         result = runner.invoke(app, [])
 
     assert result.exit_code == 0
-    assert "Beyin v0.1.0" in result.output
+    assert "beyin v0.1.0" in result.output
     assert "No packs installed yet" in result.output
     assert "Settings" in result.output
     assert "Dependencies" in result.output
@@ -71,7 +71,7 @@ def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
     assert help_result.exit_code == 0
     assert "Usage:" not in home_result.output
     assert "Commands:" not in home_result.output
-    assert "Beyin v0.1.0" in home_result.output
+    assert "beyin v0.1.0" in home_result.output
     assert "Home" not in home_result.output
     assert "Your local knowledge base" not in home_result.output
     assert home_result.output != help_result.output
@@ -209,7 +209,7 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
 
     assert first.exit_code == 0
     assert settings.setup_completed is True
-    assert "Beyin v0.1.0" in first.output
+    assert "beyin v0.1.0" in first.output
     assert "Start your first setup now" in first.output
     first_select = next(
         kwargs for prompt_type, kwargs in backend.calls if prompt_type == "select"
@@ -296,7 +296,7 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
     assert settings.preferred_whisper_model == "large"
     assert settings.preferred_llm_model == "qwen2.5"
     # Settings table is always shown
-    assert "Beyin Settings" in result.output
+    assert "beyin Settings" in result.output
     assert "Settings saved" in result.output
 
 
@@ -319,7 +319,7 @@ def test_settings_command_shows_table_in_non_tty(
         result = runner.invoke(app, ["settings"])
 
     assert result.exit_code == 0
-    assert "Beyin Settings" in result.output
+    assert "beyin Settings" in result.output
     assert "Transcription" in result.output
     assert "Dependencies" in result.output
     assert "PDF (.pdf)" in result.output

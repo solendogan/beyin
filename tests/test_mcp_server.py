@@ -1,4 +1,4 @@
-"""MCP server tests for Beyin's machine-safe tool surface."""
+"""MCP server tests for beyin's machine-safe tool surface."""
 
 import json
 

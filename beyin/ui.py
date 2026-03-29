@@ -1,4 +1,4 @@
-"""ANSI presentation helpers and pack display rendering for Beyin terminal output."""
+"""ANSI presentation helpers and pack display rendering for beyin terminal output."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def red(text: str) -> str:
 
 
 def render_header(*, version: str, step: str, subtitle: str | None = None) -> list[str]:
-    lines = [f"  {bold('Beyin')} {dim(f'v{version}')}", ""]
+    lines = [f"  {bold('beyin')} {dim(f'v{version}')}", ""]
     lines.append(f"  {bold(step)}")
     if subtitle:
         lines.append(f"  {dim(subtitle)}")

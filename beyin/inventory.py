@@ -555,7 +555,7 @@ def next_action_reason(summary: Dict[str, Any]) -> str:
     if status == "blocked":
         return "Resolve the blocker so this pack is ready for agent or local-model use."
     if status == "new":
-        return "Build this pack before Beyin can serve it to an agent or local model."
+        return "Build this pack before beyin can serve it to an agent or local model."
     if status == "needs-build":
         return "Rebuild this pack so agent and local-mode retrieval use the latest indexed changes."
     if status == "partially-ready":
