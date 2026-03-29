@@ -207,22 +207,40 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 
 ## 📋 All Commands
 
+**Pack lifecycle**
+
 | Command | What it does |
 |---------|-------------|
 | `beyin create` | Create a new pack interactively |
 | `beyin add <path-or-url>` | Import an existing pack from a file or URL |
 | `beyin build <pack>` | Build or rebuild a pack |
-| `beyin update <pack>` | Update a pack with new content |
+| `beyin build <pack> --source 1 3 5` | Build only selected sources by index or range |
+| `beyin update <pack>` | Fetch new content and rebuild incrementally |
 | `beyin remove <pack>` | Remove a pack |
 | `beyin list` | List all installed packs |
 | `beyin status <pack>` | Show pack details and readiness |
-| `beyin query <pack> "question"` | Ask a question directly (requires Ollama) |
-| `beyin add-source <pack> <source>` | Add a new source to an installed pack |
+
+**Sources**
+
+| Command | What it does |
+|---------|-------------|
+| `beyin add-source <pack> <url>` | Add a new source to an installed pack |
 | `beyin remove-source <pack> 2` | Remove source by index |
 | `beyin remove-source <pack> 1 3 5` | Remove multiple sources by index |
 | `beyin remove-source <pack> 1-3` | Remove a range of sources |
 | `beyin remove-source <pack> "keyword"` | Remove a source by title/URL text match |
 | `beyin remove-source <pack> 2 --build` | Remove and rebuild immediately to clean up vector store |
+
+**Query**
+
+| Command | What it does |
+|---------|-------------|
+| `beyin query <pack> "question"` | Ask a question directly (requires Ollama) |
+
+**Server & config**
+
+| Command | What it does |
+|---------|-------------|
 | `beyin mcp-server` | Start the MCP server |
 | `beyin settings` | View and configure settings |
 | `beyin check-deps` | Verify runtime dependencies |
