@@ -1,8 +1,11 @@
 <div align="center">
 
-# beyin
+#  beyin
+### base engine for your information nodes
 
-**Build local, queryable packs from text extracted from videos, articles, podcasts, and local files. Query them through MCP with your AI agent, or use a local model to explore them directly.**
+*also means “brain” in Turkish.*
+
+**Build local, queryable packs from videos, articles, podcasts, and local files. Query them through MCP with your AI agent, or explore them directly with a local model.**
 
 [![PyPI](https://img.shields.io/pypi/v/beyin?style=for-the-badge)](https://pypi.org/project/beyin/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
@@ -11,64 +14,51 @@
 
 </div>
 
-## What is beyin?
-
-beyin is a local-first tool for turning useful information into queryable knowledge packs.
-
-Useful information shows up everywhere, but it rarely stays usable.
-
-You come across valuable information worth keeping, but it remains tied to the format where you found it. A video contains insights you want to reference later. An article has details you may want to use again. A saved post, note, or file can hold something important long after you first saw it.
-
-beyin was built to turn that scattered information into something structured, local, and queryable through your AI agent, so the useful parts stay accessible whenever you need them.
+<!-- add demo video here  -->
 
 ## ✨ Features
 
-- 🎯 Multi-query expansion — generates query variants for better retrieval
-- 📦 Local-first — everything stays on your machine, nothing sent externally
-- 🔗 MCP compatible — works with Claude Code, Codex, Cursor, Windsurf, Zed and more
-- 🌍 50+ languages — multilingual embedding model out of the box
-- 🎬 Rich source support — YouTube, podcasts, PDFs, articles, local files
-- 🤖 Ollama support — use fully offline with a local model
-- ⚡ No dashboard — manage everything by just talking to your agent
-
-
-## **How it works**
-
-The easiest way to use beyin is through MCP with the AI agent you already use.
-
-1. Build a pack from your sources
-2. Connect beyin to your agent through MCP
-3. Ask questions naturally — your agent handles retrieval from your packs automatically
-
-Once connected, you do not need to run commands or manage packs manually in the terminal. You can ask your agent to:
-
-- create, build, update and manage packs
-- add new sources to a pack by providing URLs or local files
-- check your local packs and their status
-- check available packs in the pack hub
-- retrieve relevant results in response to your questions
-
-You can also query packs directly with a local model, no external API or agent needed. See [Query with a Local Model](#query-with-a-local-model).
-
-#### Supported Sources
-
-| Type | Examples |
-|------|----------|
-| Web articles | Any public URL |
-| YouTube | Videos and playlists |
-| Podcasts | RSS feed URLs |
-| Local text | `.txt`, `.md`, `.rst`, `.html` |
-| Local documents | `.pdf`, `.docx`, `.pptx`, `.epub`, `.xlsx`, `.csv` (optional deps) |
-| Local audio | `.mp3`, `.m4a`, `.wav` |
-| Local video | `.mp4`, `.mov`, `.mkv`, `.webm` |
-
-> beyin is built for local processing on your own machine. Use it with content you are allowed to process, preferably public, permitted sources or material you own or have rights to use. Avoid copied, paywalled, private, restricted, or illegally shared content.
+- 🔗 **MCP compatible:** works with Claude Code, Codex, Cursor, Windsurf, Zed and more
+- 📦 **Local-first pipeline:** processing, embedding, and storage all happen on your machine
+- 🎬 **Rich source support:** YouTube videos and playlists, podcasts, PDFs, articles, local files
+- 🌍 **50+ languages:** multilingual embedding model out of the box
+- 🤖 **Ollama support:** run fully offline with a local model
+- ⚡ **Plug and play:** one command to connect via MCP, then manage everything by just talking to your agent
+- 🎯 **Multi-query expansion:** generates query variants automatically for better retrieval
 
 ---
 
-## Quick Start
+## ⚙️ How it works
 
-### Step 1: Install
+The recommended way to use beyin is through MCP with the AI agent you already use.
+
+1. Install beyin and connect it to your agent once
+2. Build a pack from your sources
+3. Ask questions naturally. Your agent handles retrieval automatically.
+
+Once set up, you can ask your agent to create, build, and manage packs, add sources, check status, and retrieve relevant results, all in plain language. See [Example Usage with MCP](#-example-usage-with-mcp).
+
+You can also query packs directly with a local model, no external API or agent needed. See [Query with a Local Model](#-query-with-a-local-model).
+
+---
+
+## 📂 Supported Sources
+
+| Type | Examples |
+|------|----------|
+| Web articles | Public URLs |
+| YouTube | Videos and playlists |
+| Podcasts | RSS feed URLs |
+| Local documents | `.pdf`, `.docx`, `.pptx`, `.epub`, `.xlsx`, `.csv` |
+| Local text | `.txt`, `.md`, `.rst`, `.html` |
+| Local audio | `.mp3`, `.m4a`, `.wav` |
+| Local video | `.mp4`, `.mov`, `.mkv`, `.webm` |
+
+> beyin is built for local processing on your own machine. Use it with content you are allowed to process: public sources, or material you own or have rights to use.
+
+---
+
+## 📦 Installation
 
 ```bash
 pip install beyin
@@ -80,16 +70,10 @@ Verify your setup:
 beyin check-deps
 ```
 
-**Only needed for video and audio sources. Skip if you only use articles and local text:**
+**ffmpeg** is required for video and audio sources. Skip if you only use articles and local files:
 
-**yt-dlp** (any OS):
 ```bash
-pip install yt-dlp
-```
-
-**ffmpeg:**
-```bash
-# macOS with Homebrew
+# macOS
 brew install ffmpeg
 
 # Linux
@@ -103,7 +87,7 @@ No Homebrew on macOS or winget not working? Download directly from [ffmpeg.org/d
 
 ---
 
-### Step 2: Connect to your agent
+## 🔌 Connect to Your Agent
 
 You only need to do this once.
 
@@ -133,9 +117,11 @@ Open or create `~/.cursor/mcp.json` and add:
 
 ```json
 {
-  "beyin": {
-    "command": "beyin",
-    "args": ["mcp-server"]
+  "mcpServers": {
+    "beyin": {
+      "command": "beyin",
+      "args": ["mcp-server"]
+    }
   }
 }
 ```
@@ -175,49 +161,35 @@ In `~/.config/zed/settings.json`:
 }
 ```
 
-#### Google Antigravity
-
-Go to **Manage MCP Servers** → **View raw config** and add:
-
-```json
-{
-  "mcpServers": {
-    "beyin": {
-      "command": "beyin",
-      "args": ["mcp-server"]
-    }
-  }
-}
-```
-
 #### Any other MCP-compatible agent
 
 The command is `beyin mcp-server`. It runs a stdio MCP server, compatible with any agent that supports the MCP protocol.
 
 ---
 
-## Example Usage with MCP
+## 💬 Example Usage with MCP
 
-Once beyin is connected through MCP, you can talk to your agent naturally. You do not need to memorize commands or even say "beyin" every time. Just ask for what you want, and your agent can handle the pack workflow behind the scenes.
+Once beyin is connected through MCP, you can talk to your agent naturally. You do not need to memorize commands or even say "beyin" every time. Just ask for what you want.
 
-> Some prompts that mention local files or folders, such as your Documents or Downloads folder, may require your AI agent to have read access to those locations first.
+> Some prompts that mention local files or folders may require your AI agent to have read access to those locations first.
 
 | What you want | What to say |
 |---------------|-------------|
-| Check your packs | `List my beyin packs and show me their status.` |
-| Ask about a pack | `What's in my "mobile-marketing" pack? Show me the sources too.` |
-| Ask a question about a pack | `Any useful info about onboarding screens in my "mobile-marketing" pack?` |
-| Build a new pack | `Create a new pack called "ai-helper-tools" and add this URL I found: https://.... Then build the pack.` |
-| Add a source to an existing pack | `I have a useful PDF about how to automate my app builds. It's in my Documents folder. Add it to the "ai-helper-tools" pack and rebuild it.` |
-| Remove a source from a pack | `Show me the sources in "mobile-marketing", then remove source 2 from that pack.` |
-| Manage the response | `Ask the "ai-helper-tools" pack what I should do about designing a new landing page. Include sources in the response and any timestamps if they exist.` |
-| Remove a pack | `Remove that pack about mobile marketing stuff.` |
+| Build a new pack | `create a pack called "yt-research", add this YouTube playlist: https://youtube.com/playlist?list=..., and build it` |
+| Add a source | `I have a PDF about growth strategy in my Downloads folder, add it to my "mobile-marketing" pack and rebuild` |
+| Add more sources | `add these to my "product-ideas" pack and rebuild: https://example.com/article-1, https://example.com/article-2, https://example.com/article-3` |
+| Ask a question | `any useful info about onboarding screens in my "mobile-marketing" pack` |
+| Control the response | `ask yt-research pack about building an audience from scratch, include sources and timestamps` |
+| Check your packs | `list my packs and show me their status` |
+| Ask about a pack | `how is my mobile-marketing pack doing, sources are still active too?` |
+| Remove a source | `remove sources 2 and 3 from mobile marketing pack` |
+| Remove a pack | `remove that pack about tech podcast` |
 
 ---
 
-## MCP Tools Reference
+## 🛠️ MCP Tools Reference
 
-These are the tools beyin exposes to your agent. Your agent uses them automatically. You do not need to call them yourself.
+These are the tools beyin exposes to your agent. Your agent uses them automatically; you do not need to call them yourself.
 
 | Tool | What it does |
 |------|-------------|
@@ -232,7 +204,7 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 
 ---
 
-## All Commands
+## 📋 All Commands
 
 | Command | What it does |
 |---------|-------------|
@@ -245,7 +217,7 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 | `beyin status <pack>` | Show pack details and readiness |
 | `beyin query <pack> "question"` | Ask a question directly (requires Ollama) |
 | `beyin add-source <pack> <source>` | Add a new source to an installed pack |
-| `beyin remove-source <pack> <selector>` | Remove a source from an installed pack by index or text match |
+| `beyin remove-source <pack> <selector>` | Remove a source by index or text match |
 | `beyin mcp-server` | Start the MCP server |
 | `beyin settings` | View and configure settings |
 | `beyin check-deps` | Verify runtime dependencies |
@@ -254,7 +226,7 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 
 ---
 
-## Query with a Local Model
+## 🤖 Query with a Local Model
 
 You can query your packs with a local model using Ollama, without sending anything to an external API. Everything stays on your machine.
 
@@ -270,13 +242,13 @@ ollama pull llama3.2     # 2 GB, fast, good for most queries
 ollama pull qwen2.5:7b   # 4.7 GB, stronger reasoning
 ```
 
-3. Start Ollama in a terminal and keep it running:
+3. Start Ollama:
 
 ```bash
 ollama serve
 ```
 
-4. In another terminal, build a pack and query it:
+4. Build a pack and query it:
 
 ```bash
 beyin query my-pack "What does this source say about X?"
@@ -286,7 +258,7 @@ To change the model, run `beyin settings`.
 
 ---
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
 ### Pack is not queryable yet
 
@@ -310,13 +282,17 @@ A `partial` pack may still be usable. Rebuilding recovers any failed sources.
 - Check that `yt-dlp` is installed and current: `yt-dlp --version`
 - Make sure the source URL is still reachable
 
+### Pack name with spaces is not recognized
+
+Pack IDs use kebab-case, not spaces. Use `my-pack` instead of `my pack`. The display name can be anything, but the ID used in commands must be kebab-case.
+
 ### Which `python` / `pip` should I use?
 
 Use the same Python environment for installation and for the MCP server. If you installed with `pip install beyin`, running `beyin mcp-server` will use that same environment automatically.
 
 ---
 
-## Development (from the repo)
+## 🧑‍💻 Development
 
 ```bash
 git clone https://github.com/buralog/beyin.git
@@ -358,21 +334,21 @@ uv run pytest tests/test_cli.py tests/test_mcp_server.py
 
 ---
 
-## Behind the Scenes
+## 🔍 Behind the Scenes
 
 1. beyin fetches or loads your source content
 2. It extracts text or generates transcripts (for audio/video)
 3. It chunks the content into indexed segments
 4. It embeds those chunks into a local vector store
-5. At query time, it retrieves the best-matching results
+5. At query time, it retrieves the best-matching chunks using multi-query expansion
 
-Everything is local. No data is sent anywhere. Packs are just files on your disk.
+beyin uses a multilingual embedding model by default, so it works well across 50+ languages, not just English.
 
-beyin uses a multilingual embedding model by default, so it works well for non-English content too, not just English sources.
+> **Privacy note:** Steps 1–4 are entirely local. At step 5, only the retrieved chunks reach your LLM. For full privacy, use beyin with Ollama so nothing leaves your machine.
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 Issues and pull requests are welcome at [github.com/buralog/beyin](https://github.com/buralog/beyin).
 
@@ -380,13 +356,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for pack submissions, pack policy, and co
 
 ---
 
-## Legal
+## ⚖️ Legal
 
-beyin does not host, publish, or redistribute third-party content. Public packs contain only source manifests and metadata. Any retrieval, transcription, indexing, or embedding of source material happens locally on the end user's own machine.
+beyin does not host, publish, or redistribute third-party content. Any retrieval, transcription, indexing, or embedding of source material happens locally on the end user's own machine.
 
 Users are responsible for ensuring that their use of beyin complies with applicable laws, copyright rules, and the terms of service of the source platforms.
 
+---
 
-## License
+## 📄 License
 
 MIT
+
