@@ -195,12 +195,13 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 |------|-------------|
 | `packs` | List all installed packs |
 | `status` | Show details and readiness for a pack |
-| `retrieve` | Return relevant results for a query |
+| `retrieve` | Return relevant results for one or more queries |
+| `build` | Build or update a pack. Pass `sources` to build only selected sources by index or range. Automatically purges chunks of removed sources. |
 | `add` | Add a pack from a path, URL, or YAML |
-| `add_sources` | Append new sources to a pack and rebuild |
-| `remove_sources` | Remove one or more sources from a pack |
-| `build` | Build or update a pack |
-| `remove` | Remove an installed pack |
+| `add_sources` | Add new sources to a pack. Rebuilds automatically for single sources; playlists/feeds are expanded for review first. |
+| `remove_sources` | Remove sources by index, range, or text match. Removed chunks stay in the vector store until you rebuild. |
+| `remove` | Remove an installed pack (moves to trash) |
+| `registry` | Browse the beyin community registry by topic, tag, or keyword |
 
 ---
 
