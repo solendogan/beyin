@@ -1,3 +1,3 @@
-"""beyin — turn creator content into queryable expert memory."""
+"""beyin — turn your fav content into queryable local memory."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

@@ -39,7 +39,7 @@ jobs:
       id-token: write
     environment:
       name: pypi
-      url: https://pypi.org/project/brainpack/
+      url: https://pypi.org/project/beyin/
 
     steps:
       - name: Download release distributions
