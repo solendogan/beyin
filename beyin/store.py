@@ -23,6 +23,31 @@ def get_collection(pack_dir: Path, pack_name: str):
     return client.get_or_create_collection(name=pack_name)
 
 
+def purge_removed_sources(collection, active_urls: set[str]) -> list[str]:
+    """
+    Delete chunks from ChromaDB whose source URL is no longer in active_urls.
+
+    Returns a list of purged URLs.
+    Queries all stored metadata in batches to find stale source URLs.
+    """
+    result = collection.get(include=["metadatas"])
+    if not result["ids"]:
+        return []
+
+    stale_ids: list[str] = []
+    stale_urls: set[str] = set()
+    for doc_id, meta in zip(result["ids"], result["metadatas"]):
+        url = (meta or {}).get("url", "")
+        if url and url not in active_urls:
+            stale_ids.append(doc_id)
+            stale_urls.add(url)
+
+    if stale_ids:
+        collection.delete(ids=stale_ids)
+
+    return list(stale_urls)
+
+
 def embed_and_store(
     collection,
     model,

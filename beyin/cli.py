@@ -392,6 +392,12 @@ def embed_and_store(*args, **kwargs):
     return _embed_and_store(*args, **kwargs)
 
 
+def purge_removed_sources(*args, **kwargs):
+    from beyin.store import purge_removed_sources as _purge_removed_sources
+
+    return _purge_removed_sources(*args, **kwargs)
+
+
 def transcribe_audio(*args, **kwargs):
     from beyin.transcriber import transcribe_audio as _transcribe_audio
 
@@ -1141,7 +1147,7 @@ def build(
         None,
         "--language",
         "-l",
-        help="Whisper language code (e.g. 'tr' for Turkish). Default: auto-detect",
+        help="Whisper language code (e.g. 'en', 'fr', 'es'). Default: auto-detect",
     ),
     reset: bool = typer.Option(
         False,
@@ -1210,6 +1216,17 @@ def build(
             _model_obj = load_model(config.embedding_model)
             _collection = get_collection(pack_dir, config.id)
         return _model_obj, _collection
+
+    # Purge chunks from sources that have been removed from pack.yaml.
+    # Uses the full config (not the partial selection) so all active URLs are known.
+    chroma_path = pack_dir / "chroma"
+    if chroma_path.exists():
+        _purge_collection = get_collection(pack_dir, full_config.id)
+        active_urls = {s.url for s in full_config.sources}
+        purged = purge_removed_sources(_purge_collection, active_urls)
+        if purged:
+            for url in purged:
+                typer.echo(f"  [purge] Removed stale chunks for: {url}")
 
     audio_dir = pack_dir / "audio"
     transcripts_dir = pack_dir / "transcripts"
@@ -2073,7 +2090,7 @@ def update(
         None,
         "--language",
         "-l",
-        help="Whisper language code (e.g. 'tr' for Turkish). Default: auto-detect",
+        help="Whisper language code (e.g. 'en', 'fr', 'es'). Default: auto-detect",
     ),
 ):
     """Fetch new sources and rebuild a pack incrementally."""
@@ -2238,7 +2255,17 @@ def remove_source_command(
         help="Run build immediately after removing sources.",
     ),
 ) -> None:
-    """Remove one or more sources from an existing pack by index or text match."""
+    """Remove one or more sources from an existing pack by index or text match.
+
+    Selectors can be:
+      - Single index:   beyin remove-source apple 2
+      - Multiple:       beyin remove-source apple 1 3 5
+      - Range:          beyin remove-source apple 1-3
+      - Text match:     beyin remove-source apple "WWDC"
+
+    Removed sources are no longer re-indexed on build, but their existing chunks remain
+    in the vector store until you rebuild. Run with --build to clean up immediately.
+    """
     pack_dir = _resolve_pack_dir(pack)
     previous = load_config(pack_dir)
     state = load_state(pack_dir)
@@ -2265,6 +2292,10 @@ def remove_source_command(
     if build_after:
         typer.echo("")
         build(pack=pack, model=None, language=None, reset=False, verbose=False)
+    else:
+        typer.echo("")
+        typer.echo(f"Warning: removed chunks are still in the vector store until you rebuild.")
+        typer.echo(f"Run: beyin build {pack}")
 
 
 @app.command(name="remove", cls=BeyinCommand)
