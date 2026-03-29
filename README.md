@@ -178,10 +178,10 @@ Once beyin is connected through MCP, you can talk to your agent naturally. You d
 | Build a new pack | `create a pack called "yt-research", add this YouTube playlist: https://youtube.com/playlist?list=..., and build it` |
 | Add a source | `I have a PDF about growth strategy in my Downloads folder, add it to my "mobile-marketing" pack and rebuild` |
 | Add more sources | `add these to my "product-ideas" pack and rebuild: https://example.com/article-1, https://example.com/article-2, https://example.com/article-3` |
-| Ask a question | `any useful info about onboarding screens in my "mobile-marketing" pack` |
+| Ask a question | `any useful info about onboarding screens in my "mobile marketing" pack?` |
 | Control the response | `ask yt-research pack about building an audience from scratch, include sources and timestamps` |
 | Check your packs | `list my packs and show me their status` |
-| Ask about a pack | `how is my mobile-marketing pack doing, sources are still active too?` |
+| Ask about a pack | `whats the status of mobile marketing pack? and also its sources?` |
 | Remove a source | `remove sources 2 and 3 from mobile marketing pack` |
 | Remove a pack | `remove that pack about tech podcast` |
 
@@ -217,7 +217,11 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 | `beyin status <pack>` | Show pack details and readiness |
 | `beyin query <pack> "question"` | Ask a question directly (requires Ollama) |
 | `beyin add-source <pack> <source>` | Add a new source to an installed pack |
-| `beyin remove-source <pack> <selector>` | Remove a source by index or text match |
+| `beyin remove-source <pack> 2` | Remove source by index |
+| `beyin remove-source <pack> 1 3 5` | Remove multiple sources by index |
+| `beyin remove-source <pack> 1-3` | Remove a range of sources |
+| `beyin remove-source <pack> "keyword"` | Remove a source by title/URL text match |
+| `beyin remove-source <pack> 2 --build` | Remove and rebuild immediately to clean up vector store |
 | `beyin mcp-server` | Start the MCP server |
 | `beyin settings` | View and configure settings |
 | `beyin check-deps` | Verify runtime dependencies |
