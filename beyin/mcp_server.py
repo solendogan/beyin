@@ -5,11 +5,12 @@ import urllib.request
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 import yaml as pyyaml
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 from beyin import __version__
 from beyin.authoring import add_source_to_pack, remove_sources_from_pack
@@ -166,7 +167,7 @@ def packs() -> dict[str, Any]:
 
 
 @app.tool()
-def status(pack: str) -> dict[str, Any]:
+def status(pack: Annotated[str, Field(description="Pack name to inspect.")]) -> dict[str, Any]:
     """Show details for one pack."""
     return _tool_result(
         command="status",
@@ -176,7 +177,10 @@ def status(pack: str) -> dict[str, Any]:
 
 
 @app.tool()
-def retrieve(pack: str, queries: list[str]) -> dict[str, Any]:
+def retrieve(
+    pack: Annotated[str, Field(description="Pack name to search.")],
+    queries: Annotated[list[str], Field(description="One or more query phrasings. Multiple phrasings improve coverage — results are deduplicated and ranked.")],
+) -> dict[str, Any]:
     """Find the most relevant source passages for one or more queries.
 
     Pass multiple phrasings of the same question for better coverage — e.g.
@@ -197,17 +201,18 @@ def retrieve(pack: str, queries: list[str]) -> dict[str, Any]:
 
 @app.tool()
 def build(
-    pack: str,
-    model: str | None = None,
-    language: str | None = None,
+    pack: Annotated[str, Field(description="Pack name to build.")],
+    model: Annotated[str | None, Field(description="Whisper model size: tiny/base/small/medium/large.")] = None,
+    language: Annotated[str | None, Field(description="Whisper language code (e.g. 'en', 'fr', 'es'). Default: auto-detect.")] = None,
+    sources: Annotated[list[str] | None, Field(description="Build only selected sources by index (e.g. ['1', '3', '5']) or range (e.g. ['1-3']). Omit to build all.")] = None,
 ) -> dict[str, Any]:
-    """Build or update a pack."""
+    """Build or update a pack. Pass sources to build only selected sources by index (e.g. ["1", "3", "5"]) or range (e.g. ["1-3"])."""
     return _command_tool_result(
         command="build",
         pack=pack,
         action=lambda: _cli_build(
             pack=pack,
-            sources=None,
+            sources=sources,
             model=model,
             language=language,
             reset=False,
@@ -217,7 +222,10 @@ def build(
 
 
 @app.tool()
-def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
+def add(
+    source: Annotated[str | None, Field(description="Path, URL, or registry id to install a pack from.")] = None,
+    yaml: Annotated[str | None, Field(description="Raw pack.yaml content to install inline.")] = None,
+) -> dict[str, Any]:
     """Add a pack from a path, URL, registry id, or pasted YAML."""
     if bool(source) == bool(yaml):
         return build_error_envelope(
@@ -254,7 +262,12 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
 
 
 @app.tool()
-def add_sources(pack: str, urls: list[str], model: str | None = None, language: str | None = None) -> dict[str, Any]:
+def add_sources(
+    pack: Annotated[str, Field(description="Pack name to add sources to.")],
+    urls: Annotated[list[str], Field(description="One or more URLs to add. Playlists and RSS feeds are expanded into individual sources.")],
+    model: Annotated[str | None, Field(description="Whisper model size: tiny/base/small/medium/large.")] = None,
+    language: Annotated[str | None, Field(description="Whisper language code (e.g. 'en', 'fr', 'es'). Default: auto-detect.")] = None,
+) -> dict[str, Any]:
     """Add one or more sources to a pack. Rebuilds automatically for single sources. For playlists or RSS feeds, sources are expanded and saved individually — review with status tool, then call build when ready."""
     def action() -> None:
         pack_dir = _packs_root() / pack
@@ -277,13 +290,19 @@ def add_sources(pack: str, urls: list[str], model: str | None = None, language: 
 
 @app.tool()
 def remove_sources(
-    pack: str,
-    selectors: list[str],
-    rebuild: bool = False,
-    model: str | None = None,
-    language: str | None = None,
+    pack: Annotated[str, Field(description="Pack name to remove sources from.")],
+    selectors: Annotated[list[str], Field(description="Source selectors to remove — by index (e.g. ['1', '3', '5']), range (e.g. ['1-3']), or visible title/URL text.")],
+    rebuild: Annotated[bool, Field(description="If true, rebuild the pack immediately after removal.")] = False,
+    model: Annotated[str | None, Field(description="Whisper model size: tiny/base/small/medium/large.")] = None,
+    language: Annotated[str | None, Field(description="Whisper language code (e.g. 'en', 'fr', 'es'). Default: auto-detect.")] = None,
 ) -> dict[str, Any]:
-    """Remove sources from a pack by current index or visible source text. Rebuild only when requested."""
+    """Remove sources from a pack by current index or visible source text.
+
+    Selectors support single indexes (['2']), multiple (['1', '3', '5']), ranges (['1-3']), or text match (['WWDC']).
+
+    Warning: removed chunks remain in the vector store until you rebuild. Pass rebuild=true to clean up immediately,
+    or call build separately afterwards.
+    """
     def action() -> None:
         pack_dir = _packs_root() / pack
         config = load_config(pack_dir)
@@ -310,7 +329,10 @@ def remove_sources(
 
 
 @app.tool()
-def remove(pack: str, confirm: bool = False) -> dict[str, Any]:
+def remove(
+    pack: Annotated[str, Field(description="Pack name to remove.")],
+    confirm: Annotated[bool, Field(description="Must be true to proceed. Call without confirm first to see a warning.")] = False,
+) -> dict[str, Any]:
     """Remove a pack and move it to the OS trash. Must be called with confirm=True to proceed."""
     if not confirm:
         pack_dir = _packs_root() / pack
@@ -335,7 +357,7 @@ _REGISTRY_INDEX_URL = "https://raw.githubusercontent.com/buralog/beyin/main/pack
 
 
 @app.tool()
-def registry(query: str = "") -> dict[str, Any]:
+def registry(query: Annotated[str, Field(description="Search term — topic, tag, or keyword. Leave empty to list all available packs.")] = "") -> dict[str, Any]:
     """Browse the beyin community registry. Search by topic, tag, or keyword. Returns matching packs with install URLs."""
     meta = {"surface": "mcp", "server_version": __version__}
     try:
