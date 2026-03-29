@@ -1,7 +1,10 @@
-"""Article text extraction using trafilatura."""
+"""Article text extraction and episode-page resolution using trafilatura."""
 import json
+import re
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Optional, Tuple
+from urllib.parse import urljoin, urlparse
 
 from trafilatura import extract, fetch_url
 
@@ -33,6 +36,204 @@ _DOCUMENT_DEP_HINTS: dict[str, tuple[str, str]] = {
     ".csv": (None, None),  # stdlib only
 }
 
+_AUDIO_EXTENSIONS = (".mp3", ".m4a", ".wav", ".ogg", ".aac", ".flac")
+_INLINE_TRANSCRIPT_MIN_CHARS = 1_500
+_TRANSCRIPT_TEXT_HINTS = (" transcript", "transcript ", "full transcript")
+_PODCAST_TEXT_HINTS = (
+    " podcast",
+    "episode ",
+    "show notes",
+    "listen on",
+    "apple podcasts",
+    "spotify",
+    "overcast",
+)
+_JSONLD_PODCAST_RE = re.compile(
+    r'"@type"\s*:\s*"(?:PodcastEpisode|PodcastSeries|Podcast|AudioObject)"',
+    re.IGNORECASE,
+)
+
+
+class _PageSignalsParser(HTMLParser):
+    """Collect lightweight media and link signals from one HTML document."""
+
+    def __init__(self):
+        super().__init__()
+        self.anchors: list[tuple[str, str]] = []
+        self.audio_urls: list[str] = []
+        self._current_href: str | None = None
+        self._current_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        attr_map = {key.lower(): value for key, value in attrs}
+        if tag == "a":
+            href = attr_map.get("href")
+            if href:
+                self._current_href = href
+                self._current_parts = []
+        if tag in {"audio", "source"}:
+            src = attr_map.get("src")
+            type_attr = (attr_map.get("type") or "").lower()
+            if src and (tag == "audio" or type_attr.startswith("audio/") or _looks_like_audio_href(src)):
+                self.audio_urls.append(src)
+
+    def handle_data(self, data: str) -> None:
+        if self._current_href is not None and data.strip():
+            self._current_parts.append(data.strip())
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self._current_href is not None:
+            self.anchors.append((self._current_href, " ".join(self._current_parts).strip()))
+            self._current_href = None
+            self._current_parts = []
+
+
+def _looks_like_audio_href(href: str) -> bool:
+    path = urlparse(href).path.lower()
+    return any(path.endswith(ext) for ext in _AUDIO_EXTENSIONS)
+
+
+def _extract_title(downloaded: str, url: str) -> str:
+    """Extract a best-effort title from metadata JSON."""
+    title = url
+    meta_raw = extract(
+        downloaded,
+        output_format="json",
+        with_metadata=True,
+        include_comments=False,
+        include_tables=False,
+    )
+    if not meta_raw:
+        return title
+    try:
+        meta = json.loads(meta_raw)
+    except (json.JSONDecodeError, AttributeError):
+        return title
+    return meta.get("title") or url
+
+
+def _extract_text(downloaded: str) -> str:
+    """Extract best-effort article text from downloaded HTML."""
+    return extract(downloaded, include_comments=False, include_tables=False) or ""
+
+
+def _find_transcript_link(parser: _PageSignalsParser, base_url: str) -> str | None:
+    """Return the most likely transcript URL linked from the page, if any."""
+    for href, text in parser.anchors:
+        normalized_text = f" {text.strip().lower()} "
+        normalized_href = href.lower()
+        if "transcript" in normalized_href or any(hint in normalized_text for hint in _TRANSCRIPT_TEXT_HINTS):
+            return urljoin(base_url, href)
+    return None
+
+
+def _find_audio_link(downloaded: str, parser: _PageSignalsParser, base_url: str) -> str | None:
+    """Return a best-effort direct audio URL found in the page."""
+    for href in parser.audio_urls:
+        if _looks_like_audio_href(href):
+            return urljoin(base_url, href)
+    for href, _text in parser.anchors:
+        if _looks_like_audio_href(href):
+            return urljoin(base_url, href)
+    match = re.search(r'https?://[^"\'>\s]+(?:\.mp3|\.m4a|\.wav|\.ogg|\.aac|\.flac)(?:\?[^"\'>\s]*)?', downloaded, re.IGNORECASE)
+    if match:
+        return match.group(0)
+    return None
+
+
+def _looks_like_inline_transcript(downloaded: str, text: str) -> bool:
+    """Return True when the page appears to contain a real inline transcript."""
+    normalized_html = downloaded.lower()
+    normalized_text = f" {text.lower()} "
+    return (
+        len(text) >= _INLINE_TRANSCRIPT_MIN_CHARS
+        and (
+            "transcript" in normalized_html
+            or any(hint in normalized_text for hint in _TRANSCRIPT_TEXT_HINTS)
+        )
+    )
+
+
+def _looks_like_podcast_page(downloaded: str, title: str, text: str) -> bool:
+    """Return True for likely episode landing pages that should avoid article fallback."""
+    normalized_html = downloaded.lower()
+    combined_text = f" {title.lower()} {text.lower()} "
+    hint_count = sum(1 for hint in _PODCAST_TEXT_HINTS if hint in normalized_html or hint in combined_text)
+    if _JSONLD_PODCAST_RE.search(downloaded):
+        return True
+    return hint_count >= 2
+
+
+def resolve_article_ingestion(url: str) -> Optional[dict]:
+    """
+    Resolve a URL into article text, transcript text, direct podcast audio, or explicit podcast failure.
+
+    Returns:
+    - {"mode": "article"|"transcript", "text": ..., "title": ..., "metadata_url": ...}
+    - {"mode": "podcast_audio", "audio_url": ..., "title": ..., "metadata_url": ...}
+    - {"mode": "podcast_unresolved", "title": ..., "reason": ...}
+    - None on fetch/extraction failure
+    """
+    downloaded = fetch_url(url)
+    if not downloaded:
+        return None
+
+    title = _extract_title(downloaded, url)
+    text = _extract_text(downloaded)
+    parser = _PageSignalsParser()
+    parser.feed(downloaded)
+
+    transcript_url = _find_transcript_link(parser, url)
+    if transcript_url:
+        transcript = fetch_article(transcript_url)
+        if transcript is not None:
+            transcript_text, transcript_title = transcript
+            return {
+                "mode": "transcript",
+                "text": transcript_text,
+                "title": transcript_title or title,
+                "metadata_url": transcript_url,
+            }
+
+    if _looks_like_inline_transcript(downloaded, text):
+        return {
+            "mode": "transcript",
+            "text": text,
+            "title": title,
+            "metadata_url": url,
+        }
+
+    audio_url = _find_audio_link(downloaded, parser, url)
+    podcast_like = _looks_like_podcast_page(downloaded, title, text)
+    if audio_url and podcast_like:
+        return {
+            "mode": "podcast_audio",
+            "audio_url": audio_url,
+            "title": title,
+            "metadata_url": url,
+        }
+
+    if podcast_like:
+        reason = (
+            f"transcript link could not be ingested for podcast episode page: {url}"
+            if transcript_url
+            else f"no transcript or audio found for podcast episode page: {url}"
+        )
+        return {
+            "mode": "podcast_unresolved",
+            "title": title,
+            "reason": reason,
+        }
+
+    if not text:
+        return None
+    return {
+        "mode": "article",
+        "text": text,
+        "title": title,
+        "metadata_url": url,
+    }
+
 
 def fetch_article(url: str) -> Optional[Tuple[str, str]]:
     """
@@ -45,25 +246,11 @@ def fetch_article(url: str) -> Optional[Tuple[str, str]]:
     if not downloaded:
         return None
 
-    text = extract(downloaded, include_comments=False, include_tables=False)
+    text = _extract_text(downloaded)
     if not text:
         return None
 
-    # Extract title from metadata JSON (second extract call with output_format="json")
-    title = url  # fallback to URL if metadata unavailable
-    meta_raw = extract(
-        downloaded,
-        output_format="json",
-        with_metadata=True,
-        include_comments=False,
-        include_tables=False,
-    )
-    if meta_raw:
-        try:
-            meta = json.loads(meta_raw)
-            title = meta.get("title") or url
-        except (json.JSONDecodeError, AttributeError):
-            pass  # keep URL as fallback title
+    title = _extract_title(downloaded, url)
 
     return text, title
 

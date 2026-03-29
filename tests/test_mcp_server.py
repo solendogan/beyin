@@ -115,6 +115,31 @@ def _mark_pack_partially_ready(pack_dir: Path, *, last_build_at: str) -> None:
     )
 
 
+def _mark_pack_incrementally_ready(pack_dir: Path) -> None:
+    from brainpack.pack_state import save_state
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {
+                "https://example.com/article-1": {
+                    "status": "done",
+                    "url": "https://example.com/article-1",
+                    "title": "Done 1",
+                },
+                "https://example.com/article-2": {
+                    "status": "done",
+                    "url": "https://example.com/article-2",
+                    "title": "Done 2",
+                },
+            },
+            "audio_steps": {},
+            "last_build_result": "partial-selection",
+        },
+    )
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
@@ -324,11 +349,6 @@ async def test_mcp_retrieve_allows_built_ollama_pack_without_reachability_check(
         ("missing", "pack_not_found", "Pack 'state-pack' is not installed."),
         ("new", "pack_not_built", "Pack 'state-pack' is not built yet."),
         (
-            "partially-ready",
-            "pack_needs_build",
-            "Pack 'state-pack' is not fully built yet and needs a rebuild before retrieve can continue.",
-        ),
-        (
             "needs-build",
             "pack_needs_build",
             "Pack 'state-pack' changed after its last build and needs a rebuild before retrieve can continue.",
@@ -377,6 +397,44 @@ async def test_mcp_retrieve_blocks_on_pack_state_preconditions(
     assert structured["ok"] is False
     assert structured["error"]["code"] == expected_code
     assert structured["error"]["message"] == expected_message
+
+
+@pytest.mark.anyio
+async def test_mcp_retrieve_allows_partially_ready_pack_with_warning(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "state-pack"
+    _write_pack(
+        pack_dir,
+        name="state-pack",
+        llm="openai",
+        sources=["https://example.com/article-1", "https://example.com/article-2"],
+    )
+    _mark_pack_partially_ready(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.retrieve_evidence",
+        return_value=[],
+    ):
+        _, structured = await mcp_app.call_tool(
+            "retrieve",
+            {"pack": "state-pack", "queries": ["What happened?"]},
+        )
+
+    assert structured["ok"] is True
+    assert structured["data"]["coverage_warning"] == (
+        "Pack 'state-pack' is only partially built; results may miss some configured sources."
+    )
+    assert structured["data"]["results"] == []
 
 
 @pytest.mark.anyio
@@ -545,8 +603,13 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
         "brainpack.cli.get_collection",
         return_value=object(),
     ), patch(
-        "brainpack.cli.fetch_article",
-        return_value=("Some article text for chunking.", "Example Article"),
+        "brainpack.cli.resolve_article_ingestion",
+        return_value={
+            "mode": "article",
+            "text": "Some article text for chunking.",
+            "title": "Example Article",
+            "metadata_url": "https://example.com/article",
+        },
     ), patch(
         "brainpack.cli.embed_and_store",
         return_value=3,
@@ -568,6 +631,86 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
     # Build complete verdict with new always-on summary table format
     assert "Build complete" in structured["data"]["stdout"]
     assert "3" in structured["data"]["stdout"]  # chunk count appears in table or verdict
+
+
+@pytest.mark.anyio
+async def test_mcp_build_passes_plain_python_defaults_to_cli_function(mcp_app):
+    with patch(
+        "brainpack.mcp_server._cli_build",
+        return_value=None,
+    ) as mock_build:
+        _, structured = await mcp_app.call_tool(
+            "build",
+            {"pack": "build-pack"},
+        )
+
+    assert structured["ok"] is True
+    mock_build.assert_called_once_with(
+        pack="build-pack",
+        sources=None,
+        model="small",
+        language=None,
+        reset=False,
+        verbose=False,
+    )
+
+
+@pytest.mark.anyio
+async def test_mcp_status_marks_incrementally_built_pack_ready(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "incremental-pack"
+    _write_pack(
+        pack_dir,
+        name="incremental-pack",
+        llm="openai",
+        sources=["https://example.com/article-1", "https://example.com/article-2"],
+    )
+    _mark_pack_incrementally_ready(pack_dir)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ):
+        _, structured = await mcp_app.call_tool("status", {"pack": "incremental-pack"})
+
+    assert structured["ok"] is True
+    assert structured["data"]["pack"]["status"] == "ready"
+
+
+@pytest.mark.anyio
+async def test_mcp_retrieve_allows_incrementally_ready_pack(mcp_app, tmp_path):
+    packs_root = tmp_path / "brainpacks"
+    pack_dir = packs_root / "incremental-pack"
+    _write_pack(
+        pack_dir,
+        name="incremental-pack",
+        llm="openai",
+        sources=["https://example.com/article-1", "https://example.com/article-2"],
+    )
+    _mark_pack_incrementally_ready(pack_dir)
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+        "os.environ",
+        {"OPENAI_API_KEY": "sk-test"},
+        clear=False,
+    ), patch(
+        "brainpack.cli.load_model",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.get_collection",
+        return_value=object(),
+    ), patch(
+        "brainpack.cli.retrieve_evidence",
+        return_value=[],
+    ):
+        _, structured = await mcp_app.call_tool(
+            "retrieve",
+            {"pack": "incremental-pack", "queries": ["What happened?"]},
+        )
+
+    assert structured["ok"] is True
+    assert structured["data"] == {"question": "What happened?", "results": []}
 
 
 @pytest.mark.anyio

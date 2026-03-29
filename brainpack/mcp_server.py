@@ -199,7 +199,14 @@ def build(
     return _command_tool_result(
         command="build",
         pack=pack,
-        action=lambda: _cli_build(pack=pack, model=model, language=language),
+        action=lambda: _cli_build(
+            pack=pack,
+            sources=None,
+            model=model,
+            language=language,
+            reset=False,
+            verbose=False,
+        ),
     )
 
 

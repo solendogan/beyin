@@ -338,6 +338,12 @@ def fetch_article(*args, **kwargs):
     return _fetch_article(*args, **kwargs)
 
 
+def resolve_article_ingestion(*args, **kwargs):
+    from brainpack.ingester import resolve_article_ingestion as _resolve_article_ingestion
+
+    return _resolve_article_ingestion(*args, **kwargs)
+
+
 def load_text_like_source(*args, **kwargs):
     from brainpack.ingester import load_text_like_source as _load_text_like_source
 
@@ -873,6 +879,8 @@ def _render_next_step(command: str, reason: str, *, err: bool = False) -> None:
 
 def _render_query_output(result: dict) -> None:
     """Print the LLM answer followed by visible sources."""
+    if result.get("coverage_warning"):
+        typer.echo(f"Warning: {result['coverage_warning']}\n")
     typer.echo(result["answer"])
     if not result["sources"]:
         return
@@ -1225,9 +1233,21 @@ def build(
             failure_reason = ""
             if source_type == "article":
                 typer.echo(f"  [fetch] {source_url}")
-                result = fetch_article(source_url)
-                failure_reason = "trafilatura extraction returned None"
-                failure_message = f"Could not extract text from {source_url} — skipping"
+                resolved = resolve_article_ingestion(source_url)
+                if resolved is None:
+                    result = None
+                    failure_reason = "trafilatura extraction returned None"
+                    failure_message = f"Could not extract text from {source_url} — skipping"
+                elif resolved["mode"] in {"article", "transcript"}:
+                    result = (resolved["text"], resolved["title"], resolved.get("metadata_url") or source_url)
+                    failure_message = ""
+                elif resolved["mode"] == "podcast_audio":
+                    result = resolved
+                    failure_message = ""
+                else:
+                    result = None
+                    failure_reason = resolved.get("reason", "podcast episode page missing transcript and audio")
+                    failure_message = f"{failure_reason} — skipping"
             elif source_type == "local_text":
                 typer.echo(f"  [load] {source_url}")
                 try:
@@ -1281,9 +1301,106 @@ def build(
                 report.record(source_url[:40], "failed", failure_reason=failure_reason)
                 continue
 
-            text, title = result
+            if source_type == "article" and isinstance(result, dict) and result.get("mode") == "podcast_audio":
+                episode_title = result.get("title") or source_url
+                source_id = canonical_source_id(source_url)
+                transcript_path = _transcript_path(transcripts_dir, source_id)
+                legacy_transcript_path = _legacy_transcript_path(transcripts_dir, source_url)
+                ffmpeg_available = _check_ffmpeg_available()
+                if not ffmpeg_available:
+                    failure_reason = (
+                        "ffmpeg is required for audio builds. "
+                        "Install: brew install ffmpeg or visit https://ffmpeg.org/download.html"
+                    )
+                    typer.echo(f"  [warn] {failure_reason}", err=True)
+                    mark_failed(state, source_url, reason=failure_reason)
+                    save_state(pack_dir, state)
+                    report.record(episode_title, "failed", failure_reason=failure_reason)
+                    continue
+
+                check_transcription_provenance(
+                    state,
+                    current_model=str(build_defaults["model"]),
+                    current_language=build_defaults["language"],
+                    pack_name=config.id,
+                )
+                save_state(pack_dir, state)
+
+                audio_url = result["audio_url"]
+                audio_path = download_podcast_audio(audio_url, audio_dir, episode_title)
+                if audio_path is None:
+                    failure_reason = "download failed after retry"
+                    typer.echo(
+                        f"  [warn] Download failed for {episode_title} — skipping",
+                        err=True,
+                    )
+                    mark_failed(state, source_url, reason=failure_reason)
+                    save_state(pack_dir, state)
+                    report.record(episode_title, "failed", failure_reason=failure_reason)
+                    continue
+
+                mark_audio_step(state, source_url, "downloaded", episode_title, source_id=source_id)
+                save_state(pack_dir, state)
+                typer.echo(f"  [transcribe] {episode_title}")
+                segments = transcribe_audio(
+                    audio_path,
+                    model_size=model_size,
+                    language=language,
+                    verbose=verbose,
+                )
+                if not segments:
+                    failure_reason = "transcription returned empty"
+                    typer.echo(
+                        f"  [warn] Transcription failed for {episode_title} — skipping",
+                        err=True,
+                    )
+                    mark_empty(state, source_url, failure_reason, source_id=source_id, title=episode_title)
+                    save_state(pack_dir, state)
+                    report.record(episode_title, "empty", failure_reason=failure_reason)
+                    continue
+
+                _save_transcript_segments(transcript_path, segments)
+                mark_audio_step(state, source_url, "transcribed", episode_title, source_id=source_id)
+                save_state(pack_dir, state)
+                chunks, range_metadata = _chunk_transcript_segments(segments)
+                if not chunks:
+                    failure_reason = "no indexable transcript chunks"
+                    typer.echo(
+                        f"  [warn] No indexable transcript chunks for {episode_title} — skipping",
+                        err=True,
+                    )
+                    mark_empty(state, source_url, failure_reason, source_id=source_id, title=episode_title)
+                    save_state(pack_dir, state)
+                    report.record(episode_title, "empty", failure_reason=failure_reason)
+                    continue
+
+                metadatas = []
+                for chunk_range in range_metadata:
+                    metadata = {
+                        "url": result.get("metadata_url") or source_url,
+                        "title": episode_title,
+                        "source_id": source_id,
+                    }
+                    metadata.update(chunk_range)
+                    metadatas.append(metadata)
+                if not verbose:
+                    typer.echo(f"  [embed] {episode_title}")
+                model_obj, collection = _get_embed_resources()
+                new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_id)
+                mark_audio_step(state, source_url, "embedded", episode_title, source_id=source_id)
+                save_state(pack_dir, state)
+                if verbose:
+                    typer.echo(f"  [embed] {episode_title} — {new_count} chunks")
+                report.record(episode_title, "done", new=new_count)
+                continue
+
+            if source_type == "article":
+                text, title, metadata_url = result
+            else:
+                text, title = result
+                metadata_url = source_url
             chunks = chunk_text(text)
-            metadatas = [{"url": source_url, "title": title} for _ in chunks]
+            metadatas = [{"url": metadata_url, "title": title} for _ in chunks]
             model_obj, collection = _get_embed_resources()
             new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_url)
             mark_processed(state, source_url, title)

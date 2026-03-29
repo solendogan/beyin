@@ -11,6 +11,7 @@ from brainpack.inventory import (
     inspect_pack,
     list_packs,
     next_action_reason,
+    pack_has_complete_index,
     pack_config_hash,
     serialize_pack_detail,
     serialize_pack_summary,
@@ -112,6 +113,13 @@ def _build_retrieve_payload(question: str, results: list[dict], *, machine: bool
     }
 
 
+def _partial_ready_warning(pack: str) -> str:
+    """Return the user-facing warning for incomplete but queryable packs."""
+    return (
+        f"Pack '{pack}' is only partially built; results may miss some configured sources."
+    )
+
+
 # ── Precondition helpers ──────────────────────────────────────────────────────
 
 def _raise_retrieval_precondition(
@@ -153,7 +161,7 @@ def _load_query_runtime(
     pack: str,
     *,
     machine_command: Optional[str] = None,
-) -> tuple[Path, PackConfig, object, object]:
+) -> tuple[Path, PackConfig, object, object, Optional[str]]:
     """Load pack config and retrieval runtime for query surfaces."""
     from brainpack import cli as _cli
     pack_dir = _cli._resolve_pack_dir(pack, machine_command=machine_command)
@@ -173,9 +181,15 @@ def _load_query_runtime(
     summary = inspect_pack(pack_dir, _cli._pack_readiness_details)
     state = _cli.load_state(pack_dir)
     has_build = _has_successful_build(state)
+    complete_index = pack_has_complete_index(config, state)
     current_hash = pack_config_hash(pack_dir)
     last_build_hash = state.get("last_built_pack_hash")
-    needs_build = bool(has_build and last_build_hash and last_build_hash != current_hash)
+    needs_build = bool(
+        has_build
+        and last_build_hash
+        and last_build_hash != current_hash
+        and not complete_index
+    )
     status = summary["status"]
     if status == "new" or not has_build:
         _raise_retrieval_precondition(
@@ -185,16 +199,12 @@ def _load_query_runtime(
             summary=summary,
             machine_command=machine_command,
         )
-    if status in {"needs-build", "partially-ready"} or needs_build:
+    if status == "needs-build" or (needs_build and status != "partially-ready"):
         _raise_retrieval_precondition(
             pack,
             code="pack_needs_build",
-            message=(
-                f"Pack '{pack}' is not fully built yet and needs a rebuild before query can continue."
-                if status == "partially-ready"
-                else f"Pack '{pack}' changed after its last build and needs a rebuild before query can continue."
-            ),
-            summary=summary,
+            message=f"Pack '{pack}' changed after its last build and needs a rebuild before query can continue.",
+            summary=_retrieval_precondition_summary("needs-build", pack),
             machine_command=machine_command,
         )
     if status == "error" and not has_build:
@@ -207,14 +217,15 @@ def _load_query_runtime(
         )
     model = _cli.load_model(config.embedding_model)
     collection = _cli.get_collection(pack_dir, config.id)
-    return pack_dir, config, model, collection
+    warning = _partial_ready_warning(pack) if status == "partially-ready" else None
+    return pack_dir, config, model, collection, warning
 
 
 def _load_evidence_runtime(
     pack: str,
     *,
     machine_command: Optional[str] = None,
-) -> tuple[Path, PackConfig, object, object]:
+) -> tuple[Path, PackConfig, object, object, Optional[str]]:
     """Load retrieval-only runtime without requiring answer-provider readiness."""
     from brainpack import cli as _cli
     pack_dir = _cli._resolve_pack_dir(pack, machine_command=machine_command)
@@ -222,9 +233,15 @@ def _load_evidence_runtime(
     summary = inspect_pack(pack_dir, _cli._pack_readiness_details)
     state = _cli.load_state(pack_dir)
     has_build = _has_successful_build(state)
+    complete_index = pack_has_complete_index(config, state)
     current_hash = pack_config_hash(pack_dir)
     last_build_hash = state.get("last_built_pack_hash")
-    needs_build = bool(has_build and last_build_hash and last_build_hash != current_hash)
+    needs_build = bool(
+        has_build
+        and last_build_hash
+        and last_build_hash != current_hash
+        and not complete_index
+    )
     has_error = _has_failed_build(state)
     status = summary["status"]
 
@@ -244,21 +261,18 @@ def _load_evidence_runtime(
             summary=_retrieval_precondition_summary("new", pack),
             machine_command=machine_command,
         )
-    if status == "partially-ready" or needs_build:
+    if needs_build and status != "partially-ready":
         _raise_retrieval_precondition(
             pack,
             code="pack_needs_build",
-            message=(
-                f"Pack '{pack}' is not fully built yet and needs a rebuild before retrieve can continue."
-                if status == "partially-ready"
-                else f"Pack '{pack}' changed after its last build and needs a rebuild before retrieve can continue."
-            ),
-            summary=summary if status == "partially-ready" else _retrieval_precondition_summary("needs-build", pack),
+            message=f"Pack '{pack}' changed after its last build and needs a rebuild before retrieve can continue.",
+            summary=_retrieval_precondition_summary("needs-build", pack),
             machine_command=machine_command,
         )
     model = _cli.load_model(config.embedding_model)
     collection = _cli.get_collection(pack_dir, config.id)
-    return pack_dir, config, model, collection
+    warning = _partial_ready_warning(pack) if status == "partially-ready" else None
+    return pack_dir, config, model, collection, warning
 
 
 # ── Payload builders ──────────────────────────────────────────────────────────
@@ -271,7 +285,7 @@ def _query_payload(
 ) -> dict:
     """Build a reusable result payload for query."""
     from brainpack import cli as _cli
-    _, config, model, collection = _load_query_runtime(
+    _, config, model, collection, coverage_warning = _load_query_runtime(
         pack,
         machine_command="query" if machine else None,
     )
@@ -282,7 +296,10 @@ def _query_payload(
         llm_provider=config.llm,
         llm_model=load_settings().preferred_llm_model,
     )
-    return _build_retrieval_payload(question, result, machine=machine)
+    payload = _build_retrieval_payload(question, result, machine=machine)
+    if coverage_warning:
+        payload["coverage_warning"] = coverage_warning
+    return payload
 
 
 def _retrieve_payload(
@@ -295,7 +312,7 @@ def _retrieve_payload(
     import concurrent.futures
     from brainpack import cli as _cli
     from brainpack.query import WEAK_MATCH_THRESHOLD, DEFAULT_EVIDENCE_RESULTS
-    _, _, model, collection = _load_evidence_runtime(
+    _, _, model, collection, coverage_warning = _load_evidence_runtime(
         pack,
         machine_command="retrieve" if machine else None,
     )
@@ -321,6 +338,8 @@ def _retrieve_payload(
 
     primary_question = queries[0]
     payload = _build_retrieve_payload(primary_question, merged, machine=machine)
+    if coverage_warning:
+        payload["coverage_warning"] = coverage_warning
     if merged and merged[0].get("distance", 0) > WEAK_MATCH_THRESHOLD:
         payload["low_confidence"] = True
         payload["low_confidence_hint"] = "Top match confidence is low. Try rephrasing your query for better results."

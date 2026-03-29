@@ -205,6 +205,37 @@ def _mark_pack_partially_ready(
     )
 
 
+def _mark_pack_incrementally_ready(
+    pack_dir: Path,
+    *,
+    urls: list[str] | None = None,
+):
+    """Persist an all-sources-indexed state produced via repeated --source builds."""
+    from brainpack.pack_state import save_state
+
+    ready_urls = urls or [
+        "https://example.com/article-1",
+        "https://example.com/article-2",
+    ]
+    processed = {
+        url: {
+            "status": "done",
+            "url": url,
+            "title": f"Ready source {index}",
+        }
+        for index, url in enumerate(ready_urls, start=1)
+    }
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": processed,
+            "audio_steps": {},
+            "last_build_result": "partial-selection",
+        },
+    )
+
+
 def test_help_frames_agent_and_local_modes():
     """brainpack --help should frame the product around agent and local-model use."""
     from brainpack.cli import app
@@ -1143,7 +1174,7 @@ def test_build_can_limit_to_selected_source_indexes_without_mutating_pack(tmp_pa
          patch("brainpack.cli._has_audio_sources", return_value=False), \
          patch("brainpack.cli.detect_source_type", return_value="article"), \
          patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.fetch_article", side_effect=_fetch), \
+         patch("brainpack.cli.resolve_article_ingestion", side_effect=lambda url: {"mode": "article", "text": f"content for {url}", "title": f"title for {url}", "metadata_url": url}), \
          patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
          patch("brainpack.cli.embed_and_store", return_value=1):
         result = runner.invoke(app, ["build", "test-pack", "--source", "1-2"])
@@ -1193,7 +1224,7 @@ def test_build_exits_0(tmp_pack_root):
          patch("brainpack.cli.get_collection", return_value=mock_collection), \
          patch("brainpack.cli.detect_source_type", return_value="article"), \
          patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.fetch_article", return_value=("Article text", "Article Title")), \
+         patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
          patch("brainpack.cli.chunk_text", return_value=["chunk one", "chunk two"]), \
          patch("brainpack.cli.embed_and_store", return_value=2), \
          patch("brainpack.cli.mark_processed") as mock_mark, \
@@ -1229,7 +1260,7 @@ def test_build_calls_check_model_provenance_before_embed(tmp_pack_root):
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", return_value="article"), \
          patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.fetch_article", return_value=("text", "title")), \
+         patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "text", "title": "title", "metadata_url": "https://example.com/article"}), \
          patch("brainpack.cli.chunk_text", return_value=["chunk"]), \
          patch("brainpack.cli.embed_and_store", side_effect=mock_embed), \
          patch("brainpack.cli.mark_processed"), \
@@ -1257,6 +1288,7 @@ def test_build_skips_already_processed_urls(tmp_pack_root):
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", return_value="article"), \
          patch("brainpack.cli.is_processed", return_value=True), \
+         patch("brainpack.cli.resolve_article_ingestion") as mock_resolve, \
          patch("brainpack.cli.fetch_article") as mock_fetch, \
          patch("brainpack.cli.embed_and_store") as mock_embed, \
          patch("brainpack.cli.chunk_text"), \
@@ -1265,6 +1297,7 @@ def test_build_skips_already_processed_urls(tmp_pack_root):
 
         result = runner.invoke(app, ["build", "test-pack"])
 
+    mock_resolve.assert_not_called()
     mock_fetch.assert_not_called()
     mock_embed.assert_not_called()
     assert "skip" in result.output
@@ -1286,7 +1319,7 @@ def test_build_warns_and_marks_failed_when_fetch_returns_none(tmp_pack_root):
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", return_value="article"), \
          patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.fetch_article", return_value=None), \
+         patch("brainpack.cli.resolve_article_ingestion", return_value=None), \
          patch("brainpack.cli.embed_and_store") as mock_embed, \
          patch("brainpack.cli.chunk_text"), \
          patch("brainpack.cli.mark_processed") as mock_mark, \
@@ -1866,7 +1899,6 @@ def test_query_unbuilt_pack_redirects_to_build(tmp_pack_root):
     ("command", "status_setup", "expected_command"),
     [
         ("query", "needs-build", "brainpack build test-pack"),
-        ("query", "partially-ready", "brainpack build test-pack"),
         ("query", "error", "brainpack build test-pack"),
     ],
 )
@@ -1914,6 +1946,40 @@ def test_retrieval_preconditions_share_onboarding_guidance(
     mock_load_model.assert_not_called()
     mock_get_collection.assert_not_called()
     mock_run_query.assert_not_called()
+
+
+def test_query_allows_partially_ready_pack_with_warning(tmp_pack_root):
+    """query should proceed for partially-ready packs but surface an incomplete-coverage warning."""
+    from brainpack.cli import app
+
+    packs_root, pack_dir = tmp_pack_root
+    runner = CliRunner()
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\n"
+        "description: demo\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - https://example.com/article-1\n"
+        "  - https://example.com/article-2\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    _mark_pack_partially_ready(pack_dir)
+
+    mock_result = {
+        "answer": "Partial answer.",
+        "sources": [{"url": "https://example.com/article-1", "title": "Ready source"}],
+    }
+
+    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+         patch("brainpack.cli._query_provider_error", return_value=None), \
+         patch("brainpack.cli.load_model", return_value=MagicMock()), \
+         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+         patch("brainpack.cli.run_query", return_value=mock_result):
+        result = runner.invoke(app, ["query", "test-pack", "Can I ask now?"])
+
+    assert result.exit_code == 0, result.output
+    assert "Warning: Pack 'test-pack' is only partially built" in result.output
+    assert "Partial answer." in result.output
 
 
 def test_build_persists_structured_transcripts_with_timestamps(tmp_path):
@@ -2403,7 +2469,7 @@ class TestAudioBuild:
              patch("brainpack.cli.get_collection", return_value=MagicMock()), \
              patch("brainpack.cli.detect_source_type", return_value="article"), \
              patch("brainpack.cli.is_processed", return_value=False), \
-             patch("brainpack.cli.fetch_article", mock_fetch), \
+             patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
              patch("brainpack.cli.transcribe_audio", mock_transcribe), \
              patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
              patch("brainpack.cli.embed_and_store", return_value=1), \
@@ -2413,8 +2479,85 @@ class TestAudioBuild:
             result = runner.invoke(app, ["build", "test-pack"])
 
         assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
-        mock_fetch.assert_called_once_with("https://example.com/article")
         mock_transcribe.assert_not_called()
+
+    def test_build_article_source_can_fallback_to_podcast_audio(self, tmp_path):
+        """Article-like episode pages should download/transcribe direct audio instead of indexing landing-page text."""
+        from brainpack.cli import app
+
+        packs_root = tmp_path / "brainpacks"
+        pack_dir = packs_root / "test-pack"
+        pack_dir.mkdir(parents=True)
+        (pack_dir / "pack.yaml").write_text(
+            "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+            "  - https://example.com/episode\nembedding_model: all-MiniLM-L6-v2\n"
+        )
+
+        runner = CliRunner()
+        mock_config = _make_config([SourceEntry(url="https://example.com/episode")])
+        audio_file = tmp_path / "episode.mp3"
+        audio_file.write_bytes(b"x" * 20_000)
+        segments = [{"start": 0.0, "end": 10.0, "text": "Podcast content here"}]
+
+        with patch("brainpack.cli._PACKS_DIR", packs_root), \
+             patch("brainpack.cli.load_config", return_value=mock_config), \
+             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("brainpack.cli.check_model_provenance"), \
+             patch("brainpack.cli.check_transcription_provenance"), \
+             patch("brainpack.cli.save_state"), \
+             patch("brainpack.cli.load_model", return_value=MagicMock()), \
+             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+             patch("brainpack.cli.detect_source_type", return_value="article"), \
+             patch("brainpack.cli.is_processed", return_value=False), \
+             patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "podcast_audio", "audio_url": "https://cdn.example.com/episode.mp3", "title": "Episode 1", "metadata_url": "https://example.com/episode"}), \
+             patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
+             patch("brainpack.cli.download_podcast_audio", return_value=audio_file) as mock_download, \
+             patch("brainpack.cli.transcribe_audio", return_value=segments) as mock_transcribe, \
+             patch("brainpack.cli.embed_and_store", return_value=1) as mock_embed, \
+             patch("brainpack.cli.mark_audio_step"), \
+             patch("brainpack.cli.mark_failed"):
+            result = runner.invoke(app, ["build", "test-pack"])
+
+        assert result.exit_code == 0, result.output
+        mock_download.assert_called_once()
+        mock_transcribe.assert_called_once()
+        mock_embed.assert_called_once()
+
+    def test_build_article_source_rejects_podcast_page_without_transcript_or_audio(self, tmp_path):
+        """Podcast-like article pages should fail instead of indexing shallow landing-page show notes."""
+        from brainpack.cli import app
+
+        packs_root = tmp_path / "brainpacks"
+        pack_dir = packs_root / "test-pack"
+        pack_dir.mkdir(parents=True)
+        (pack_dir / "pack.yaml").write_text(
+            "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+            "  - https://example.com/episode\nembedding_model: all-MiniLM-L6-v2\n"
+        )
+
+        runner = CliRunner()
+        mock_config = _make_config([SourceEntry(url="https://example.com/episode")])
+
+        with patch("brainpack.cli._PACKS_DIR", packs_root), \
+             patch("brainpack.cli.load_config", return_value=mock_config), \
+             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("brainpack.cli.check_model_provenance"), \
+             patch("brainpack.cli.save_state"), \
+             patch("brainpack.cli.load_model", return_value=MagicMock()), \
+             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
+             patch("brainpack.cli.detect_source_type", return_value="article"), \
+             patch("brainpack.cli.is_processed", return_value=False), \
+             patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "podcast_unresolved", "title": "Episode 1", "reason": "no transcript or audio found for podcast episode page: https://example.com/episode"}), \
+             patch("brainpack.cli.embed_and_store") as mock_embed, \
+             patch("brainpack.cli.mark_processed") as mock_mark, \
+             patch("brainpack.cli.mark_failed") as mock_fail:
+            result = runner.invoke(app, ["build", "test-pack"])
+
+        assert result.exit_code == 1, result.output
+        mock_embed.assert_not_called()
+        mock_mark.assert_not_called()
+        mock_fail.assert_called_once()
+        assert "no transcript or audio found" in result.output.lower()
 
     def test_build_help_shows_model_and_language_flags(self):
         """build --help shows --model and --language options."""
@@ -2605,7 +2748,7 @@ def test_build_mixed_pack_keeps_articles_when_audio_is_blocked(tmp_path):
          patch("brainpack.cli.load_model", return_value=MagicMock()), \
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", side_effect=["article", "youtube"]), \
-         patch("brainpack.cli.fetch_article", return_value=("Article text", "Article Title")), \
+         patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
          patch("brainpack.cli.chunk_text", return_value=["chunk one"]), \
          patch("brainpack.cli.embed_and_store", return_value=1), \
          patch("brainpack.cli._check_ffmpeg_available", return_value=False), \
@@ -2774,6 +2917,7 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
         ("new-pack", "new", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build new-pack"),
         ("stale-pack", "needs-build", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build stale-pack"),
         ("partially-ready-pack", "partially-ready", {"OPENAI_API_KEY": "sk-test"}, "partially-ready", "brainpack build partially-ready-pack"),
+        ("incremental-ready-pack", "incremental-ready", {"OPENAI_API_KEY": "sk-test"}, "ready", "brainpack mcp-server"),
         ("error-pack", "error", {"OPENAI_API_KEY": "sk-test"}, "error", "brainpack build error-pack"),
         ("partial-pack", "partial", {"OPENAI_API_KEY": "sk-test"}, "partially-ready", "brainpack build partial-pack"),
     ],
@@ -2813,6 +2957,11 @@ def test_status_uses_onboarding_guidance_across_lifecycle_states(
         _mark_pack_needs_build(pack_dir)
     elif state_setup == "partially-ready":
         _mark_pack_partially_ready(pack_dir)
+    elif state_setup == "incremental-ready":
+        _mark_pack_incrementally_ready(pack_dir, urls=[
+            "https://example.com/article-1",
+            "https://example.com/article-2",
+        ])
     elif state_setup == "error":
         _mark_pack_failed(pack_dir)
     elif state_setup == "partial":
@@ -3611,9 +3760,32 @@ def _p12_article_patches(packs_root, mock_config, *,
         stack.enter_context(patch("brainpack.cli.detect_source_type", return_value="article"))
     stack.enter_context(patch("brainpack.cli.is_processed", return_value=is_processed_return))
     if fetch_side_effects is not None:
-        stack.enter_context(patch("brainpack.cli.fetch_article", side_effect=fetch_side_effects))
+        def _resolve(url: str):
+            text, title = fetch_side_effects(url)
+            return {
+                "mode": "article",
+                "text": text,
+                "title": title,
+                "metadata_url": url,
+            }
+        stack.enter_context(
+            patch(
+                "brainpack.cli.resolve_article_ingestion",
+                side_effect=_resolve,
+            )
+        )
     else:
-        stack.enter_context(patch("brainpack.cli.fetch_article", return_value=fetch_return))
+        stack.enter_context(
+            patch(
+                "brainpack.cli.resolve_article_ingestion",
+                return_value={
+                    "mode": "article",
+                    "text": fetch_return[0],
+                    "title": fetch_return[1],
+                    "metadata_url": "https://example.com/article",
+                },
+            )
+        )
     stack.enter_context(patch("brainpack.cli.chunk_text", return_value=["chunk"]))
     stack.enter_context(patch("brainpack.cli.embed_and_store", return_value=embed_return))
     stack.enter_context(patch("brainpack.cli.mark_processed"))
@@ -4102,7 +4274,7 @@ def test_build_reset_flag_clears_runtime_artifacts_before_rebuild(tmp_path):
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", return_value="article"), \
          patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.fetch_article", return_value=("Article text", "Article Title")), \
+         patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
          patch("brainpack.cli.chunk_text", return_value=["chunk"]), \
          patch("brainpack.cli.embed_and_store", return_value=1), \
          patch("brainpack.cli.mark_processed"), \
@@ -4141,7 +4313,7 @@ def test_build_reset_preserves_pack_yaml_and_origin_json(tmp_path):
          patch("brainpack.cli.get_collection", return_value=MagicMock()), \
          patch("brainpack.cli.detect_source_type", return_value="article"), \
          patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.fetch_article", return_value=("Article text", "Article Title")), \
+         patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
          patch("brainpack.cli.chunk_text", return_value=["chunk"]), \
          patch("brainpack.cli.embed_and_store", return_value=1), \
          patch("brainpack.cli.mark_processed"), \

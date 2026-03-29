@@ -287,14 +287,38 @@ def list_podcast_episodes(feed_url: str, limit: Optional[int]) -> list[dict]:
 
 def download_podcast_audio(audio_url: str, out_dir: Path, title: str = "") -> Optional[Path]:
     """
-    Download podcast audio file via urllib (direct CDN URL — no yt-dlp needed).
+    Download podcast audio file. Tries yt-dlp first (handles CDN bot protection),
+    falls back to urllib for plain direct URLs.
     Returns Path on success, None on failure. Never raises.
     Checks file size > 10KB to guard against partial downloads.
     """
+    typer.echo(f"  [download] {title or audio_url}")
+
+    # Try yt-dlp first — handles CDN bot protection that urllib can't bypass
+    try:
+        import yt_dlp
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": str(out_dir / "%(id)s.%(ext)s"),
+            "quiet": True,
+            "no_warnings": True,
+            "noprogress": True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(audio_url, download=True)
+        audio_path = out_dir / f"{info['id']}.{info['ext']}"
+        if audio_path.exists() and audio_path.stat().st_size >= _MIN_AUDIO_BYTES:
+            typer.echo(f"  [download] done — {audio_path.name}")
+            return audio_path
+        if audio_path.exists():
+            audio_path.unlink()
+    except Exception:
+        pass
+
+    # Fallback: direct urllib download
     filename = audio_url.split("?")[0].split("/")[-1] or "episode.mp3"
     out_path = out_dir / filename
     try:
-        typer.echo(f"  [download] {title or audio_url}")
         urllib.request.urlretrieve(audio_url, out_path)
         if not out_path.exists() or out_path.stat().st_size < _MIN_AUDIO_BYTES:
             if out_path.exists():
@@ -336,7 +360,7 @@ def expand_playlist_sources(url: str) -> list[dict] | None:
             return None
         result = []
         for ep in episodes:
-            if ep.get("mode") == "article" or ep.get("transcript_text"):
+            if ep.get("mode") == "article":
                 result.append({"url": ep.get("entry_url") or ep["url"], "title": ep["title"]})
             else:
                 result.append({"url": ep["url"], "title": ep["title"]})

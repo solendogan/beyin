@@ -194,6 +194,20 @@ def _pack_source_progress(config: PackConfig, state: Dict[str, Any]) -> Dict[str
     }
 
 
+def pack_has_complete_index(config: PackConfig, state: Dict[str, Any]) -> bool:
+    """Return True when every configured source is already indexed and none failed."""
+    observed_source_state = bool(state.get("processed") or state.get("audio_steps"))
+    if not observed_source_state:
+        return False
+
+    source_progress = _pack_source_progress(config, state)
+    return (
+        source_progress["total"] > 0
+        and source_progress["ready"] == source_progress["total"]
+        and source_progress["failed"] == 0
+    )
+
+
 def _format_when(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
@@ -275,10 +289,17 @@ def summarize_pack(
     has_build = _has_successful_build(state)
     current_hash = pack_config_hash(pack_dir)
     last_build_hash = state.get("last_built_pack_hash")
-    needs_build = bool(has_build and last_build_hash and last_build_hash != current_hash)
-    partial_selection = (
+    complete_index = pack_has_complete_index(config, state)
+    needs_build = bool(
+        has_build
+        and last_build_hash
+        and last_build_hash != current_hash
+        and not complete_index
+    )
+    partial_selection = bool(
         state.get("last_build_result") == "partial-selection"
         and last_build_hash != current_hash
+        and not complete_index
     )
     is_new = not has_build
     has_error = _has_nonready_sources(state)
@@ -288,12 +309,7 @@ def summarize_pack(
         "ready": 0,
         "failed": 0,
     }
-    all_sources_ready = (
-        observed_source_state
-        and source_progress["total"] > 0
-        and source_progress["ready"] == source_progress["total"]
-        and source_progress["failed"] == 0
-    )
+    all_sources_ready = complete_index
     some_sources_ready = source_progress["ready"] > 0
     if pack_diverged_from_origin(pack_dir, origin):
         warnings.append("Local pack differs from the last synced origin.")
