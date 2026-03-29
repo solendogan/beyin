@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 
 def test_remove_command_exists_and_deletes_only_target_pack(tmp_path):
-    """brainpack remove <pack> is a first-class command that deletes only the target installed pack."""
-    from brainpack.cli import app
+    """beyin remove <pack> is a first-class command that deletes only the target installed pack."""
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     other_dir = packs_root / "other-pack"
     pack_dir.mkdir(parents=True)
@@ -25,7 +25,7 @@ def test_remove_command_exists_and_deletes_only_target_pack(tmp_path):
     )
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["remove", "test-pack", "--yes"])
 
     assert result.exit_code == 0
@@ -34,10 +34,10 @@ def test_remove_command_exists_and_deletes_only_target_pack(tmp_path):
 
 
 def test_remove_command_uses_explicit_destructive_wording(tmp_path):
-    """brainpack remove output must include explicit destructive wording."""
-    from brainpack.cli import app
+    """beyin remove output must include explicit destructive wording."""
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -47,7 +47,7 @@ def test_remove_command_uses_explicit_destructive_wording(tmp_path):
     )
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["remove", "test-pack", "--yes"])
 
     assert result.exit_code == 0
@@ -56,10 +56,10 @@ def test_remove_command_uses_explicit_destructive_wording(tmp_path):
 
 
 def test_remove_command_requires_yes_or_force_in_non_interactive_use(tmp_path):
-    """brainpack remove in non-interactive use (no TTY) must require --yes/--force to proceed."""
-    from brainpack.cli import app
+    """beyin remove in non-interactive use (no TTY) must require --yes/--force to proceed."""
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -70,8 +70,8 @@ def test_remove_command_requires_yes_or_force_in_non_interactive_use(tmp_path):
     runner = CliRunner()
 
     # Non-interactive with no --yes should abort without deleting
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.is_interactive_session", return_value=False):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.is_interactive_session", return_value=False):
         result = runner.invoke(app, ["remove", "test-pack"])
 
     assert result.exit_code != 0 or pack_dir.exists(), (
@@ -80,14 +80,14 @@ def test_remove_command_requires_yes_or_force_in_non_interactive_use(tmp_path):
 
 
 def test_remove_nonexistent_pack_fails_with_clear_message(tmp_path):
-    """brainpack remove on a missing pack should exit non-zero with a clear message."""
-    from brainpack.cli import app
+    """beyin remove on a missing pack should exit non-zero with a clear message."""
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     packs_root.mkdir(parents=True)
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["remove", "ghost-pack", "--yes"])
 
     assert result.exit_code != 0

@@ -8,7 +8,7 @@ import yaml
 REPO_ROOT = Path(__file__).parent.parent
 PACKS_DIR = REPO_ROOT / "packs"
 INDEX_PATH = PACKS_DIR / "index.json"
-RAW_BASE_URL = "https://raw.githubusercontent.com/buralog/brainpack/main/packs"
+RAW_BASE_URL = "https://raw.githubusercontent.com/buralog/beyin/main/packs"
 
 
 def build_index() -> list[dict]:

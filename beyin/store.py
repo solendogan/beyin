@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 import chromadb
 
-from brainpack.embedder import embed_chunks
+from beyin.embedder import embed_chunks
 
 
 def get_collection(pack_dir: Path, pack_name: str):

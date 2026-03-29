@@ -23,7 +23,7 @@ class PackConfig:
     name: str
     description: str
     sources: List[SourceEntry]
-    # brainpack-managed fields
+    # beyin-managed fields
     version: str = "1.0.0"
     created: Optional[str] = None
     updated: Optional[str] = None

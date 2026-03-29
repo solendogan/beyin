@@ -5,7 +5,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-CLI_SCHEMA_VERSION = "brainpack.cli.v1"
+CLI_SCHEMA_VERSION = "beyin.cli.v1"
 EXIT_USAGE = 2
 EXIT_PRECONDITION = 3
 EXIT_UNEXPECTED = 4

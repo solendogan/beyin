@@ -6,7 +6,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 from unittest.mock import patch
 
-from brainpack.config import SourceEntry
+from beyin.config import SourceEntry
 
 from tests.conftest import (
     _make_config,
@@ -16,11 +16,11 @@ from tests.conftest import (
 
 def test_update_uses_remembered_origin_and_shows_change_summary(tmp_path):
     """update reloads pack.yaml from the remembered origin and prints config changes."""
-    from brainpack.cli import app
-    from brainpack.inventory import load_pack_origin
+    from beyin.cli import app
+    from beyin.inventory import load_pack_origin
 
     runner = CliRunner()
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "sync-pack"
     pack_dir.mkdir(parents=True)
     source_yaml = tmp_path / "sync-pack.yaml"
@@ -51,8 +51,8 @@ def test_update_uses_remembered_origin_and_shows_change_summary(tmp_path):
         "  - https://example.com/new\n"
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.build") as mock_build:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.build") as mock_build:
         result = runner.invoke(app, ["update", "sync-pack"])
 
     assert result.exit_code == 0, result.output
@@ -65,10 +65,10 @@ def test_update_uses_remembered_origin_and_shows_change_summary(tmp_path):
 
 
 def test_update_with_remembered_origin_fetches_and_rebuilds(tmp_path):
-    """brainpack update refreshes pack.yaml from origin and rebuilds when the definition changed."""
-    from brainpack.cli import app
+    """beyin update refreshes pack.yaml from origin and rebuilds when the definition changed."""
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -102,20 +102,20 @@ def test_update_with_remembered_origin_fetches_and_rebuilds(tmp_path):
         destination.write_text(incoming_yaml.read_text())
         return destination, mock_config
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_pack_origin", return_value={
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_pack_origin", return_value={
              "source": "https://example.com/pack.yaml",
              "type": "url",
              "resolved": "https://example.com/pack.yaml",
          }), \
-         patch("brainpack.cli.resolve_pack_origin", return_value={
+         patch("beyin.cli.resolve_pack_origin", return_value={
              "source": "https://example.com/pack.yaml",
              "type": "url",
              "resolved": "https://example.com/pack.yaml",
          }) as mock_resolve, \
-         patch("brainpack.cli._write_pack_yaml_from_source", side_effect=_fake_write), \
-         patch("brainpack.cli.save_pack_origin"), \
-         patch("brainpack.cli.build") as mock_build:
+         patch("beyin.cli._write_pack_yaml_from_source", side_effect=_fake_write), \
+         patch("beyin.cli.save_pack_origin"), \
+         patch("beyin.cli.build") as mock_build:
         result = runner.invoke(app, ["update", "test-pack"])
 
     assert result.exit_code == 0, result.output
@@ -124,10 +124,10 @@ def test_update_with_remembered_origin_fetches_and_rebuilds(tmp_path):
 
 
 def test_update_with_unchanged_remembered_origin_skips_rebuild_and_reports_runtime(tmp_path):
-    """brainpack update should not rebuild when the synced remote definition is unchanged."""
-    from brainpack.cli import app
+    """beyin update should not rebuild when the synced remote definition is unchanged."""
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     installed_yaml = (
@@ -147,21 +147,21 @@ def test_update_with_unchanged_remembered_origin_skips_rebuild_and_reports_runti
         destination.write_text(incoming_yaml.read_text())
         return destination, mock_config
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_pack_origin", return_value={
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_pack_origin", return_value={
              "source": "https://example.com/pack.yaml",
              "type": "url",
              "resolved": "https://example.com/pack.yaml",
          }), \
-         patch("brainpack.cli.resolve_pack_origin", return_value={
+         patch("beyin.cli.resolve_pack_origin", return_value={
              "source": "https://example.com/pack.yaml",
              "type": "url",
              "resolved": "https://example.com/pack.yaml",
          }), \
-         patch("brainpack.cli._write_pack_yaml_from_source", side_effect=_fake_write), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
-         patch("brainpack.cli.save_pack_origin"), \
-         patch("brainpack.cli.build") as mock_build:
+         patch("beyin.cli._write_pack_yaml_from_source", side_effect=_fake_write), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("beyin.cli.save_pack_origin"), \
+         patch("beyin.cli.build") as mock_build:
         result = runner.invoke(app, ["update", "test-pack"])
 
     assert result.exit_code == 0, result.output
@@ -172,9 +172,9 @@ def test_update_with_unchanged_remembered_origin_skips_rebuild_and_reports_runti
 
 def test_update_blocks_when_local_and_origin_both_changed(tmp_path):
     """update should refuse to overwrite local edits when origin also changed."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     local_yaml = (
@@ -197,7 +197,7 @@ def test_update_blocks_when_local_and_origin_both_changed(tmp_path):
     source_yaml = tmp_path / "remote-pack.yaml"
     source_yaml.write_text(upstream_yaml)
 
-    from brainpack.inventory import pack_file_hash
+    from beyin.inventory import pack_file_hash
 
     (pack_dir / "origin.json").write_text(
         json.dumps(
@@ -213,8 +213,8 @@ def test_update_blocks_when_local_and_origin_both_changed(tmp_path):
     source_yaml.write_text(upstream_yaml.replace("Upstream changed", "Upstream changed again"))
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.build") as mock_build:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.build") as mock_build:
         result = runner.invoke(app, ["update", "test-pack"])
 
     assert result.exit_code == 1
@@ -225,10 +225,10 @@ def test_update_blocks_when_local_and_origin_both_changed(tmp_path):
 
 def test_update_with_local_divergence_and_unchanged_origin_reports_local_edits(tmp_path):
     """update should report local divergence when origin has no new changes."""
-    from brainpack.cli import app
-    from brainpack.inventory import pack_file_hash
+    from beyin.cli import app
+    from beyin.inventory import pack_file_hash
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     local_yaml = (
@@ -257,8 +257,8 @@ def test_update_with_local_divergence_and_unchanged_origin_reports_local_edits(t
     )
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.build") as mock_build:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.build") as mock_build:
         result = runner.invoke(app, ["update", "test-pack"])
 
     assert result.exit_code == 0
@@ -268,10 +268,10 @@ def test_update_with_local_divergence_and_unchanged_origin_reports_local_edits(t
 
 
 def test_update_without_remembered_origin_says_no_remote_refresh(tmp_path):
-    """brainpack update with no stored origin reports runtime state and does not rebuild."""
-    from brainpack.cli import app
+    """beyin update with no stored origin reports runtime state and does not rebuild."""
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -283,11 +283,11 @@ def test_update_without_remembered_origin_says_no_remote_refresh(tmp_path):
     mock_config = _make_config([SourceEntry(url="https://example.com/article")])
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_pack_origin", return_value={}), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
-         patch("brainpack.cli.build") as mock_build:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_pack_origin", return_value={}), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("beyin.cli.build") as mock_build:
         result = runner.invoke(app, ["update", "test-pack"])
 
     assert result.exit_code == 0
@@ -298,15 +298,15 @@ def test_update_without_remembered_origin_says_no_remote_refresh(tmp_path):
         or "no remote origin" in output
     ), f"Expected a note about no remote refresh, got: {result.output!r}"
     assert "runtime status" in output
-    assert "next step: brainpack build test-pack" in output
+    assert "next step: beyin build test-pack" in output
 
 
 def test_status_warns_when_pack_diverged_from_origin(tmp_path):
     """status should warn when local pack.yaml changed since the last synced origin."""
-    from brainpack.cli import app
-    from brainpack.inventory import pack_file_hash
+    from beyin.cli import app
+    from beyin.inventory import pack_file_hash
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "diverged-pack"
     pack_dir.mkdir(parents=True)
     current_yaml = (
@@ -330,7 +330,7 @@ def test_status_warns_when_pack_diverged_from_origin(tmp_path):
     )
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
          patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=True):
         result = runner.invoke(app, ["status", "diverged-pack"])
 
@@ -345,18 +345,18 @@ def test_status_warns_when_pack_diverged_from_origin(tmp_path):
 @pytest.mark.xfail(strict=False)
 def test_update_existing_pack(tmp_path):
     """update <pack> delegates to build and exits 0 when pack dir exists."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "mypack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
         "name: mypack\ndescription: x\nllm: ollama\nsources:\n  - https://example.com\n"
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.build") as mock_build:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.build") as mock_build:
         mock_build.return_value = None
         result = runner.invoke(app, ["update", "mypack"])
 
@@ -366,19 +366,19 @@ def test_update_existing_pack(tmp_path):
 
 @pytest.mark.xfail(strict=False)
 def test_update_pack_not_found(tmp_path):
-    """update exits 1 with 'not found' and 'brainpack install' when pack dir missing."""
-    from brainpack.cli import app
+    """update exits 1 with 'not found' and 'beyin install' when pack dir missing."""
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     # Do NOT create the pack dir
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["update", "nonexistent"])
 
     assert result.exit_code == 1
     assert "not found" in result.output.lower()
-    assert "brainpack install" in result.output
+    assert "beyin install" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -387,8 +387,8 @@ def test_update_pack_not_found(tmp_path):
 
 @pytest.mark.xfail(strict=False)
 def test_install_local_success(tmp_path):
-    """install <local-path> copies pack.yaml to ~/.brainpacks/<name>/pack.yaml and exits 0."""
-    from brainpack.cli import app
+    """install <local-path> copies pack.yaml to ~/.beyin/<name>/pack.yaml and exits 0."""
+    from beyin.cli import app
     from unittest.mock import MagicMock
     runner = CliRunner()
 
@@ -401,10 +401,10 @@ def test_install_local_success(tmp_path):
         "sources:\n"
         "  - https://example.com/article\n"
     )
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.shutil") as mock_shutil:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.shutil") as mock_shutil:
         mock_shutil.copy2 = MagicMock()
         result = runner.invoke(app, ["install", str(yaml_file)])
 
@@ -414,8 +414,8 @@ def test_install_local_success(tmp_path):
 
 @pytest.mark.xfail(strict=False)
 def test_install_already_exists(tmp_path):
-    """install exits 1 with 'already installed' and 'brainpack update' suggestion when dest exists."""
-    from brainpack.cli import app
+    """install exits 1 with 'already installed' and 'beyin update' suggestion when dest exists."""
+    from beyin.cli import app
     runner = CliRunner()
 
     yaml_file = tmp_path / "pack.yaml"
@@ -427,26 +427,26 @@ def test_install_already_exists(tmp_path):
         "  - https://example.com/article\n"
     )
     # Make the dest dir already exist
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     dest_dir = packs_root / "test-pack"
     dest_dir.mkdir(parents=True)
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["install", str(yaml_file)])
 
     assert result.exit_code == 1
     assert "already installed" in result.output
-    assert "brainpack update" in result.output
+    assert "beyin update" in result.output
 
 
 @pytest.mark.xfail(strict=False)
 def test_install_remote_url(tmp_path):
     """install https://example.com/pack.yaml downloads, validates, and exits 0."""
-    from brainpack.cli import app
+    from beyin.cli import app
     from unittest.mock import MagicMock
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     valid_yaml = (
         "name: remote-pack\n"
         "description: remote\n"
@@ -458,9 +458,9 @@ def test_install_remote_url(tmp_path):
     def fake_urlretrieve(url, tmp_file):
         Path(tmp_file).write_text(valid_yaml)
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.urllib.request.urlretrieve", side_effect=fake_urlretrieve), \
-         patch("brainpack.cli.shutil") as mock_shutil:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.urllib.request.urlretrieve", side_effect=fake_urlretrieve), \
+         patch("beyin.cli.shutil") as mock_shutil:
         mock_shutil.copy2 = MagicMock()
         result = runner.invoke(app, ["install", "https://example.com/pack.yaml"])
 
@@ -470,7 +470,7 @@ def test_install_remote_url(tmp_path):
 @pytest.mark.xfail(strict=False)
 def test_install_file_not_found(tmp_path):
     """install exits 1 with 'not found' for a nonexistent local path."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
     result = runner.invoke(app, ["install", "/nonexistent/path/pack.yaml"])
@@ -481,11 +481,11 @@ def test_install_file_not_found(tmp_path):
 
 def test_add_local_pack_stores_origin_metadata(tmp_path):
     """add stores local-file provenance next to the installed pack."""
-    from brainpack.cli import app
-    from brainpack.inventory import load_pack_origin
+    from beyin.cli import app
+    from beyin.inventory import load_pack_origin
 
     runner = CliRunner()
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     yaml_file = tmp_path / "pack.yaml"
     yaml_file.write_text(
         "name: added-pack\n"
@@ -495,7 +495,7 @@ def test_add_local_pack_stores_origin_metadata(tmp_path):
         "  - https://example.com/article\n"
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
          patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
         result = runner.invoke(app, ["add", str(yaml_file)])
 
@@ -507,11 +507,11 @@ def test_add_local_pack_stores_origin_metadata(tmp_path):
 
 def test_add_marketplace_id_uses_local_mapping(tmp_path):
     """add resolves marketplace-style ids through the local mapping file."""
-    from brainpack.cli import app
-    from brainpack.inventory import load_pack_origin, marketplace_mapping_path
+    from beyin.cli import app
+    from beyin.inventory import load_pack_origin, marketplace_mapping_path
 
     runner = CliRunner()
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     packs_root.mkdir()
     yaml_file = tmp_path / "remote-pack.yaml"
     yaml_file.write_text(
@@ -525,7 +525,7 @@ def test_add_marketplace_id_uses_local_mapping(tmp_path):
         json.dumps({"starter-pack": str(yaml_file.resolve())})
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
          patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
         result = runner.invoke(app, ["add", "starter-pack"])
 

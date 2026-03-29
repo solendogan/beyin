@@ -1,5 +1,5 @@
 name: Submit a Pack
-description: Request a new pack to be added to the Brainpack registry
+description: Request a new pack to be added to the beyin registry
 title: "[Pack] "
 labels: ["pack-submission"]
 body:

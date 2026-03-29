@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 
 def test_resolve_article_ingestion_follows_transcript_link():
-    from brainpack.ingester import resolve_article_ingestion
+    from beyin.ingester import resolve_article_ingestion
 
     landing_html = """
     <html><body>
@@ -32,8 +32,8 @@ def test_resolve_article_ingestion_follows_transcript_link():
             return "Transcript sentence. " * 200
         return None
 
-    with patch("brainpack.ingester.fetch_url", side_effect=_fetch), patch(
-        "brainpack.ingester.extract",
+    with patch("beyin.ingester.fetch_url", side_effect=_fetch), patch(
+        "beyin.ingester.extract",
         side_effect=_extract,
     ):
         plan = resolve_article_ingestion("https://example.com/episode-1")
@@ -45,7 +45,7 @@ def test_resolve_article_ingestion_follows_transcript_link():
 
 
 def test_resolve_article_ingestion_detects_inline_transcript():
-    from brainpack.ingester import resolve_article_ingestion
+    from beyin.ingester import resolve_article_ingestion
 
     html = "<html><body><h1>Episode 2</h1><h2>Transcript</h2><p>" + ("Long transcript paragraph. " * 120) + "</p></body></html>"
 
@@ -54,8 +54,8 @@ def test_resolve_article_ingestion_detects_inline_transcript():
             return '{"title":"Episode 2"}'
         return "Transcript " + ("Long transcript paragraph. " * 120)
 
-    with patch("brainpack.ingester.fetch_url", return_value=html), patch(
-        "brainpack.ingester.extract",
+    with patch("beyin.ingester.fetch_url", return_value=html), patch(
+        "beyin.ingester.extract",
         side_effect=_extract,
     ):
         plan = resolve_article_ingestion("https://example.com/episode-2")
@@ -66,7 +66,7 @@ def test_resolve_article_ingestion_detects_inline_transcript():
 
 
 def test_resolve_article_ingestion_falls_back_to_direct_audio_for_podcast_page():
-    from brainpack.ingester import resolve_article_ingestion
+    from beyin.ingester import resolve_article_ingestion
 
     html = """
     <html><body>
@@ -81,8 +81,8 @@ def test_resolve_article_ingestion_falls_back_to_direct_audio_for_podcast_page()
             return '{"title":"Podcast Episode 3"}'
         return "Show notes for the podcast episode."
 
-    with patch("brainpack.ingester.fetch_url", return_value=html), patch(
-        "brainpack.ingester.extract",
+    with patch("beyin.ingester.fetch_url", return_value=html), patch(
+        "beyin.ingester.extract",
         side_effect=_extract,
     ):
         plan = resolve_article_ingestion("https://example.com/episode-3")
@@ -93,7 +93,7 @@ def test_resolve_article_ingestion_falls_back_to_direct_audio_for_podcast_page()
 
 
 def test_resolve_article_ingestion_rejects_podcast_page_without_transcript_or_audio():
-    from brainpack.ingester import resolve_article_ingestion
+    from beyin.ingester import resolve_article_ingestion
 
     html = """
     <html><body>
@@ -107,8 +107,8 @@ def test_resolve_article_ingestion_rejects_podcast_page_without_transcript_or_au
             return '{"title":"Podcast Episode 4"}'
         return "Show notes and listen on Spotify or Apple Podcasts."
 
-    with patch("brainpack.ingester.fetch_url", return_value=html), patch(
-        "brainpack.ingester.extract",
+    with patch("beyin.ingester.fetch_url", return_value=html), patch(
+        "beyin.ingester.extract",
         side_effect=_extract,
     ):
         plan = resolve_article_ingestion("https://example.com/episode-4")
@@ -119,7 +119,7 @@ def test_resolve_article_ingestion_rejects_podcast_page_without_transcript_or_au
 
 
 def test_resolve_article_ingestion_keeps_normal_articles_as_articles():
-    from brainpack.ingester import resolve_article_ingestion
+    from beyin.ingester import resolve_article_ingestion
 
     html = "<html><body><h1>Regular Article</h1><p>" + ("Useful article text. " * 80) + "</p></body></html>"
 
@@ -128,8 +128,8 @@ def test_resolve_article_ingestion_keeps_normal_articles_as_articles():
             return '{"title":"Regular Article"}'
         return "Useful article text. " * 80
 
-    with patch("brainpack.ingester.fetch_url", return_value=html), patch(
-        "brainpack.ingester.extract",
+    with patch("beyin.ingester.fetch_url", return_value=html), patch(
+        "beyin.ingester.extract",
         side_effect=_extract,
     ):
         plan = resolve_article_ingestion("https://example.com/regular-article")

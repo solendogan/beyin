@@ -6,8 +6,8 @@ from dataclasses import replace
 import re
 from typing import Any
 
-from brainpack.config import PackConfig, SourceEntry
-from brainpack.downloader import detect_source_type, expand_playlist_sources
+from beyin.config import PackConfig, SourceEntry
+from beyin.downloader import detect_source_type, expand_playlist_sources
 
 
 def infer_source_intent(source_input: str) -> dict[str, str]:
@@ -38,7 +38,7 @@ def build_new_pack_config(
     intent = infer_source_intent(source_input)
     if intent["kind"] != "content":
         raise ValueError(
-            "Existing pack imports belong on `brainpack add <path-or-url-or-id>`, not `brainpack create`."
+            "Existing pack imports belong on `beyin add <path-or-url-or-id>`, not `beyin create`."
         )
     source = source_input.strip()
     expanded = expand_playlist_sources(source)
@@ -65,7 +65,7 @@ def add_source_to_pack(config: PackConfig, source_input: str) -> PackConfig:
     intent = infer_source_intent(source_input)
     if intent["kind"] != "content":
         raise ValueError(
-            "Adding an existing pack belongs on `brainpack add <path-or-url-or-id>`, not manage pack."
+            "Adding an existing pack belongs on `beyin add <path-or-url-or-id>`, not manage pack."
         )
     source = source_input.strip()
     existing_urls = {e.url for e in config.sources}

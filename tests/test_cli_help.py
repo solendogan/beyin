@@ -4,8 +4,8 @@ from typer.testing import CliRunner
 
 
 def test_help_frames_agent_and_local_modes():
-    """brainpack --help should frame the product around agent and local-model use."""
-    from brainpack.cli import app
+    """beyin --help should frame the product around agent and local-model use."""
+    from beyin.cli import app
 
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
@@ -18,25 +18,25 @@ def test_help_frames_agent_and_local_modes():
 
 
 def test_help_command_alias_shows_top_level_framing():
-    """brainpack help should preserve the same top-level onboarding framing."""
-    from brainpack.cli import app
+    """beyin help should preserve the same top-level onboarding framing."""
+    from beyin.cli import app
 
     runner = CliRunner()
     result = runner.invoke(app, ["help"])
 
     assert result.exit_code == 0
-    assert "Brainpack v0.1.0" in result.output
+    assert "Beyin v0.1.0" in result.output
     assert "append --help to any command" in result.output
     assert "agent" in result.output.lower()
     assert "Pack lifecycle:" in result.output
     assert "Inspect and retrieve:" in result.output
     assert "Key flags" not in result.output
-    assert "https://github.com/buralog/brainpack" in result.output
+    assert "https://github.com/buralog/beyin" in result.output
 
 
 def test_about_command_shows_short_project_summary_and_repo_url():
-    """brainpack about should explain the project briefly and point to the repo."""
-    from brainpack.cli import app
+    """beyin about should explain the project briefly and point to the repo."""
+    from beyin.cli import app
 
     runner = CliRunner()
     result = runner.invoke(app, ["about"])
@@ -44,12 +44,12 @@ def test_about_command_shows_short_project_summary_and_repo_url():
     assert result.exit_code == 0
     assert "local knowledge" in result.output.lower() or "local knowledge packs" in result.output.lower()
     assert "mcp" in result.output.lower()
-    assert "https://github.com/buralog/brainpack" in result.output
+    assert "https://github.com/buralog/beyin" in result.output
 
 
 def test_local_mode_command_help_and_agent_server_help_use_new_positioning():
     """Command help should position query as local mode and mcp-server for agents."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
     runner = CliRunner()
 
@@ -118,13 +118,13 @@ def test_local_mode_command_help_and_agent_server_help_use_new_positioning():
 )
 def test_missing_required_arguments_show_help_without_help_option(argv, missing_label, help_needle, extra_needle):
     """Missing required args should show help with args first, then visible options, and no --help row."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
     runner = CliRunner()
     result = runner.invoke(app, argv)
 
     assert result.exit_code == 2
-    assert "Brainpack v0.1.0" in result.output
+    assert "Beyin v0.1.0" in result.output
     assert f"Missing required argument: {missing_label}" in result.output
     assert "Usage:" in result.output
     assert help_needle in result.output

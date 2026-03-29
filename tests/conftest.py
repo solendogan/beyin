@@ -1,4 +1,4 @@
-"""Shared test fixtures for brainpack tests.
+"""Shared test fixtures for beyin tests.
 
 Note: punkt_tab NLTK data must be downloaded once before running tests.
 Run: uv run python -c "import nltk; nltk.download('punkt_tab', quiet=True)"
@@ -44,10 +44,10 @@ class _FakePromptBackend:
 
 
 def _save_global_settings(home: Path, **overrides):
-    from brainpack.settings import BrainpackSettings, save_settings
+    from beyin.settings import BeyinSettings, save_settings
 
     save_settings(
-        BrainpackSettings(
+        BeyinSettings(
             version=1,
             setup_completed=True,
             preferred_transcription_backend=overrides.get(
@@ -78,8 +78,8 @@ def _make_config(
 
 def _mark_pack_ready(pack_dir: Path, *, last_build_at: str = "2026-03-13T10:00:00+00:00"):
     """Persist the minimal ready state needed for query command tests."""
-    from brainpack.inventory import pack_config_hash
-    from brainpack.pack_state import save_state
+    from beyin.inventory import pack_config_hash
+    from beyin.pack_state import save_state
 
     save_state(
         pack_dir,
@@ -99,7 +99,7 @@ def _mark_pack_needs_build(
     last_build_at: str = "2026-03-13T10:00:00+00:00",
 ):
     """Persist a stale build state so lifecycle tests hit needs-build paths."""
-    from brainpack.pack_state import save_state
+    from beyin.pack_state import save_state
 
     save_state(
         pack_dir,
@@ -115,7 +115,7 @@ def _mark_pack_needs_build(
 
 def _mark_pack_failed(pack_dir: Path):
     """Persist a failed build state so lifecycle tests hit error paths."""
-    from brainpack.pack_state import save_state
+    from beyin.pack_state import save_state
 
     save_state(
         pack_dir,
@@ -135,8 +135,8 @@ def _mark_pack_mixed_result(
     last_build_at: str = "2026-03-21T10:00:00+00:00",
 ):
     """Persist a mixed-result build state with indexed content plus one failed source."""
-    from brainpack.inventory import pack_config_hash
-    from brainpack.pack_state import save_state
+    from beyin.inventory import pack_config_hash
+    from beyin.pack_state import save_state
 
     save_state(
         pack_dir,
@@ -168,7 +168,7 @@ def _mark_pack_partially_ready(
     last_build_at: str = "2026-03-21T10:00:00+00:00",
 ):
     """Persist a partial-progress build state with some ready sources and some pending."""
-    from brainpack.pack_state import save_state
+    from beyin.pack_state import save_state
 
     save_state(
         pack_dir,
@@ -195,7 +195,7 @@ def _mark_pack_incrementally_ready(
     urls: list[str] | None = None,
 ):
     """Persist an all-sources-indexed state produced via repeated --source builds."""
-    from brainpack.pack_state import save_state
+    from beyin.pack_state import save_state
 
     ready_urls = urls or [
         "https://example.com/article-1",
@@ -222,8 +222,8 @@ def _mark_pack_incrementally_ready(
 
 @pytest.fixture
 def tmp_pack_root(tmp_path):
-    """Create a ~/.brainpacks-like structure with a 'test-pack' subdirectory."""
-    packs_root = tmp_path / "brainpacks"
+    """Create a ~/.beyin-like structure with a 'test-pack' subdirectory."""
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(

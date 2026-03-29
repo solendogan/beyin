@@ -1,4 +1,4 @@
-"""Brainpack CLI — build and query commands."""
+"""Beyin CLI — build and query commands."""
 import io
 import json
 import os
@@ -15,14 +15,14 @@ import click
 import typer
 from typer.core import TyperCommand
 
-from brainpack import __version__
-from brainpack.authoring import (
+from beyin import __version__
+from beyin.authoring import (
     build_new_pack_config,
     remove_sources_from_pack,
     select_sources_from_pack,
 )
-from brainpack.chunker import chunk_text, count_tokens
-from brainpack.config import (
+from beyin.chunker import chunk_text, count_tokens
+from beyin.config import (
     PackConfig,
     SourceEntry,
     _load_config_from_file,
@@ -30,7 +30,7 @@ from brainpack.config import (
     write_public_config,
     write_config,
 )
-from brainpack.interactive import (
+from beyin.interactive import (
     InteractiveAbort,
     _confirm,
     _select,
@@ -42,7 +42,7 @@ from brainpack.interactive import (
     run_initial_setup_flow as interactive_run_initial_setup_flow,
     run_settings_flow as interactive_run_settings_flow,
 )
-from brainpack.inventory import (
+from beyin.inventory import (
     human_guidance_command,
     inspect_pack,
     list_packs,
@@ -60,7 +60,7 @@ from brainpack.inventory import (
     summarize_pack_changes,
     utc_now_iso,
 )
-from brainpack.pack_state import (
+from beyin.pack_state import (
     check_model_provenance,
     check_transcription_provenance,
     get_audio_step,
@@ -73,12 +73,12 @@ from brainpack.pack_state import (
     mark_processed,
     save_state,
 )
-from brainpack.lifecycle import remove_installed_pack, reset_pack_runtime
-from brainpack.machine_output import MachineExit, run_machine_command
-from brainpack.source_ids import artifact_stem, canonical_source_id
-from brainpack.settings import load_settings, needs_initial_setup, resolve_build_defaults, save_settings
-from brainpack.build_report import BuildReport
-from brainpack.audio_pipeline import (
+from beyin.lifecycle import remove_installed_pack, reset_pack_runtime
+from beyin.machine_output import MachineExit, run_machine_command
+from beyin.source_ids import artifact_stem, canonical_source_id
+from beyin.settings import load_settings, needs_initial_setup, resolve_build_defaults, save_settings
+from beyin.build_report import BuildReport
+from beyin.audio_pipeline import (
     _candidate_audio_paths,
     _canonical_audio_path,
     _chunk_transcript_segments,
@@ -87,14 +87,14 @@ from brainpack.audio_pipeline import (
     _save_transcript_segments,
     _transcript_path,
 )
-from brainpack.payloads import (
+from beyin.payloads import (
     _list_payload,
     _load_query_runtime,
     _query_payload,
     _status_payload,
 )
-from brainpack.paths import packs_dir
-from brainpack.readiness import (
+from beyin.paths import packs_dir
+from beyin.readiness import (
     _check_ffmpeg_available,
     _check_ollama_reachable,
     _has_audio_sources,
@@ -104,7 +104,7 @@ from brainpack.readiness import (
     _ytdlp_version_ok,
     _YTDLP_MIN_VERSION,
 )
-from brainpack.ui import (
+from beyin.ui import (
     bold, box_bottom, box_row, box_sep, box_top, cyan, dim, green, red,
     render_header, render_meta, render_review, render_rows, render_status, render_table, tbl_bottom,
     tbl_row, tbl_sep, tbl_top, visible_len as _visible_len, wrap_text, yellow,
@@ -157,7 +157,7 @@ def _strip_help_option_from_help_text(help_text: str) -> str:
     return "\n".join(output)
 
 
-def _brainpack_command_path(ctx: click.Context) -> str:
+def _beyin_command_path(ctx: click.Context) -> str:
     parts: list[str] = []
     cursor = ctx
     while cursor is not None:
@@ -165,9 +165,9 @@ def _brainpack_command_path(ctx: click.Context) -> str:
             parts.append(cursor.info_name)
         cursor = cursor.parent
     if not parts:
-        return "brainpack"
+        return "beyin"
     parts = list(reversed(parts))
-    parts[0] = "brainpack"
+    parts[0] = "beyin"
     return " ".join(parts)
 
 
@@ -206,7 +206,7 @@ def _rewrite_usage_line(help_text: str, ctx: click.Context, command: click.Comma
         for token in [_option_usage_token(param)]
         if token is not None
     ]
-    usage = f" Usage: {_brainpack_command_path(ctx)}"
+    usage = f" Usage: {_beyin_command_path(ctx)}"
     if arguments:
         usage += " " + " ".join(arguments)
     if options:
@@ -230,7 +230,7 @@ def _colorize_missing_arg_help(help_text: str) -> str:
         styled = styled.replace(heading, click.style(heading, fg="cyan", bold=True))
     styled = styled.replace("[required]", click.style("[required]", fg="red", bold=True))
     styled = re.sub(
-        r"(?m)^(\s*Usage:\s+)(brainpack .+)$",
+        r"(?m)^(\s*Usage:\s+)(beyin .+)$",
         lambda match: match.group(1) + click.style(match.group(2), fg="bright_white", bold=True),
         styled,
     )
@@ -258,7 +258,7 @@ def _render_missing_parameter_error(
     if param is None:
         raise exc
 
-    typer.echo(f"{bold('Brainpack')} {dim(f'v{__version__}')}", err=True)
+    typer.echo(f"{bold('Beyin')} {dim(f'v{__version__}')}", err=True)
     typer.echo("", err=True)
     typer.echo(f"{red('Error:')} Missing required argument: {_missing_parameter_label(param)}", err=True)
     typer.echo("", err=True)
@@ -269,7 +269,7 @@ def _render_missing_parameter_error(
     typer.echo(help_text.rstrip() + "\n", err=True)
 
 
-class BrainpackCommand(TyperCommand):
+class BeyinCommand(TyperCommand):
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
         try:
             return super().parse_args(ctx, args)
@@ -282,7 +282,7 @@ class BrainpackCommand(TyperCommand):
 
 app = typer.Typer(
     help=(
-        "Brainpack — use with an agent for evidence retrieval, or run query in local model mode"
+        "Beyin — use with an agent for evidence retrieval, or run query in local model mode"
     )
 )
 
@@ -291,109 +291,109 @@ _YTDLP_MIN_VERSION = "2025.11.12"
 
 
 def detect_source_type(url: str) -> str:
-    from brainpack.downloader import detect_source_type as _detect_source_type
+    from beyin.downloader import detect_source_type as _detect_source_type
 
     return _detect_source_type(url)
 
 
 def check_deno_available() -> bool:
-    from brainpack.downloader import check_deno_available as _check_deno_available
+    from beyin.downloader import check_deno_available as _check_deno_available
 
     return _check_deno_available()
 
 
 def download_audio(*args, **kwargs):
-    from brainpack.downloader import download_audio as _download_audio
+    from beyin.downloader import download_audio as _download_audio
 
     return _download_audio(*args, **kwargs)
 
 
 def download_podcast_audio(*args, **kwargs):
-    from brainpack.downloader import download_podcast_audio as _download_podcast_audio
+    from beyin.downloader import download_podcast_audio as _download_podcast_audio
 
     return _download_podcast_audio(*args, **kwargs)
 
 
 def list_podcast_episodes(*args, **kwargs):
-    from brainpack.downloader import list_podcast_episodes as _list_podcast_episodes
+    from beyin.downloader import list_podcast_episodes as _list_podcast_episodes
 
     return _list_podcast_episodes(*args, **kwargs)
 
 
 def list_youtube_episodes(*args, **kwargs):
-    from brainpack.downloader import list_youtube_episodes as _list_youtube_episodes
+    from beyin.downloader import list_youtube_episodes as _list_youtube_episodes
 
     return _list_youtube_episodes(*args, **kwargs)
 
 
 def load_model(*args, **kwargs):
-    from brainpack.embedder import load_model as _load_model
+    from beyin.embedder import load_model as _load_model
 
     return _load_model(*args, **kwargs)
 
 
 def fetch_article(*args, **kwargs):
-    from brainpack.ingester import fetch_article as _fetch_article
+    from beyin.ingester import fetch_article as _fetch_article
 
     return _fetch_article(*args, **kwargs)
 
 
 def resolve_article_ingestion(*args, **kwargs):
-    from brainpack.ingester import resolve_article_ingestion as _resolve_article_ingestion
+    from beyin.ingester import resolve_article_ingestion as _resolve_article_ingestion
 
     return _resolve_article_ingestion(*args, **kwargs)
 
 
 def load_text_like_source(*args, **kwargs):
-    from brainpack.ingester import load_text_like_source as _load_text_like_source
+    from beyin.ingester import load_text_like_source as _load_text_like_source
 
     return _load_text_like_source(*args, **kwargs)
 
 
 def load_document_source(*args, **kwargs):
-    from brainpack.ingester import load_document_source as _load_document_source
+    from beyin.ingester import load_document_source as _load_document_source
 
     return _load_document_source(*args, **kwargs)
 
 
 def run_query(*args, **kwargs):
-    from brainpack.query import run_query as _run_query
+    from beyin.query import run_query as _run_query
 
     return _run_query(*args, **kwargs)
 
 
 def retrieve_evidence(*args, **kwargs):
-    from brainpack.query import retrieve_evidence as _retrieve_evidence
+    from beyin.query import retrieve_evidence as _retrieve_evidence
 
     return _retrieve_evidence(*args, **kwargs)
 
 
 def multi_retrieve_evidence(*args, **kwargs):
-    from brainpack.query import multi_retrieve_evidence as _multi_retrieve_evidence
+    from beyin.query import multi_retrieve_evidence as _multi_retrieve_evidence
 
     return _multi_retrieve_evidence(*args, **kwargs)
 
 
 def _source_label(*args, **kwargs):
-    from brainpack.query import _source_label as _query_source_label
+    from beyin.query import _source_label as _query_source_label
 
     return _query_source_label(*args, **kwargs)
 
 
 def get_collection(*args, **kwargs):
-    from brainpack.store import get_collection as _get_collection
+    from beyin.store import get_collection as _get_collection
 
     return _get_collection(*args, **kwargs)
 
 
 def embed_and_store(*args, **kwargs):
-    from brainpack.store import embed_and_store as _embed_and_store
+    from beyin.store import embed_and_store as _embed_and_store
 
     return _embed_and_store(*args, **kwargs)
 
 
 def transcribe_audio(*args, **kwargs):
-    from brainpack.transcriber import transcribe_audio as _transcribe_audio
+    from beyin.transcriber import transcribe_audio as _transcribe_audio
 
     return _transcribe_audio(*args, **kwargs)
 
@@ -408,13 +408,13 @@ def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False)
     pack_name = _pack_label(summary)
     status = summary.get("status") if summary else None
     lifecycle_command = human_guidance_command(summary) if summary else None
-    build_cmd = f"brainpack build {pack_name}" if summary else "brainpack build <pack>"
-    status_cmd = f"brainpack status {pack_name}" if summary else "brainpack status <pack>"
+    build_cmd = f"beyin build {pack_name}" if summary else "beyin build <pack>"
+    status_cmd = f"beyin status {pack_name}" if summary else "beyin status <pack>"
 
     def _agent_block() -> None:
         _echo(f"  {bold('Use with agent')}")
-        _echo(f"    {dim('1.')} brainpack mcp-server")
-        _echo(f"    {dim('2.')} brainpack create")
+        _echo(f"    {dim('1.')} beyin mcp-server")
+        _echo(f"    {dim('2.')} beyin create")
         _echo(f"    {dim('3.')} {build_cmd}")
         if summary:
             if status == "blocked":
@@ -428,10 +428,10 @@ def _render_usage_guidance(summary: Optional[dict] = None, *, err: bool = False)
         _echo(f"  {bold('Use with local model')}")
         _echo(f"    {dim('1.')} Install Ollama")
         _echo(f"    {dim('2.')} {status_cmd}")
-        _echo(f"    {dim('3.')} brainpack create")
+        _echo(f"    {dim('3.')} beyin create")
         _echo(f"    {dim('4.')} {build_cmd}")
         if summary and status == "ready":
-            _echo(f'    {dim("5.")} brainpack query {pack_name} "question"')
+            _echo(f'    {dim("5.")} beyin query {pack_name} "question"')
 
     for i, fn in enumerate([_agent_block, _local_block]):
         if i:
@@ -444,7 +444,7 @@ def _render_home_screen() -> None:
     summaries = list_packs(_PACKS_DIR, _pack_readiness_details)
     settings = load_settings()
 
-    typer.echo(f"  {bold('Brainpack')} {dim(f'v{__version__}')}")
+    typer.echo(f"  {bold('Beyin')} {dim(f'v{__version__}')}")
     typer.echo("")
 
     # Settings section
@@ -475,15 +475,15 @@ def _render_home_screen() -> None:
 
     # Footer
     _footer = (
-        dim("Run 'brainpack help' for all commands")
+        dim("Run 'beyin help' for all commands")
         + "  "
         + dim("·")
         + "  "
-        + dim("brainpack settings")
+        + dim("beyin settings")
         + "  "
         + dim("·")
         + "  "
-        + dim("brainpack create")
+        + dim("beyin create")
     )
     typer.echo(f"  {_footer}")
 
@@ -505,7 +505,7 @@ def run_authoring_menu() -> bool:
 
 
 def run_create_flow() -> bool:
-    """Run the interactive create flow behind the direct `brainpack create` command."""
+    """Run the interactive create flow behind the direct `beyin create` command."""
     return interactive_run_create_flow(
         packs_dir=_PACKS_DIR,
         prompt_backend=load_prompt_backend(),
@@ -514,7 +514,7 @@ def run_create_flow() -> bool:
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
-    """Render the home screen when Brainpack runs without a subcommand."""
+    """Render the home screen when Beyin runs without a subcommand."""
     if ctx.invoked_subcommand is None:
         existing = list_packs(_PACKS_DIR, _pack_readiness_details)
         if needs_initial_setup() and is_interactive_session() and not existing:
@@ -592,15 +592,15 @@ def _render_dependency_section(*, title: str = "Dependencies") -> list[str]:
     return lines
 
 
-@app.command(name="settings", cls=BrainpackCommand)
+@app.command(name="settings", cls=BeyinCommand)
 def settings_command() -> None:
     """Show current settings and edit them interactively in a terminal."""
-    from brainpack.settings import BrainpackSettings
+    from beyin.settings import BeyinSettings
 
     current = load_settings()
 
     # Always show current settings as a table
-    for line in render_header(version=__version__, step="Brainpack Settings"):
+    for line in render_header(version=__version__, step="Beyin Settings"):
         typer.echo(line)
     typer.echo("")
     for line in render_rows(_settings_display_rows(current)):
@@ -611,7 +611,7 @@ def settings_command() -> None:
     typer.echo("")
 
     if not is_interactive_session():
-        _hint = dim("Run 'brainpack settings' in a terminal to edit.")
+        _hint = dim("Run 'beyin settings' in a terminal to edit.")
         typer.echo(f"  {_hint}")
         return
 
@@ -619,7 +619,7 @@ def settings_command() -> None:
     backend = load_prompt_backend()
 
     # Work on a mutable copy of the settings fields
-    staged = BrainpackSettings(
+    staged = BeyinSettings(
         version=current.version,
         setup_completed=current.setup_completed,
         preferred_transcription_backend=current.preferred_transcription_backend,
@@ -702,16 +702,16 @@ def settings_command() -> None:
         return
 
 
-@app.command(cls=BrainpackCommand)
+@app.command(cls=BeyinCommand)
 def help(
     ctx: typer.Context,
 ) -> None:
     """Show top-level help using a friendly command alias."""
     term_w = min(shutil.get_terminal_size((80, 24)).columns, 100)
 
-    typer.echo(f"{bold('Brainpack')} {dim(f'v{__version__}')}")
+    typer.echo(f"{bold('Beyin')} {dim(f'v{__version__}')}")
     typer.echo("")
-    typer.echo(f"{dim('Tip: append --help to any command for usage and options, e.g. brainpack build --help')}")
+    typer.echo(f"{dim('Tip: append --help to any command for usage and options, e.g. beyin build --help')}")
     typer.echo("")
 
     sections: list[tuple[str, list[tuple[str, str]]]] = [
@@ -749,9 +749,9 @@ def help(
         (
             "Settings and support",
             [
-                ("settings", "View or edit Brainpack settings"),
+                ("settings", "View or edit Beyin settings"),
                 ("check-deps", "Check ffmpeg and yt-dlp availability"),
-                ("about", "Show a short Brainpack overview"),
+                ("about", "Show a short Beyin overview"),
                 ("help", "Show this command guide"),
             ],
         ),
@@ -786,19 +786,19 @@ def help(
             typer.echo(line)
         typer.echo("")
 
-    typer.echo(f"{dim('Project')}  https://github.com/buralog/brainpack")
+    typer.echo(f"{dim('Project')}  https://github.com/buralog/beyin")
 
 
-@app.command(cls=BrainpackCommand)
+@app.command(cls=BeyinCommand)
 def about() -> None:
-    """Show a short overview of Brainpack."""
-    typer.echo(f"{bold('Brainpack')} {dim(f'v{__version__}')}")
+    """Show a short overview of Beyin."""
+    typer.echo(f"{bold('Beyin')} {dim(f'v{__version__}')}")
     typer.echo("")
-    typer.echo("Brainpack turns your own sources into local knowledge packs.")
+    typer.echo("Beyin turns your own sources into local knowledge packs.")
     typer.echo("Connect them to coding agents over MCP so tools like Codex or Claude Code can query them")
     typer.echo("and answer questions with your own context.")
     typer.echo("")
-    typer.echo("You can also use Brainpack directly on your machine.")
+    typer.echo("You can also use Beyin directly on your machine.")
     typer.echo("Ask questions with your configured local model, such as Ollama, and get answers")
     typer.echo("grounded in the sources you added.")
     typer.echo("")
@@ -815,7 +815,7 @@ def about() -> None:
     for line in render_meta(
         [
             "Open source",
-            "https://github.com/buralog/brainpack",
+            "https://github.com/buralog/beyin",
         ]
     ):
         typer.echo(line[2:] if line.startswith("  ") else line)
@@ -826,11 +826,11 @@ def about() -> None:
 def _resolve_pack_dir(
     pack: str,
     *,
-    missing_next_step: str = "brainpack add <path-or-url-or-id>",
+    missing_next_step: str = "beyin add <path-or-url-or-id>",
     missing_note: Optional[str] = None,
     machine_command: Optional[str] = None,
 ) -> Path:
-    """Resolve pack name to directory under ~/.brainpacks/."""
+    """Resolve pack name to directory under ~/.beyin/."""
     pack_dir = _PACKS_DIR / pack
     if not pack_dir.exists():
         if machine_command:
@@ -1085,15 +1085,15 @@ def _runtime_update_status(pack: str, state: dict, current_hash: str) -> tuple[s
     if result == "success" and built_hash == current_hash:
         return "ready", None
     if built_hash and built_hash != current_hash:
-        return "stale", f"brainpack build {pack}"
+        return "stale", f"beyin build {pack}"
     if result in {"failed", "mixed", "completed_with_issues", "error"}:
-        return result, f"brainpack build {pack}"
+        return result, f"beyin build {pack}"
     if result == "success":
-        return "success-with-older-definition", f"brainpack build {pack}"
-    return result, f"brainpack build {pack}"
+        return "success-with-older-definition", f"beyin build {pack}"
+    return result, f"beyin build {pack}"
 
 
-@app.command(cls=BrainpackCommand)
+@app.command(cls=BeyinCommand)
 def create() -> None:
     """Guide the user through creating a new pack without hand-editing YAML."""
     if is_interactive_session():
@@ -1106,7 +1106,7 @@ def create() -> None:
     if pack_dir.exists():
         typer.echo(
             f"Error: Pack '{config.id}' already exists.\n"
-            f"Choose a new name or run `brainpack update {config.id}`.",
+            f"Choose a new name or run `beyin update {config.id}`.",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -1117,14 +1117,14 @@ def create() -> None:
     typer.echo(f"Source saved: {config.sources[0].url}")
     typer.echo("")
     _render_next_step(
-        f"brainpack build {config.id}",
+        f"beyin build {config.id}",
         "Build indexes the source into local expert memory.",
     )
 
 
-@app.command(cls=BrainpackCommand)
+@app.command(cls=BeyinCommand)
 def build(
-    pack: str = typer.Argument(..., help="Pack name (directory under ~/.brainpacks/)"),
+    pack: str = typer.Argument(..., help="Pack name (directory under ~/.beyin/)"),
     sources: Optional[List[str]] = typer.Option(
         None,
         "--source",
@@ -1282,9 +1282,9 @@ def build(
                     failure_message = ""
             elif source_type == "pack":
                 result = None
-                failure_reason = "pack config sources belong on brainpack add"
+                failure_reason = "pack config sources belong on beyin add"
                 failure_message = (
-                    "Pack config sources belong on `brainpack add <path-or-url-or-id>`, not build sources."
+                    "Pack config sources belong on `beyin add <path-or-url-or-id>`, not build sources."
                 )
             else:
                 result = None
@@ -1703,7 +1703,7 @@ def build(
     state["last_build_result"] = "partial-selection" if partial_selection and not report.had_issues else report.result
     state["last_build_summary"] = (
         f"Partial build complete — {len(config.sources)} selected source(s) processed. "
-        f"Run `brainpack build {full_config.id}` to finish the remaining sources."
+        f"Run `beyin build {full_config.id}` to finish the remaining sources."
         if partial_selection and not report.had_issues
         else report.summary_line
     )
@@ -1716,7 +1716,7 @@ def build(
         raise typer.Exit(code=1)
 
 
-@app.command(cls=BrainpackCommand)
+@app.command(cls=BeyinCommand)
 def query(
     pack: str = typer.Argument(..., help="Pack name to query in local mode"),
     question: str = typer.Argument(..., help="Question to answer in local mode"),
@@ -1738,7 +1738,7 @@ def query(
     _render_query_output(_query_payload(pack, question))
 
 
-@app.command(name="check-deps", cls=BrainpackCommand)
+@app.command(name="check-deps", cls=BeyinCommand)
 def check_deps() -> None:
     """Check runtime dependencies: ffmpeg, yt-dlp, and optional document libs."""
     runtime_rows, file_type_rows, failures = _dependency_display_rows()
@@ -1755,7 +1755,7 @@ def check_deps() -> None:
         raise typer.Exit(code=1)
 
 
-@app.command(name="list", cls=BrainpackCommand)
+@app.command(name="list", cls=BeyinCommand)
 def list_command(
     json_mode: bool = typer.Option(
         False,
@@ -1780,7 +1780,7 @@ def list_command(
     _render_pack_table(summaries)
 
 
-@app.command(name="status", cls=BrainpackCommand)
+@app.command(name="status", cls=BeyinCommand)
 def status_command(
     pack: str = typer.Argument(..., help="Pack name to inspect"),
     json_mode: bool = typer.Option(
@@ -2001,7 +2001,7 @@ def status_command(
     typer.echo()
 
 
-@app.command(name="add", cls=BrainpackCommand)
+@app.command(name="add", cls=BeyinCommand)
 def add(
     source: str = typer.Argument(..., help="Local path or URL to a pack.yaml file"),
 ):
@@ -2023,7 +2023,7 @@ def add(
     if dest_dir.exists():
         typer.echo(
             f"Error: Pack '{config.id}' is already installed.\n"
-            f"Use `brainpack update {config.id}` to refresh it.",
+            f"Use `beyin update {config.id}` to refresh it.",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -2048,19 +2048,19 @@ def add(
     )
     typer.echo(
         f"Pack '{config.id}' added to {dest_dir}/\n"
-        f"Run `brainpack build {config.id}` to ingest sources."
+        f"Run `beyin build {config.id}` to ingest sources."
     )
 
 
-@app.command(hidden=True, cls=BrainpackCommand)
+@app.command(hidden=True, cls=BeyinCommand)
 def install(
     source: str = typer.Argument(..., help="Local path or URL to a pack.yaml file"),
 ) -> None:
-    """Backward-compatible alias for `brainpack add`."""
+    """Backward-compatible alias for `beyin add`."""
     add(source)
 
 
-@app.command(cls=BrainpackCommand)
+@app.command(cls=BeyinCommand)
 def update(
     pack: str = typer.Argument(..., help="Pack name to update"),
     model: Optional[str] = typer.Option(
@@ -2080,7 +2080,7 @@ def update(
     pack_dir = _PACKS_DIR / pack
     if not pack_dir.exists():
         typer.echo(f"Error: Pack '{pack}' not found.", err=True)
-        typer.echo(f"Add it first: brainpack add <path-or-url-or-id>", err=True)
+        typer.echo(f"Add it first: beyin add <path-or-url-or-id>", err=True)
         raise typer.Exit(code=1)
 
     state = load_state(pack_dir)
@@ -2178,7 +2178,7 @@ def update(
     build(pack=pack, model=model, language=language, reset=False, verbose=False)
 
 
-@app.command(name="add-source", cls=BrainpackCommand)
+@app.command(name="add-source", cls=BeyinCommand)
 def add_source_command(
     pack: str = typer.Argument(..., help="Pack name to add sources to"),
     urls: List[str] = typer.Argument(
@@ -2193,8 +2193,8 @@ def add_source_command(
     ),
 ) -> None:
     """Add one or more sources to an existing pack's pack.yaml."""
-    from brainpack.config import write_config
-    from brainpack.authoring import add_source_to_pack as _add_source
+    from beyin.config import write_config
+    from beyin.authoring import add_source_to_pack as _add_source
     pack_dir = _resolve_pack_dir(pack)
     previous = load_config(pack_dir)
 
@@ -2217,14 +2217,14 @@ def add_source_command(
         typer.echo(f"  + [{source_type}] {label}")
 
     if new_count > 1 and not build_after:
-        typer.echo(f"\nPack has {new_count} new source(s). Review with `brainpack status {pack}`, then run `brainpack build {pack}` when ready.")
+        typer.echo(f"\nPack has {new_count} new source(s). Review with `beyin status {pack}`, then run `beyin build {pack}` when ready.")
 
     if build_after:
         typer.echo("")
         build(pack=pack, model=None, language=None, reset=False, verbose=False)
 
 
-@app.command(name="remove-source", cls=BrainpackCommand)
+@app.command(name="remove-source", cls=BeyinCommand)
 def remove_source_command(
     pack: str = typer.Argument(..., help="Pack name to remove sources from"),
     selectors: List[str] = typer.Argument(
@@ -2267,7 +2267,7 @@ def remove_source_command(
         build(pack=pack, model=None, language=None, reset=False, verbose=False)
 
 
-@app.command(name="remove", cls=BrainpackCommand)
+@app.command(name="remove", cls=BeyinCommand)
 def remove_command(
     pack: str = typer.Argument(..., help="Pack name to permanently remove"),
     yes: bool = typer.Option(
@@ -2290,16 +2290,16 @@ def remove_command(
     if not bypass:
         if not is_interactive_session():
             typer.echo(
-                f"Error: `brainpack remove {pack}` requires --yes in non-interactive use.",
+                f"Error: `beyin remove {pack}` requires --yes in non-interactive use.",
                 err=True,
             )
             typer.echo(
-                f"Run: brainpack remove {pack} --yes",
+                f"Run: beyin remove {pack} --yes",
                 err=True,
             )
             raise typer.Exit(code=1)
         # Interactive TTY: use InquirerPy confirmation
-        from brainpack.interactive import _confirm, InteractiveAbort
+        from beyin.interactive import _confirm, InteractiveAbort
         try:
             backend = load_prompt_backend()
             confirmed = _confirm(
@@ -2319,10 +2319,10 @@ def remove_command(
     typer.echo(f"Pack '{pack}' removed.")
 
 
-@app.command(name="mcp-server", cls=BrainpackCommand)
+@app.command(name="mcp-server", cls=BeyinCommand)
 def mcp_server_command() -> None:
-    """Run Brainpack as a local stdio server for agents on the same machine."""
-    from brainpack.mcp_server import run_stdio_server
+    """Run Beyin as a local stdio server for agents on the same machine."""
+    from beyin.mcp_server import run_stdio_server
 
     run_stdio_server()
 

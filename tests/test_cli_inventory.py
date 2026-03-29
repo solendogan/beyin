@@ -21,8 +21,8 @@ from tests.conftest import (
 
 def _write_ready_pack(pack_dir, *, name: str = "demo-pack", llm: str = "ollama") -> None:
     """Write a minimal ready-state pack to disk."""
-    from brainpack.inventory import pack_config_hash
-    from brainpack.pack_state import save_state
+    from beyin.inventory import pack_config_hash
+    from beyin.pack_state import save_state
 
     pack_dir.mkdir(parents=True, exist_ok=True)
     (pack_dir / "pack.yaml").write_text(
@@ -51,7 +51,7 @@ def _write_ready_pack(pack_dir, *, name: str = "demo-pack", llm: str = "ollama")
 
 def test_inventory_summary_marks_new_pack_and_next_build(tmp_path):
     """Inventory summary marks unbuilt packs as new with a build next step."""
-    from brainpack.inventory import summarize_pack
+    from beyin.inventory import summarize_pack
 
     pack_dir = tmp_path / "test-pack"
     pack_dir.mkdir()
@@ -66,12 +66,12 @@ def test_inventory_summary_marks_new_pack_and_next_build(tmp_path):
     summary = summarize_pack(pack_dir, lambda _cfg: {"blockers": [], "warnings": []})
 
     assert summary["status"] == "new"
-    assert summary["next_action"] == "brainpack build test-pack"
+    assert summary["next_action"] == "beyin build test-pack"
 
 
 def test_inventory_summary_marks_blocked_pack(tmp_path):
     """Inventory summary promotes readiness blockers into the main blocked status."""
-    from brainpack.inventory import summarize_pack
+    from beyin.inventory import summarize_pack
 
     pack_dir = tmp_path / "test-pack"
     pack_dir.mkdir()
@@ -89,7 +89,7 @@ def test_inventory_summary_marks_blocked_pack(tmp_path):
     )
 
     assert summary["status"] == "blocked"
-    assert summary["next_action"] == "brainpack status test-pack"
+    assert summary["next_action"] == "beyin status test-pack"
 
 
 # ---------------------------------------------------------------------------
@@ -98,12 +98,12 @@ def test_inventory_summary_marks_blocked_pack(tmp_path):
 
 def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
     """list shows compact alphabetical rows with status, type, source count, and provider."""
-    from brainpack.cli import app
-    from brainpack.inventory import save_pack_origin, pack_config_hash
-    from brainpack.pack_state import save_state
+    from beyin.cli import app
+    from beyin.inventory import save_pack_origin, pack_config_hash
+    from beyin.pack_state import save_state
 
     runner = CliRunner()
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     a_pack = packs_root / "a-pack"
     b_pack = packs_root / "b-pack"
     a_pack.mkdir(parents=True)
@@ -132,7 +132,7 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
             {"type": "file", "source": f"/tmp/{name}.yaml", "added_at": "2026-03-13T09:00:00+00:00"},
         )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
          patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
         result = runner.invoke(app, ["list"])
 
@@ -148,14 +148,14 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
 
 def test_list_human_output_stays_compact_without_coaching_blocks(tmp_path):
     """list shows a compact table without appending 'Use with agent' coaching sections."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     _write_ready_pack(packs_root / "demo-pack", name="demo-pack")
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
-        "brainpack.cli._check_ollama_reachable", return_value=True
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli._check_ollama_reachable", return_value=True
     ):
         result = runner.invoke(app, ["list"])
 
@@ -163,22 +163,22 @@ def test_list_human_output_stays_compact_without_coaching_blocks(tmp_path):
     assert "demo-pack" in result.output
     assert "Use with agent" not in result.output
     assert "Use with local model" not in result.output
-    assert "brainpack mcp-server" not in result.output
+    assert "beyin mcp-server" not in result.output
 
 
 def test_list_json_stays_stable_and_prompt_free_for_installed_packs(tmp_path):
     """list --json stays single-document, prompt-free, and structurally unchanged after inventory-first changes."""
-    from brainpack.cli import app
-    from brainpack.machine_output import CLI_SCHEMA_VERSION
+    from beyin.cli import app
+    from beyin.machine_output import CLI_SCHEMA_VERSION
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     _write_ready_pack(packs_root / "demo-pack", name="demo-pack")
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
-        "brainpack.cli._check_ollama_reachable", return_value=True
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli._check_ollama_reachable", return_value=True
     ), patch(
-        "brainpack.cli.load_prompt_backend",
+        "beyin.cli.load_prompt_backend",
         side_effect=AssertionError("interactive backend must stay unloaded"),
     ):
         result = runner.invoke(app, ["list", "--json"])
@@ -199,13 +199,13 @@ def test_list_json_stays_stable_and_prompt_free_for_installed_packs(tmp_path):
 @pytest.mark.parametrize(
     ("pack_name", "state_setup", "env_vars", "expected_status", "expected_command"),
     [
-        ("ready-pack", "ready", {"OPENAI_API_KEY": "sk-test"}, "ready", "brainpack mcp-server"),
-        ("new-pack", "new", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build new-pack"),
-        ("stale-pack", "needs-build", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "brainpack build stale-pack"),
-        ("partially-ready-pack", "partially-ready", {"OPENAI_API_KEY": "sk-test"}, "partially-ready", "brainpack build partially-ready-pack"),
-        ("incremental-ready-pack", "incremental-ready", {"OPENAI_API_KEY": "sk-test"}, "ready", "brainpack mcp-server"),
-        ("error-pack", "error", {"OPENAI_API_KEY": "sk-test"}, "error", "brainpack build error-pack"),
-        ("partial-pack", "partial", {"OPENAI_API_KEY": "sk-test"}, "partially-ready", "brainpack build partial-pack"),
+        ("ready-pack", "ready", {"OPENAI_API_KEY": "sk-test"}, "ready", "beyin mcp-server"),
+        ("new-pack", "new", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "beyin build new-pack"),
+        ("stale-pack", "needs-build", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "beyin build stale-pack"),
+        ("partially-ready-pack", "partially-ready", {"OPENAI_API_KEY": "sk-test"}, "partially-ready", "beyin build partially-ready-pack"),
+        ("incremental-ready-pack", "incremental-ready", {"OPENAI_API_KEY": "sk-test"}, "ready", "beyin mcp-server"),
+        ("error-pack", "error", {"OPENAI_API_KEY": "sk-test"}, "error", "beyin build error-pack"),
+        ("partial-pack", "partial", {"OPENAI_API_KEY": "sk-test"}, "partially-ready", "beyin build partial-pack"),
     ],
 )
 def test_status_uses_onboarding_guidance_across_lifecycle_states(
@@ -217,11 +217,11 @@ def test_status_uses_onboarding_guidance_across_lifecycle_states(
     expected_command,
 ):
     """status should use the shared onboarding guidance seam across lifecycle states."""
-    from brainpack.cli import app
-    from brainpack.inventory import save_pack_origin
+    from beyin.cli import app
+    from beyin.inventory import save_pack_origin
 
     runner = CliRunner()
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / pack_name
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -253,9 +253,9 @@ def test_status_uses_onboarding_guidance_across_lifecycle_states(
     elif state_setup == "partial":
         _mark_pack_mixed_result(pack_dir)
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
          patch.dict("os.environ", env_vars, clear=True), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True):
+         patch("beyin.cli._check_ollama_reachable", return_value=True):
         result = runner.invoke(app, ["status", pack_name])
 
     assert result.exit_code == 0, result.output
@@ -266,10 +266,10 @@ def test_status_uses_onboarding_guidance_across_lifecycle_states(
 
 def test_status_renders_provenance_and_build_recap_before_source_rows(tmp_path):
     """status: provenance/build-recap sections must appear before the Sources section."""
-    from brainpack.cli import app
-    from brainpack.inventory import save_pack_origin
+    from beyin.cli import app
+    from beyin.inventory import save_pack_origin
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "demo-pack"
     _write_ready_pack(pack_dir, name="demo-pack")
     save_pack_origin(
@@ -283,8 +283,8 @@ def test_status_renders_provenance_and_build_recap_before_source_rows(tmp_path):
     )
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
-        "brainpack.cli._check_ollama_reachable", return_value=True
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli._check_ollama_reachable", return_value=True
     ):
         result = runner.invoke(app, ["status", "demo-pack"])
 
@@ -304,14 +304,14 @@ def test_status_renders_provenance_and_build_recap_before_source_rows(tmp_path):
 
 def test_status_ready_pack_does_not_show_next_step_coaching(tmp_path):
     """status on a ready pack must not show 'Use with agent' or 'Use with local model' coaching."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     _write_ready_pack(packs_root / "ready-pack", name="ready-pack")
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
-        "brainpack.cli._check_ollama_reachable", return_value=True
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli._check_ollama_reachable", return_value=True
     ):
         result = runner.invoke(app, ["status", "ready-pack"])
 
@@ -319,15 +319,15 @@ def test_status_ready_pack_does_not_show_next_step_coaching(tmp_path):
     assert "Use with agent" not in result.output
     assert "Use with local model" not in result.output
     # Ready packs: no coaching copy about next steps
-    assert "brainpack mcp-server" not in result.output
-    assert "brainpack create" not in result.output
+    assert "beyin mcp-server" not in result.output
+    assert "beyin create" not in result.output
 
 
 def test_status_pack_without_runtime_readiness_stays_compact_without_coaching(tmp_path):
     """status should stay compact even when runtime query readiness is unavailable."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "blocked-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -340,7 +340,7 @@ def test_status_pack_without_runtime_readiness_stays_compact_without_coaching(tm
     )
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
         "os.environ", {}, clear=True
     ):
         result = runner.invoke(app, ["status", "blocked-pack"])
@@ -354,10 +354,10 @@ def test_status_pack_without_runtime_readiness_stays_compact_without_coaching(tm
 
 def test_status_audio_sources_do_not_repeat_unowned_partial_episodes(tmp_path):
     """status should scope partial audio episodes to their owning source."""
-    from brainpack.cli import app
-    from brainpack.pack_state import save_state
+    from beyin.cli import app
+    from beyin.pack_state import save_state
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "demo-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -387,7 +387,7 @@ def test_status_audio_sources_do_not_repeat_unowned_partial_episodes(tmp_path):
     )
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["status", "demo-pack"])
 
     assert result.exit_code == 0
@@ -398,9 +398,9 @@ def test_status_audio_sources_do_not_repeat_unowned_partial_episodes(tmp_path):
 
 def test_status_playlist_group_headers_are_not_duplicated(tmp_path):
     """status should print each later playlist/feed group header only once."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "demo-pack"
     pack_dir.mkdir(parents=True)
     playlist_a = "https://www.youtube.com/playlist?list=PLA"
@@ -422,7 +422,7 @@ def test_status_playlist_group_headers_are_not_duplicated(tmp_path):
     )
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["status", "demo-pack"])
 
     assert result.exit_code == 0
@@ -432,11 +432,11 @@ def test_status_playlist_group_headers_are_not_duplicated(tmp_path):
 
 def test_status_podcast_source_shows_partial_counts_and_failed_episode_titles(tmp_path):
     """status should show mixed podcast episode counts and preserve failed episode titles."""
-    from brainpack.cli import app
-    from brainpack.inventory import pack_config_hash
-    from brainpack.pack_state import save_state
+    from beyin.cli import app
+    from beyin.inventory import pack_config_hash
+    from beyin.pack_state import save_state
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "demo-pack"
     pack_dir.mkdir(parents=True)
     feed_url = "https://example.com/feed.rss"
@@ -477,7 +477,7 @@ def test_status_podcast_source_shows_partial_counts_and_failed_episode_titles(tm
     )
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["status", "demo-pack"])
 
     assert result.exit_code == 0, result.output
@@ -490,17 +490,17 @@ def test_status_podcast_source_shows_partial_counts_and_failed_episode_titles(tm
 
 def test_status_json_stays_stable_and_prompt_free_after_rendering_changes(tmp_path):
     """status --json stays single-document, prompt-free after human-rendering changes."""
-    from brainpack.cli import app
-    from brainpack.machine_output import CLI_SCHEMA_VERSION
+    from beyin.cli import app
+    from beyin.machine_output import CLI_SCHEMA_VERSION
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     _write_ready_pack(packs_root / "demo-pack", name="demo-pack", llm="openai")
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
         "os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False
     ), patch(
-        "brainpack.cli.load_prompt_backend",
+        "beyin.cli.load_prompt_backend",
         side_effect=AssertionError("interactive backend must stay unloaded"),
     ):
         result = runner.invoke(app, ["status", "demo-pack", "--json"])
@@ -515,15 +515,15 @@ def test_status_json_stays_stable_and_prompt_free_after_rendering_changes(tmp_pa
 
 
 def test_status_command_exposes_lifecycle_management_lines(tmp_pack_root):
-    """brainpack status should expose the pack summary without fallback coaching blocks."""
-    from brainpack.cli import app
+    """beyin status should expose the pack summary without fallback coaching blocks."""
+    from beyin.cli import app
 
     packs_root, pack_dir = tmp_pack_root
     _mark_pack_ready(pack_dir)
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli._check_ollama_reachable", return_value=True):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli._check_ollama_reachable", return_value=True):
         result = runner.invoke(app, ["status", "test-pack"])
 
     assert result.exit_code == 0
@@ -541,11 +541,11 @@ def test_status_command_exposes_lifecycle_management_lines(tmp_pack_root):
 
 def test_check_deps_all_pass():
     """check-deps exits 0 when ffmpeg and yt-dlp both pass."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    with patch("brainpack.cli.shutil") as mock_shutil, \
-         patch("brainpack.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
+    with patch("beyin.cli.shutil") as mock_shutil, \
+         patch("beyin.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
         }.get(name)
@@ -556,11 +556,11 @@ def test_check_deps_all_pass():
 
 def test_check_deps_does_not_surface_deno():
     """check-deps no longer reports Deno as a user-facing dependency."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    with patch("brainpack.cli.shutil") as mock_shutil, \
-         patch("brainpack.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
+    with patch("beyin.cli.shutil") as mock_shutil, \
+         patch("beyin.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
         }.get(name)
@@ -573,11 +573,11 @@ def test_check_deps_does_not_surface_deno():
 
 def test_check_deps_ytdlp_outdated():
     """check-deps exits 1 with OUTDATED + upgrade command when yt-dlp is below min version."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    with patch("brainpack.cli.shutil") as mock_shutil, \
-         patch("brainpack.cli._ytdlp_version_ok", return_value=(False, "2025.10.01")):
+    with patch("beyin.cli.shutil") as mock_shutil, \
+         patch("beyin.cli._ytdlp_version_ok", return_value=(False, "2025.10.01")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
         }.get(name)
@@ -591,11 +591,11 @@ def test_check_deps_ytdlp_outdated():
 
 def test_check_deps_ffmpeg_missing():
     """check-deps exits 1 with ffmpeg install instruction when ffmpeg not found."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    with patch("brainpack.cli.shutil") as mock_shutil, \
-         patch("brainpack.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
+    with patch("beyin.cli.shutil") as mock_shutil, \
+         patch("beyin.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": None,
         }.get(name)

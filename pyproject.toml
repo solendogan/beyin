@@ -1,5 +1,5 @@
 [project]
-name = "brainpack"
+name = "beyin"
 version = "0.1.5"
 description = "Build local, queryable packs from videos, articles, podcasts, and files for MCP and local LLM use."
 readme = "README.md"
@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
-brainpack = "brainpack.cli:app"
+beyin = "beyin.cli:app"
 
 [tool.hatch.build.targets.wheel]
 exclude = [

@@ -1,4 +1,4 @@
-"""Brainpack MCP server exposing machine-safe inventory and retrieval tools."""
+"""Beyin MCP server exposing machine-safe inventory and retrieval tools."""
 
 import json
 import urllib.request
@@ -11,29 +11,35 @@ import typer
 import yaml as pyyaml
 from mcp.server.fastmcp import FastMCP
 
-from brainpack import __version__
-from brainpack.authoring import add_source_to_pack, remove_sources_from_pack
-from brainpack.lifecycle import remove_installed_pack
-from brainpack.cli import (
+from beyin import __version__
+from beyin.authoring import add_source_to_pack, remove_sources_from_pack
+from beyin.lifecycle import remove_installed_pack
+from beyin.cli import (
     add as _cli_add,
     build as _cli_build,
 )
-from brainpack.payloads import (
+from beyin import cli as _cli_module
+from beyin.payloads import (
     _list_payload,
     _retrieve_payload,
     _status_payload,
 )
-from brainpack.paths import packs_dir
-from brainpack.config import _parse_config_from_raw, PackConfig, load_config, write_config
-from brainpack.inventory import serialize_pack_sources
-from brainpack.pack_state import load_state
-from brainpack.machine_output import (
+from beyin.paths import packs_dir
+from beyin.config import _parse_config_from_raw, PackConfig, load_config, write_config
+from beyin.inventory import serialize_pack_sources
+from beyin.pack_state import load_state
+from beyin.machine_output import (
     build_error_envelope,
     build_success_envelope,
     capture_machine_command,
 )
 
-app = FastMCP("Brainpack", json_response=True)
+app = FastMCP("Beyin", json_response=True)
+
+
+def _packs_root() -> Path:
+    """Use the CLI pack root so MCP mutations and CLI commands stay aligned."""
+    return _cli_module._PACKS_DIR
 
 
 def _normalize_inline_yaml(raw_yaml: str) -> tuple[PackConfig, int]:
@@ -42,7 +48,7 @@ def _normalize_inline_yaml(raw_yaml: str) -> tuple[PackConfig, int]:
     if not isinstance(data, dict):
         raise ValueError("Inline YAML must define a pack object.")
 
-    from brainpack.downloader import expand_playlist_sources
+    from beyin.downloader import expand_playlist_sources
 
     changed = False
     new_sources: list[Any] = []
@@ -74,7 +80,7 @@ def _install_inline_yaml(raw_yaml: str) -> tuple[str, int]:
     if not config.id:
         raise ValueError("Pack YAML must include a name or id.")
 
-    dest_dir = packs_dir() / config.id
+    dest_dir = _packs_root() / config.id
     if dest_dir.exists():
         raise ValueError(
             f"Pack '{config.id}' is already installed. Use update or remove it first."
@@ -235,8 +241,8 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
                     "Review with the status tool and call build when ready."
                 )
             typer.echo(
-                f"Pack '{pack_id}' added to {packs_dir() / pack_id}/\n"
-                f"Run `brainpack build {pack_id}` to ingest sources."
+                f"Pack '{pack_id}' added to {_packs_root() / pack_id}/\n"
+                f"Run `beyin build {pack_id}` to ingest sources."
             )
 
         return _command_tool_result(command="add", action=action)
@@ -251,7 +257,7 @@ def add(source: str | None = None, yaml: str | None = None) -> dict[str, Any]:
 def add_sources(pack: str, urls: list[str], model: str | None = None, language: str | None = None) -> dict[str, Any]:
     """Add one or more sources to a pack. Rebuilds automatically for single sources. For playlists or RSS feeds, sources are expanded and saved individually — review with status tool, then call build when ready."""
     def action() -> None:
-        pack_dir = packs_dir() / pack
+        pack_dir = _packs_root() / pack
         config = load_config(pack_dir)
         updated = config
         for url in urls:
@@ -279,7 +285,7 @@ def remove_sources(
 ) -> dict[str, Any]:
     """Remove sources from a pack by current index or visible source text. Rebuild only when requested."""
     def action() -> None:
-        pack_dir = packs_dir() / pack
+        pack_dir = _packs_root() / pack
         config = load_config(pack_dir)
         state = load_state(pack_dir)
         source_rows = serialize_pack_sources(config, state)
@@ -298,7 +304,7 @@ def remove_sources(
         if rebuild:
             _cli_build(pack=pack, model=model, language=language)
         else:
-            typer.echo(f"Next step: brainpack build {pack}")
+            typer.echo(f"Next step: beyin build {pack}")
 
     return _command_tool_result(command="remove_sources", pack=pack, action=action)
 
@@ -307,7 +313,7 @@ def remove_sources(
 def remove(pack: str, confirm: bool = False) -> dict[str, Any]:
     """Remove a pack and move it to the OS trash. Must be called with confirm=True to proceed."""
     if not confirm:
-        pack_dir = packs_dir() / pack
+        pack_dir = _packs_root() / pack
         if not pack_dir.exists():
             return {"ok": False, "error": f"Pack '{pack}' not found."}
         return {
@@ -321,16 +327,16 @@ def remove(pack: str, confirm: bool = False) -> dict[str, Any]:
     return _command_tool_result(
         command="remove",
         pack=pack,
-        action=lambda: remove_installed_pack(packs_dir() / pack),
+        action=lambda: remove_installed_pack(_packs_root() / pack),
     )
 
 
-_REGISTRY_INDEX_URL = "https://raw.githubusercontent.com/buralog/brainpack/main/packs/index.json"
+_REGISTRY_INDEX_URL = "https://raw.githubusercontent.com/buralog/beyin/main/packs/index.json"
 
 
 @app.tool()
 def registry(query: str = "") -> dict[str, Any]:
-    """Browse the Brainpack community registry. Search by topic, tag, or keyword. Returns matching packs with install URLs."""
+    """Browse the Beyin community registry. Search by topic, tag, or keyword. Returns matching packs with install URLs."""
     meta = {"surface": "mcp", "server_version": __version__}
     try:
         with urllib.request.urlopen(_REGISTRY_INDEX_URL, timeout=10) as response:
@@ -363,9 +369,9 @@ def registry(query: str = "") -> dict[str, Any]:
 
 
 def run_stdio_server() -> None:
-    """Run the Brainpack MCP server over stdio."""
+    """Run the Beyin MCP server over stdio."""
     import sys
-    print("Brainpack MCP server running on stdio.", file=sys.stderr)
+    print("Beyin MCP server running on stdio.", file=sys.stderr)
     try:
         app.run(transport="stdio")
     except BaseException as exc:

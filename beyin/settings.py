@@ -1,4 +1,4 @@
-"""Global Brainpack settings helpers."""
+"""Global Beyin settings helpers."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from brainpack.paths import settings_path
+from beyin.paths import settings_path
 
 SETTINGS_VERSION = 1
 _SETUP_PATHS = ["recommended", "custom"]
@@ -28,7 +28,7 @@ def _recommended_transcription_backend() -> str:
 
 
 @dataclass(eq=True)
-class BrainpackSettings:
+class BeyinSettings:
     version: int = SETTINGS_VERSION
     setup_completed: bool = False
     preferred_transcription_backend: str = field(
@@ -38,8 +38,8 @@ class BrainpackSettings:
     preferred_llm_model: str = DEFAULT_LLM_MODEL
 
 
-def _default_settings() -> BrainpackSettings:
-    return BrainpackSettings()
+def _default_settings() -> BeyinSettings:
+    return BeyinSettings()
 
 
 def available_setup_choices() -> dict[str, Any]:
@@ -60,15 +60,15 @@ def available_setup_choices() -> dict[str, Any]:
     }
 
 
-def _merge_settings(raw: dict[str, Any]) -> BrainpackSettings:
+def _merge_settings(raw: dict[str, Any]) -> BeyinSettings:
     defaults = asdict(_default_settings())
     for key in defaults:
         if key in raw:
             defaults[key] = raw[key]
-    return BrainpackSettings(**defaults)
+    return BeyinSettings(**defaults)
 
 
-def load_settings() -> BrainpackSettings:
+def load_settings() -> BeyinSettings:
     """Load settings.json, merging missing fields onto the current defaults."""
     path = settings_path()
     if not path.exists():
@@ -85,7 +85,7 @@ def load_settings() -> BrainpackSettings:
     return _merge_settings(raw)
 
 
-def save_settings(settings: BrainpackSettings) -> None:
+def save_settings(settings: BeyinSettings) -> None:
     """Persist the versioned settings document with atomic replacement."""
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,7 +110,7 @@ def save_settings(settings: BrainpackSettings) -> None:
 
 
 def needs_initial_setup() -> bool:
-    """Return True when Brainpack should consider the first-run setup path."""
+    """Return True when Beyin should consider the first-run setup path."""
     return not load_settings().setup_completed
 
 
@@ -118,7 +118,7 @@ def resolve_build_defaults(
     *,
     cli_model: str | None,
     cli_language: str | None,
-    global_settings: BrainpackSettings | None = None,
+    global_settings: BeyinSettings | None = None,
 ) -> dict[str, str | None]:
     """Resolve build-time transcription defaults: CLI flag > global setting."""
     settings = global_settings or load_settings()
@@ -129,7 +129,7 @@ def resolve_build_defaults(
     }
 
 
-def describe_settings_summary(settings: BrainpackSettings) -> str:
+def describe_settings_summary(settings: BeyinSettings) -> str:
     """Return a compact human summary of the active settings."""
     lines = []
     lines.append(

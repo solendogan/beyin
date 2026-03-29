@@ -178,7 +178,7 @@ wheels = [
 ]
 
 [[package]]
-name = "brainpack"
+name = "beyin"
 version = "0.1.5"
 source = { editable = "." }
 dependencies = [

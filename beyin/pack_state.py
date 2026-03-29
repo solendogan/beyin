@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 import typer
 
-from brainpack.source_ids import canonical_source_id
+from beyin.source_ids import canonical_source_id
 
 _STATE_SCHEMA_VERSION = 3
 
@@ -243,7 +243,7 @@ def check_model_provenance(
         raise typer.BadParameter(
             f"Embedding model mismatch: pack '{pack_name}' was built with "
             f"'{recorded}' but pack.yaml now specifies '{current_model}'. "
-            f"Run `brainpack build {pack_name} --reset` to rebuild from scratch, "
+            f"Run `beyin build {pack_name} --reset` to rebuild from scratch, "
             f"or revert pack.yaml to use '{recorded}'."
         )
 
@@ -274,7 +274,7 @@ def check_transcription_provenance(
             raise typer.BadParameter(
                 f"Transcription model mismatch: pack '{pack_name}' was built with "
                 f"Whisper '{recorded_model}' but the current build is using '{current_model}'. "
-                f"Run `brainpack build {pack_name} --reset` to rebuild transcripts and chunks from scratch, "
+                f"Run `beyin build {pack_name} --reset` to rebuild transcripts and chunks from scratch, "
                 f"or switch back to '{recorded_model}'."
             )
         state["transcription_model"] = current_model
@@ -286,7 +286,7 @@ def check_transcription_provenance(
             raise typer.BadParameter(
                 f"Transcription language mismatch: pack '{pack_name}' was built with "
                 f"'{previous}' but the current build is using '{current}'. "
-                f"Run `brainpack build {pack_name} --reset` to rebuild transcripts and chunks from scratch, "
+                f"Run `beyin build {pack_name} --reset` to rebuild transcripts and chunks from scratch, "
                 f"or switch back to '{previous}'."
             )
         state["transcription_language"] = current_language

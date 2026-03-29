@@ -1,11 +1,11 @@
-"""Audio and transcript file helpers for the Brainpack build pipeline."""
+"""Audio and transcript file helpers for the Beyin build pipeline."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from brainpack.chunker import count_tokens
-from brainpack.source_ids import artifact_stem
+from beyin.chunker import count_tokens
+from beyin.source_ids import artifact_stem
 
 
 def _transcript_path(transcripts_dir: Path, source_id: str) -> Path:

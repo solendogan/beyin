@@ -1,4 +1,4 @@
-"""Runtime loaders and payload builders for Brainpack query/retrieve/status surfaces."""
+"""Runtime loaders and payload builders for Beyin query/retrieve/status surfaces."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,8 +6,8 @@ from typing import Optional
 
 import typer
 
-from brainpack.config import PackConfig, load_config
-from brainpack.inventory import (
+from beyin.config import PackConfig, load_config
+from beyin.inventory import (
     inspect_pack,
     list_packs,
     next_action_reason,
@@ -16,10 +16,10 @@ from brainpack.inventory import (
     serialize_pack_detail,
     serialize_pack_summary,
 )
-from brainpack.machine_output import MachineExit
-from brainpack.pack_state import load_state
-from brainpack.readiness import _query_provider_error
-from brainpack.settings import load_settings
+from beyin.machine_output import MachineExit
+from beyin.pack_state import load_state
+from beyin.readiness import _query_provider_error
+from beyin.settings import load_settings
 
 
 # ── Pure helpers (no cli deps) ────────────────────────────────────────────────
@@ -49,7 +49,7 @@ def _has_failed_build(state: dict) -> bool:
 
 
 def _retrieval_precondition_summary(status: str, pack: str) -> dict:
-    next_action = f"brainpack build {pack}"
+    next_action = f"beyin build {pack}"
     return {
         "status": status,
         "next_action": next_action,
@@ -150,7 +150,7 @@ def _raise_retrieval_precondition(
     if include_blocker and summary.get("blockers"):
         typer.echo(f"Why: {summary['blockers'][0]}", err=True)
     typer.echo("", err=True)
-    from brainpack import cli as _cli
+    from beyin import cli as _cli
     _cli._render_usage_guidance(summary, err=True)
     raise typer.Exit(code=1)
 
@@ -163,7 +163,7 @@ def _load_query_runtime(
     machine_command: Optional[str] = None,
 ) -> tuple[Path, PackConfig, object, object, Optional[str]]:
     """Load pack config and retrieval runtime for query surfaces."""
-    from brainpack import cli as _cli
+    from beyin import cli as _cli
     pack_dir = _cli._resolve_pack_dir(pack, machine_command=machine_command)
     config = _cli.load_config(pack_dir)
     provider_error = _cli._query_provider_error(config.llm)
@@ -227,7 +227,7 @@ def _load_evidence_runtime(
     machine_command: Optional[str] = None,
 ) -> tuple[Path, PackConfig, object, object, Optional[str]]:
     """Load retrieval-only runtime without requiring answer-provider readiness."""
-    from brainpack import cli as _cli
+    from beyin import cli as _cli
     pack_dir = _cli._resolve_pack_dir(pack, machine_command=machine_command)
     config = _cli.load_config(pack_dir)
     summary = inspect_pack(pack_dir, _cli._pack_readiness_details)
@@ -284,7 +284,7 @@ def _query_payload(
     machine: bool = False,
 ) -> dict:
     """Build a reusable result payload for query."""
-    from brainpack import cli as _cli
+    from beyin import cli as _cli
     _, config, model, collection, coverage_warning = _load_query_runtime(
         pack,
         machine_command="query" if machine else None,
@@ -310,8 +310,8 @@ def _retrieve_payload(
 ) -> dict:
     """Build a reusable retrieval-only payload for MCP. Runs all queries in parallel and merges results."""
     import concurrent.futures
-    from brainpack import cli as _cli
-    from brainpack.query import WEAK_MATCH_THRESHOLD, DEFAULT_EVIDENCE_RESULTS
+    from beyin import cli as _cli
+    from beyin.query import WEAK_MATCH_THRESHOLD, DEFAULT_EVIDENCE_RESULTS
     _, _, model, collection, coverage_warning = _load_evidence_runtime(
         pack,
         machine_command="retrieve" if machine else None,
@@ -351,7 +351,7 @@ def _list_payload(
     machine: bool = False,
 ) -> dict:
     """Build a reusable inventory payload for machine-safe list output."""
-    from brainpack import cli as _cli
+    from beyin import cli as _cli
     packs = list_packs(_cli._PACKS_DIR, _cli._pack_readiness_details)
     if machine:
         return {"packs": [serialize_pack_summary(summary) for summary in packs]}
@@ -364,7 +364,7 @@ def _status_payload(
     machine: bool = False,
 ) -> dict:
     """Build a reusable inventory payload for machine-safe status output."""
-    from brainpack import cli as _cli
+    from beyin import cli as _cli
     pack_dir = _cli._resolve_pack_dir(pack, machine_command="status" if machine else None)
     summary = inspect_pack(pack_dir, _cli._pack_readiness_details)
     if machine:

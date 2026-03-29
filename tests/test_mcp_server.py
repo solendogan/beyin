@@ -1,4 +1,4 @@
-"""MCP server tests for Brainpack's machine-safe tool surface."""
+"""MCP server tests for Beyin's machine-safe tool surface."""
 
 import json
 
@@ -29,8 +29,8 @@ def _write_pack(
 
 
 def _mark_pack_built(pack_dir: Path, *, last_build_at: str) -> None:
-    from brainpack.inventory import pack_config_hash
-    from brainpack.pack_state import save_state
+    from beyin.inventory import pack_config_hash
+    from beyin.pack_state import save_state
 
     save_state(
         pack_dir,
@@ -45,7 +45,7 @@ def _mark_pack_built(pack_dir: Path, *, last_build_at: str) -> None:
 
 
 def _mark_pack_stale(pack_dir: Path, *, last_build_at: str) -> None:
-    from brainpack.pack_state import save_state
+    from beyin.pack_state import save_state
 
     save_state(
         pack_dir,
@@ -60,7 +60,7 @@ def _mark_pack_stale(pack_dir: Path, *, last_build_at: str) -> None:
 
 
 def _mark_pack_failed(pack_dir: Path) -> None:
-    from brainpack.pack_state import save_state
+    from beyin.pack_state import save_state
 
     save_state(
         pack_dir,
@@ -75,8 +75,8 @@ def _mark_pack_failed(pack_dir: Path) -> None:
 
 
 def _mark_pack_mixed_result(pack_dir: Path, *, last_build_at: str) -> None:
-    from brainpack.inventory import pack_config_hash
-    from brainpack.pack_state import save_state
+    from beyin.inventory import pack_config_hash
+    from beyin.pack_state import save_state
 
     save_state(
         pack_dir,
@@ -94,7 +94,7 @@ def _mark_pack_mixed_result(pack_dir: Path, *, last_build_at: str) -> None:
 
 
 def _mark_pack_partially_ready(pack_dir: Path, *, last_build_at: str) -> None:
-    from brainpack.pack_state import save_state
+    from beyin.pack_state import save_state
 
     save_state(
         pack_dir,
@@ -116,7 +116,7 @@ def _mark_pack_partially_ready(pack_dir: Path, *, last_build_at: str) -> None:
 
 
 def _mark_pack_incrementally_ready(pack_dir: Path) -> None:
-    from brainpack.pack_state import save_state
+    from beyin.pack_state import save_state
 
     save_state(
         pack_dir,
@@ -147,7 +147,7 @@ def anyio_backend():
 
 @pytest.fixture
 def mcp_app():
-    from brainpack.mcp_server import app
+    from beyin.mcp_server import app
 
     return app
 
@@ -171,12 +171,12 @@ async def test_mcp_server_lists_expected_tools(mcp_app):
 
 @pytest.mark.anyio
 async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     alpha_pack = packs_root / "alpha-pack"
     _write_pack(alpha_pack, name="alpha-pack")
     _mark_pack_built(alpha_pack, last_build_at="2026-03-13T10:00:00+00:00")
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
         "os.environ",
         {"OPENAI_API_KEY": "sk-test"},
         clear=False,
@@ -186,7 +186,7 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
     assert structured == {
         "ok": True,
         "meta": {
-            "schema": "brainpack.cli.v1",
+            "schema": "beyin.cli.v1",
             "command": "list",
             "surface": "mcp",
             "server_version": "0.1.0",
@@ -200,7 +200,7 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
                     "provider": "openai",
                     "source_count": 1,
                     "recent_summary": "build 2026-03-13",
-                    "next_action": 'brainpack query alpha-pack "question"',
+                    "next_action": 'beyin query alpha-pack "question"',
                     "blockers": [],
                     "warnings": [],
                     "origin": {"type": "none", "source": ""},
@@ -213,7 +213,7 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
 
 @pytest.mark.anyio
 async def test_mcp_status_exposes_pack_id_and_indexed_sources(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "mobile-marketing"
     pack_dir.mkdir(parents=True, exist_ok=True)
     (pack_dir / "pack.yaml").write_text(
@@ -229,7 +229,7 @@ async def test_mcp_status_exposes_pack_id_and_indexed_sources(mcp_app, tmp_path)
         "embedding_model: all-MiniLM-L6-v2\n"
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
         "os.environ",
         {"OPENAI_API_KEY": "sk-test"},
         clear=False,
@@ -249,7 +249,7 @@ async def test_mcp_status_exposes_pack_id_and_indexed_sources(mcp_app, tmp_path)
 
 @pytest.mark.anyio
 async def test_mcp_retrieve_returns_structured_results_payload(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "retrieve-pack"
     _write_pack(pack_dir, name="retrieve-pack", llm="openai")
     _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
@@ -266,29 +266,29 @@ async def test_mcp_retrieve_returns_structured_results_payload(mcp_app, tmp_path
         }
     ]
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
         "os.environ",
         {},
         clear=True,
     ), patch(
-        "brainpack.cli.load_model",
+        "beyin.cli.load_model",
         return_value=object(),
     ), patch(
-        "brainpack.cli.get_collection",
+        "beyin.cli.get_collection",
         return_value=object(),
     ), patch(
-        "brainpack.cli.retrieve_evidence",
+        "beyin.cli.retrieve_evidence",
         return_value=mock_results,
     ):
         _, structured = await mcp_app.call_tool(
             "retrieve",
-            {"pack": "retrieve-pack", "question": "What happened?"},
+            {"pack": "retrieve-pack", "queries": ["What happened?"]},
         )
 
     assert structured == {
         "ok": True,
         "meta": {
-            "schema": "brainpack.cli.v1",
+            "schema": "beyin.cli.v1",
             "command": "retrieve",
             "pack": "retrieve-pack",
             "surface": "mcp",
@@ -314,27 +314,27 @@ async def test_mcp_retrieve_returns_structured_results_payload(mcp_app, tmp_path
 
 @pytest.mark.anyio
 async def test_mcp_retrieve_allows_built_ollama_pack_without_reachability_check(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "ollama-pack"
     _write_pack(pack_dir, name="ollama-pack", llm="ollama")
     _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
-        "brainpack.cli._check_ollama_reachable",
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli._check_ollama_reachable",
         return_value=False,
     ) as mock_reachable, patch(
-        "brainpack.cli.load_model",
+        "beyin.cli.load_model",
         return_value=object(),
     ), patch(
-        "brainpack.cli.get_collection",
+        "beyin.cli.get_collection",
         return_value=object(),
     ), patch(
-        "brainpack.cli.retrieve_evidence",
+        "beyin.cli.retrieve_evidence",
         return_value=[],
     ):
         _, structured = await mcp_app.call_tool(
             "retrieve",
-            {"pack": "ollama-pack", "question": "What happened?"},
+            {"pack": "ollama-pack", "queries": ["What happened?"]},
         )
 
     assert structured["ok"] is True
@@ -367,7 +367,7 @@ async def test_mcp_retrieve_blocks_on_pack_state_preconditions(
     expected_code,
     expected_message,
 ):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "state-pack"
 
     if state_setup != "missing":
@@ -384,7 +384,7 @@ async def test_mcp_retrieve_blocks_on_pack_state_preconditions(
         elif state_setup == "error":
             _mark_pack_failed(pack_dir)
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
         "os.environ",
         {},
         clear=True,
@@ -401,7 +401,7 @@ async def test_mcp_retrieve_blocks_on_pack_state_preconditions(
 
 @pytest.mark.anyio
 async def test_mcp_retrieve_allows_partially_ready_pack_with_warning(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "state-pack"
     _write_pack(
         pack_dir,
@@ -411,18 +411,18 @@ async def test_mcp_retrieve_allows_partially_ready_pack_with_warning(mcp_app, tm
     )
     _mark_pack_partially_ready(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
         "os.environ",
         {"OPENAI_API_KEY": "sk-test"},
         clear=False,
     ), patch(
-        "brainpack.cli.load_model",
+        "beyin.cli.load_model",
         return_value=object(),
     ), patch(
-        "brainpack.cli.get_collection",
+        "beyin.cli.get_collection",
         return_value=object(),
     ), patch(
-        "brainpack.cli.retrieve_evidence",
+        "beyin.cli.retrieve_evidence",
         return_value=[],
     ):
         _, structured = await mcp_app.call_tool(
@@ -439,28 +439,28 @@ async def test_mcp_retrieve_allows_partially_ready_pack_with_warning(mcp_app, tm
 
 @pytest.mark.anyio
 async def test_mcp_retrieve_allows_mixed_result_pack_with_successful_build(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "mixed-pack"
     _write_pack(pack_dir, name="mixed-pack", llm="openai")
     _mark_pack_mixed_result(pack_dir, last_build_at="2026-03-21T10:00:00+00:00")
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
         "os.environ",
         {},
         clear=True,
     ), patch(
-        "brainpack.cli.load_model",
+        "beyin.cli.load_model",
         return_value=object(),
     ), patch(
-        "brainpack.cli.get_collection",
+        "beyin.cli.get_collection",
         return_value=object(),
     ), patch(
-        "brainpack.cli.retrieve_evidence",
+        "beyin.cli.retrieve_evidence",
         return_value=[{"text": "Cloud agents are remote-running agents.", "url": "https://example.com/article", "title": "Done", "rank": 1}],
     ):
         _, structured = await mcp_app.call_tool(
             "retrieve",
-            {"pack": "mixed-pack", "question": "What are cloud agents?"},
+            {"pack": "mixed-pack", "queries": ["What are cloud agents?"]},
         )
 
     assert structured["ok"] is True
@@ -470,7 +470,7 @@ async def test_mcp_retrieve_allows_mixed_result_pack_with_successful_build(mcp_a
 
 @pytest.mark.anyio
 async def test_mcp_add_returns_structured_command_result(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     source_yaml = tmp_path / "incoming-pack.yaml"
     source_yaml.write_text(
         "name: imported-pack\n"
@@ -481,7 +481,7 @@ async def test_mcp_add_returns_structured_command_result(mcp_app, tmp_path):
         "embedding_model: all-MiniLM-L6-v2\n"
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         _, structured = await mcp_app.call_tool(
             "add",
             {"source": str(source_yaml)},
@@ -489,7 +489,7 @@ async def test_mcp_add_returns_structured_command_result(mcp_app, tmp_path):
 
     assert structured["ok"] is True
     assert structured["meta"] == {
-        "schema": "brainpack.cli.v1",
+        "schema": "beyin.cli.v1",
         "command": "add",
         "surface": "mcp",
         "server_version": "0.1.0",
@@ -505,7 +505,7 @@ async def test_mcp_add_returns_structured_command_result(mcp_app, tmp_path):
 
 @pytest.mark.anyio
 async def test_mcp_add_accepts_pasted_yaml_content(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     yaml_content = (
         "id: pasted-pack\n"
         "name: pasted-pack\n"
@@ -514,7 +514,7 @@ async def test_mcp_add_accepts_pasted_yaml_content(mcp_app, tmp_path):
         "  - url: https://example.com/article\n"
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         _, structured = await mcp_app.call_tool(
             "add",
             {"yaml": yaml_content},
@@ -524,14 +524,12 @@ async def test_mcp_add_accepts_pasted_yaml_content(mcp_app, tmp_path):
     assert structured["data"]["exit_code"] == 0
     assert "Pack 'pasted-pack' added" in structured["data"]["stdout"]
     assert (packs_root / "pasted-pack" / "pack.yaml").exists()
-    origin = json.loads((packs_root / "pasted-pack" / "origin.json").read_text())
-    assert origin["type"] == "file"
-    assert origin["last_update_summary"] == ["initial add"]
+    assert not (packs_root / "pasted-pack" / "origin.json").exists()
 
 
 @pytest.mark.anyio
 async def test_mcp_add_rejects_source_and_yaml_together(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     source_yaml = tmp_path / "incoming-pack.yaml"
     source_yaml.write_text(
         "name: imported-pack\n"
@@ -540,7 +538,7 @@ async def test_mcp_add_rejects_source_and_yaml_together(mcp_app, tmp_path):
         "  - url: https://example.com/article\n"
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         _, structured = await mcp_app.call_tool(
             "add",
             {"source": str(source_yaml), "yaml": "name: duplicate\nsources:\n  - url: https://example.com\n"},
@@ -549,7 +547,7 @@ async def test_mcp_add_rejects_source_and_yaml_together(mcp_app, tmp_path):
     assert structured == {
         "ok": False,
         "meta": {
-            "schema": "brainpack.cli.v1",
+            "schema": "beyin.cli.v1",
             "command": "add",
             "surface": "mcp",
             "server_version": "0.1.0",
@@ -565,7 +563,7 @@ async def test_mcp_add_rejects_source_and_yaml_together(mcp_app, tmp_path):
 
 @pytest.mark.anyio
 async def test_mcp_add_yaml_installs_local_pack_without_temp_origin(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     inline_yaml = (
         "name: inline-pack\n"
         "description: Inline test pack\n"
@@ -573,8 +571,8 @@ async def test_mcp_add_yaml_installs_local_pack_without_temp_origin(mcp_app, tmp
         "  - url: https://example.com/article\n"
     )
 
-    with patch("brainpack.mcp_server.packs_dir", return_value=packs_root), patch(
-        "brainpack.cli._PACKS_DIR",
+    with patch("beyin.mcp_server.packs_dir", return_value=packs_root), patch(
+        "beyin.cli._PACKS_DIR",
         packs_root,
     ):
         _, structured = await mcp_app.call_tool(
@@ -587,23 +585,23 @@ async def test_mcp_add_yaml_installs_local_pack_without_temp_origin(mcp_app, tmp
     assert pack_dir.exists()
     assert (pack_dir / "pack.yaml").exists()
     assert not (pack_dir / "origin.json").exists()
-    assert "Run `brainpack build inline-pack`" in structured["data"]["stdout"]
+    assert "Run `beyin build inline-pack`" in structured["data"]["stdout"]
 
 
 @pytest.mark.anyio
 async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "build-pack"
     _write_pack(pack_dir, name="build-pack", llm="ollama")
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
-        "brainpack.cli.load_model",
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli.load_model",
         return_value=object(),
     ), patch(
-        "brainpack.cli.get_collection",
+        "beyin.cli.get_collection",
         return_value=object(),
     ), patch(
-        "brainpack.cli.resolve_article_ingestion",
+        "beyin.cli.resolve_article_ingestion",
         return_value={
             "mode": "article",
             "text": "Some article text for chunking.",
@@ -611,7 +609,7 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
             "metadata_url": "https://example.com/article",
         },
     ), patch(
-        "brainpack.cli.embed_and_store",
+        "beyin.cli.embed_and_store",
         return_value=3,
     ):
         _, structured = await mcp_app.call_tool(
@@ -621,7 +619,7 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
 
     assert structured["ok"] is True
     assert structured["meta"] == {
-        "schema": "brainpack.cli.v1",
+        "schema": "beyin.cli.v1",
         "command": "build",
         "pack": "build-pack",
         "surface": "mcp",
@@ -636,7 +634,7 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
 @pytest.mark.anyio
 async def test_mcp_build_passes_plain_python_defaults_to_cli_function(mcp_app):
     with patch(
-        "brainpack.mcp_server._cli_build",
+        "beyin.mcp_server._cli_build",
         return_value=None,
     ) as mock_build:
         _, structured = await mcp_app.call_tool(
@@ -648,7 +646,7 @@ async def test_mcp_build_passes_plain_python_defaults_to_cli_function(mcp_app):
     mock_build.assert_called_once_with(
         pack="build-pack",
         sources=None,
-        model="small",
+        model=None,
         language=None,
         reset=False,
         verbose=False,
@@ -657,7 +655,7 @@ async def test_mcp_build_passes_plain_python_defaults_to_cli_function(mcp_app):
 
 @pytest.mark.anyio
 async def test_mcp_status_marks_incrementally_built_pack_ready(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "incremental-pack"
     _write_pack(
         pack_dir,
@@ -667,7 +665,7 @@ async def test_mcp_status_marks_incrementally_built_pack_ready(mcp_app, tmp_path
     )
     _mark_pack_incrementally_ready(pack_dir)
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
         "os.environ",
         {"OPENAI_API_KEY": "sk-test"},
         clear=False,
@@ -680,7 +678,7 @@ async def test_mcp_status_marks_incrementally_built_pack_ready(mcp_app, tmp_path
 
 @pytest.mark.anyio
 async def test_mcp_retrieve_allows_incrementally_ready_pack(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "incremental-pack"
     _write_pack(
         pack_dir,
@@ -690,18 +688,18 @@ async def test_mcp_retrieve_allows_incrementally_ready_pack(mcp_app, tmp_path):
     )
     _mark_pack_incrementally_ready(pack_dir)
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch.dict(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
         "os.environ",
         {"OPENAI_API_KEY": "sk-test"},
         clear=False,
     ), patch(
-        "brainpack.cli.load_model",
+        "beyin.cli.load_model",
         return_value=object(),
     ), patch(
-        "brainpack.cli.get_collection",
+        "beyin.cli.get_collection",
         return_value=object(),
     ), patch(
-        "brainpack.cli.retrieve_evidence",
+        "beyin.cli.retrieve_evidence",
         return_value=[],
     ):
         _, structured = await mcp_app.call_tool(
@@ -715,7 +713,7 @@ async def test_mcp_retrieve_allows_incrementally_ready_pack(mcp_app, tmp_path):
 
 @pytest.mark.anyio
 async def test_mcp_remove_sources_removes_by_index_without_rebuild_by_default(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "remove-pack"
     pack_dir.mkdir(parents=True, exist_ok=True)
     (pack_dir / "pack.yaml").write_text(
@@ -730,11 +728,11 @@ async def test_mcp_remove_sources_removes_by_index_without_rebuild_by_default(mc
         "embedding_model: all-MiniLM-L6-v2\n"
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
-        "brainpack.mcp_server.packs_dir",
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.mcp_server.packs_dir",
         return_value=packs_root,
     ), patch(
-        "brainpack.mcp_server._cli_build",
+        "beyin.mcp_server._cli_build",
     ) as mock_build:
         _, structured = await mcp_app.call_tool(
             "remove_sources",
@@ -743,7 +741,7 @@ async def test_mcp_remove_sources_removes_by_index_without_rebuild_by_default(mc
 
     assert structured["ok"] is True
     assert not mock_build.called
-    assert "Next step: brainpack build remove-pack" in structured["data"]["stdout"]
+    assert "Next step: beyin build remove-pack" in structured["data"]["stdout"]
     raw = (pack_dir / "pack.yaml").read_text()
     assert "article-1" in raw
     assert "article-2" not in raw
@@ -751,7 +749,7 @@ async def test_mcp_remove_sources_removes_by_index_without_rebuild_by_default(mc
 
 @pytest.mark.anyio
 async def test_mcp_remove_sources_removes_by_text_match(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "remove-pack"
     pack_dir.mkdir(parents=True, exist_ok=True)
     (pack_dir / "pack.yaml").write_text(
@@ -766,11 +764,11 @@ async def test_mcp_remove_sources_removes_by_text_match(mcp_app, tmp_path):
         "embedding_model: all-MiniLM-L6-v2\n"
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
-        "brainpack.mcp_server.packs_dir",
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.mcp_server.packs_dir",
         return_value=packs_root,
     ), patch(
-        "brainpack.mcp_server._cli_build",
+        "beyin.mcp_server._cli_build",
     ):
         _, structured = await mcp_app.call_tool(
             "remove_sources",
@@ -785,7 +783,7 @@ async def test_mcp_remove_sources_removes_by_text_match(mcp_app, tmp_path):
 
 @pytest.mark.anyio
 async def test_mcp_remove_sources_can_rebuild_when_requested(mcp_app, tmp_path):
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "remove-pack"
     pack_dir.mkdir(parents=True, exist_ok=True)
     (pack_dir / "pack.yaml").write_text(
@@ -800,11 +798,11 @@ async def test_mcp_remove_sources_can_rebuild_when_requested(mcp_app, tmp_path):
         "embedding_model: all-MiniLM-L6-v2\n"
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
-        "brainpack.mcp_server.packs_dir",
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.mcp_server.packs_dir",
         return_value=packs_root,
     ), patch(
-        "brainpack.mcp_server._cli_build",
+        "beyin.mcp_server._cli_build",
     ) as mock_build:
         _, structured = await mcp_app.call_tool(
             "remove_sources",
@@ -816,19 +814,19 @@ async def test_mcp_remove_sources_can_rebuild_when_requested(mcp_app, tmp_path):
 
 
 def test_run_stdio_server_swallows_keyboard_interrupt():
-    from brainpack.mcp_server import run_stdio_server
+    from beyin.mcp_server import run_stdio_server
 
-    with patch("brainpack.mcp_server.app.run", side_effect=KeyboardInterrupt()):
+    with patch("beyin.mcp_server.app.run", side_effect=KeyboardInterrupt()):
         run_stdio_server()
 
 
 def test_run_stdio_server_swallows_shutdown_exception_group():
-    from brainpack.mcp_server import run_stdio_server
+    from beyin.mcp_server import run_stdio_server
 
     exc = BaseExceptionGroup(
         "shutdown",
         [KeyboardInterrupt(), BrokenPipeError()],
     )
 
-    with patch("brainpack.mcp_server.app.run", side_effect=exc):
+    with patch("beyin.mcp_server.app.run", side_effect=exc):
         run_stdio_server()

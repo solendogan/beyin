@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typer.testing import CliRunner
 from unittest.mock import patch, MagicMock
 
-from brainpack.config import SourceEntry, load_config
+from beyin.config import SourceEntry, load_config
 
 from tests.conftest import _make_config, _save_global_settings
 
@@ -29,19 +29,19 @@ def _p12_article_patches(packs_root, mock_config, *,
     """Build an ExitStack of CLI patches for article-based build tests (Phase 12)."""
     stack = ExitStack()
     fetch_return = fetch_return or ("Article text", "Article title")
-    stack.enter_context(patch("brainpack.cli._PACKS_DIR", packs_root))
-    stack.enter_context(patch("brainpack.cli.load_config", return_value=mock_config))
-    stack.enter_context(patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}))
-    stack.enter_context(patch("brainpack.cli.check_model_provenance"))
+    stack.enter_context(patch("beyin.cli._PACKS_DIR", packs_root))
+    stack.enter_context(patch("beyin.cli.load_config", return_value=mock_config))
+    stack.enter_context(patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}))
+    stack.enter_context(patch("beyin.cli.check_model_provenance"))
     if save_state_mock:
-        stack.enter_context(patch("brainpack.cli.save_state"))
-    stack.enter_context(patch("brainpack.cli.load_model", return_value=MagicMock()))
-    stack.enter_context(patch("brainpack.cli.get_collection", return_value=MagicMock()))
+        stack.enter_context(patch("beyin.cli.save_state"))
+    stack.enter_context(patch("beyin.cli.load_model", return_value=MagicMock()))
+    stack.enter_context(patch("beyin.cli.get_collection", return_value=MagicMock()))
     if detect_side_effects:
-        stack.enter_context(patch("brainpack.cli.detect_source_type", side_effect=detect_side_effects))
+        stack.enter_context(patch("beyin.cli.detect_source_type", side_effect=detect_side_effects))
     else:
-        stack.enter_context(patch("brainpack.cli.detect_source_type", return_value="article"))
-    stack.enter_context(patch("brainpack.cli.is_processed", return_value=is_processed_return))
+        stack.enter_context(patch("beyin.cli.detect_source_type", return_value="article"))
+    stack.enter_context(patch("beyin.cli.is_processed", return_value=is_processed_return))
     if fetch_side_effects is not None:
         fetch_sequence = None
         fetch_callable = None
@@ -63,14 +63,14 @@ def _p12_article_patches(packs_root, mock_config, *,
             }
         stack.enter_context(
             patch(
-                "brainpack.cli.resolve_article_ingestion",
+                "beyin.cli.resolve_article_ingestion",
                 side_effect=_resolve,
             )
         )
     else:
         stack.enter_context(
             patch(
-                "brainpack.cli.resolve_article_ingestion",
+                "beyin.cli.resolve_article_ingestion",
                 return_value={
                     "mode": "article",
                     "text": fetch_return[0],
@@ -79,10 +79,10 @@ def _p12_article_patches(packs_root, mock_config, *,
                 },
             )
         )
-    stack.enter_context(patch("brainpack.cli.chunk_text", return_value=["chunk"]))
-    stack.enter_context(patch("brainpack.cli.embed_and_store", return_value=embed_return))
-    stack.enter_context(patch("brainpack.cli.mark_processed"))
-    stack.enter_context(patch("brainpack.cli.mark_failed"))
+    stack.enter_context(patch("beyin.cli.chunk_text", return_value=["chunk"]))
+    stack.enter_context(patch("beyin.cli.embed_and_store", return_value=embed_return))
+    stack.enter_context(patch("beyin.cli.mark_processed"))
+    stack.enter_context(patch("beyin.cli.mark_failed"))
     if extra:
         for name, kwargs in extra.items():
             stack.enter_context(patch(name, **kwargs))
@@ -95,7 +95,7 @@ def _p12_article_patches(packs_root, mock_config, *,
 
 def test_list_podcast_episodes_keeps_transcript_only_entries(monkeypatch):
     """RSS entries with substantial transcript text should be ingested even without audio enclosures."""
-    from brainpack.downloader import list_podcast_episodes
+    from beyin.downloader import list_podcast_episodes
 
     class _Entry(dict):
         def __getattr__(self, name):
@@ -131,7 +131,7 @@ def test_list_podcast_episodes_keeps_transcript_only_entries(monkeypatch):
 
 def test_build_help_shows_source_selector_flag():
     """build --help should advertise the non-destructive source selector flag."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
     runner = CliRunner()
     result = runner.invoke(app, ["build", "--help"])
@@ -142,7 +142,7 @@ def test_build_help_shows_source_selector_flag():
 
 def test_build_exits_0(tmp_pack_root):
     """build command with mocked pipeline exits 0."""
-    from brainpack.cli import app
+    from beyin.cli import app
     packs_root, pack_dir = tmp_pack_root
     runner = CliRunner()
 
@@ -150,20 +150,20 @@ def test_build_exits_0(tmp_pack_root):
     mock_collection = MagicMock()
     mock_config = _make_config([SourceEntry(url="https://example.com/article")])
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}) as mock_load_state, \
-         patch("brainpack.cli.check_model_provenance") as mock_prov, \
-         patch("brainpack.cli.save_state") as mock_save, \
-         patch("brainpack.cli.load_model", return_value=mock_model), \
-         patch("brainpack.cli.get_collection", return_value=mock_collection), \
-         patch("brainpack.cli.detect_source_type", return_value="article"), \
-         patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
-         patch("brainpack.cli.chunk_text", return_value=["chunk one", "chunk two"]), \
-         patch("brainpack.cli.embed_and_store", return_value=2), \
-         patch("brainpack.cli.mark_processed") as mock_mark, \
-         patch("brainpack.cli.mark_failed") as mock_fail:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}}) as mock_load_state, \
+         patch("beyin.cli.check_model_provenance") as mock_prov, \
+         patch("beyin.cli.save_state") as mock_save, \
+         patch("beyin.cli.load_model", return_value=mock_model), \
+         patch("beyin.cli.get_collection", return_value=mock_collection), \
+         patch("beyin.cli.detect_source_type", return_value="article"), \
+         patch("beyin.cli.is_processed", return_value=False), \
+         patch("beyin.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
+         patch("beyin.cli.chunk_text", return_value=["chunk one", "chunk two"]), \
+         patch("beyin.cli.embed_and_store", return_value=2), \
+         patch("beyin.cli.mark_processed") as mock_mark, \
+         patch("beyin.cli.mark_failed") as mock_fail:
 
         result = runner.invoke(app, ["build", "test-pack"])
 
@@ -172,7 +172,7 @@ def test_build_exits_0(tmp_pack_root):
 
 def test_build_calls_check_model_provenance_before_embed(tmp_pack_root):
     """build calls check_model_provenance before any embed_and_store call."""
-    from brainpack.cli import app
+    from beyin.cli import app
     packs_root, _ = tmp_pack_root
     runner = CliRunner()
     mock_config = _make_config([SourceEntry(url="https://example.com/article")])
@@ -186,20 +186,20 @@ def test_build_calls_check_model_provenance_before_embed(tmp_pack_root):
         call_order.append("embed")
         return 1
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
-         patch("brainpack.cli.check_model_provenance", side_effect=mock_prov), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="article"), \
-         patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "text", "title": "title", "metadata_url": "https://example.com/article"}), \
-         patch("brainpack.cli.chunk_text", return_value=["chunk"]), \
-         patch("brainpack.cli.embed_and_store", side_effect=mock_embed), \
-         patch("brainpack.cli.mark_processed"), \
-         patch("brainpack.cli.mark_failed"):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("beyin.cli.check_model_provenance", side_effect=mock_prov), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="article"), \
+         patch("beyin.cli.is_processed", return_value=False), \
+         patch("beyin.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "text", "title": "title", "metadata_url": "https://example.com/article"}), \
+         patch("beyin.cli.chunk_text", return_value=["chunk"]), \
+         patch("beyin.cli.embed_and_store", side_effect=mock_embed), \
+         patch("beyin.cli.mark_processed"), \
+         patch("beyin.cli.mark_failed"):
 
         runner.invoke(app, ["build", "test-pack"])
 
@@ -209,26 +209,26 @@ def test_build_calls_check_model_provenance_before_embed(tmp_pack_root):
 
 def test_build_skips_already_processed_urls(tmp_pack_root):
     """build skips URLs that is_processed returns True for."""
-    from brainpack.cli import app
+    from beyin.cli import app
     packs_root, _ = tmp_pack_root
     runner = CliRunner()
     mock_config = _make_config([SourceEntry(url="https://example.com/article")])
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": "all-MiniLM-L6-v2", "processed": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="article"), \
-         patch("brainpack.cli.is_processed", return_value=True), \
-         patch("brainpack.cli.resolve_article_ingestion") as mock_resolve, \
-         patch("brainpack.cli.fetch_article") as mock_fetch, \
-         patch("brainpack.cli.embed_and_store") as mock_embed, \
-         patch("brainpack.cli.chunk_text"), \
-         patch("brainpack.cli.mark_processed"), \
-         patch("brainpack.cli.mark_failed"):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": "all-MiniLM-L6-v2", "processed": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="article"), \
+         patch("beyin.cli.is_processed", return_value=True), \
+         patch("beyin.cli.resolve_article_ingestion") as mock_resolve, \
+         patch("beyin.cli.fetch_article") as mock_fetch, \
+         patch("beyin.cli.embed_and_store") as mock_embed, \
+         patch("beyin.cli.chunk_text"), \
+         patch("beyin.cli.mark_processed"), \
+         patch("beyin.cli.mark_failed"):
 
         result = runner.invoke(app, ["build", "test-pack"])
 
@@ -240,25 +240,25 @@ def test_build_skips_already_processed_urls(tmp_pack_root):
 
 def test_build_warns_and_marks_failed_when_fetch_returns_none(tmp_pack_root):
     """build logs warning and calls mark_failed when fetch_article returns None."""
-    from brainpack.cli import app
+    from beyin.cli import app
     packs_root, _ = tmp_pack_root
     runner = CliRunner()
     mock_config = _make_config([SourceEntry(url="https://example.com/article")])
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="article"), \
-         patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.resolve_article_ingestion", return_value=None), \
-         patch("brainpack.cli.embed_and_store") as mock_embed, \
-         patch("brainpack.cli.chunk_text"), \
-         patch("brainpack.cli.mark_processed") as mock_mark, \
-         patch("brainpack.cli.mark_failed") as mock_fail:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="article"), \
+         patch("beyin.cli.is_processed", return_value=False), \
+         patch("beyin.cli.resolve_article_ingestion", return_value=None), \
+         patch("beyin.cli.embed_and_store") as mock_embed, \
+         patch("beyin.cli.chunk_text"), \
+         patch("beyin.cli.mark_processed") as mock_mark, \
+         patch("beyin.cli.mark_failed") as mock_fail:
 
         result = runner.invoke(app, ["build", "test-pack"], catch_exceptions=False)
 
@@ -271,9 +271,9 @@ def test_build_warns_and_marks_failed_when_fetch_returns_none(tmp_pack_root):
 
 def test_build_local_path_reads_text_without_remote_fetch(tmp_path):
     """build ingests a local text-like path through the narrow local loader."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "local-pack"
     pack_dir.mkdir(parents=True)
     source = tmp_path / "notes.md"
@@ -289,17 +289,17 @@ def test_build_local_path_reads_text_without_remote_fetch(tmp_path):
 
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.fetch_article") as mock_fetch, \
-         patch("brainpack.cli.chunk_text", return_value=["chunk one"]), \
-         patch("brainpack.cli.embed_and_store", return_value=1), \
-         patch("brainpack.cli.mark_processed") as mock_mark, \
-         patch("brainpack.cli.mark_failed") as mock_fail:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.fetch_article") as mock_fetch, \
+         patch("beyin.cli.chunk_text", return_value=["chunk one"]), \
+         patch("beyin.cli.embed_and_store", return_value=1), \
+         patch("beyin.cli.mark_processed") as mock_mark, \
+         patch("beyin.cli.mark_failed") as mock_fail:
         result = runner.invoke(app, ["build", "local-pack"])
 
     assert result.exit_code == 0, f"Exit code {result.exit_code}, output: {result.output}"
@@ -311,9 +311,9 @@ def test_build_local_path_reads_text_without_remote_fetch(tmp_path):
 
 def test_build_local_path_missing_file_fails_clearly(tmp_path):
     """build marks missing local text-like sources failed without treating them as remote articles."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "missing-local-pack"
     pack_dir.mkdir(parents=True)
     missing = tmp_path / "missing.md"
@@ -328,17 +328,17 @@ def test_build_local_path_missing_file_fails_clearly(tmp_path):
 
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.fetch_article") as mock_fetch, \
-         patch("brainpack.cli.chunk_text") as mock_chunk, \
-         patch("brainpack.cli.embed_and_store") as mock_embed, \
-         patch("brainpack.cli.mark_processed") as mock_mark, \
-         patch("brainpack.cli.mark_failed") as mock_fail:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.fetch_article") as mock_fetch, \
+         patch("beyin.cli.chunk_text") as mock_chunk, \
+         patch("beyin.cli.embed_and_store") as mock_embed, \
+         patch("beyin.cli.mark_processed") as mock_mark, \
+         patch("beyin.cli.mark_failed") as mock_fail:
         result = runner.invoke(app, ["build", "missing-local-pack"])
 
     # Failed sources exit non-zero (plan 12-03 spec: unresolved failures return non-zero)
@@ -353,9 +353,9 @@ def test_build_local_path_missing_file_fails_clearly(tmp_path):
 
 def test_build_local_path_unsupported_suffix_fails_clearly(tmp_path):
     """build keeps local-file support narrow and rejects unsupported local suffixes."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "binary-pack"
     pack_dir.mkdir(parents=True)
     source = tmp_path / "recording.bin"
@@ -371,17 +371,17 @@ def test_build_local_path_unsupported_suffix_fails_clearly(tmp_path):
 
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.fetch_article") as mock_fetch, \
-         patch("brainpack.cli.chunk_text") as mock_chunk, \
-         patch("brainpack.cli.embed_and_store") as mock_embed, \
-         patch("brainpack.cli.mark_processed") as mock_mark, \
-         patch("brainpack.cli.mark_failed") as mock_fail:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.fetch_article") as mock_fetch, \
+         patch("beyin.cli.chunk_text") as mock_chunk, \
+         patch("beyin.cli.embed_and_store") as mock_embed, \
+         patch("beyin.cli.mark_processed") as mock_mark, \
+         patch("beyin.cli.mark_failed") as mock_fail:
         result = runner.invoke(app, ["build", "binary-pack"])
 
     # Failed sources exit non-zero (plan 12-03 spec: unresolved failures return non-zero)
@@ -396,10 +396,10 @@ def test_build_local_path_unsupported_suffix_fails_clearly(tmp_path):
 
 def test_build_can_limit_to_selected_source_indexes_without_mutating_pack(tmp_path):
     """build --source should process only the selected current sources and keep pack.yaml unchanged."""
-    from brainpack.cli import app
-    from brainpack.config import PackConfig, write_config
+    from beyin.cli import app
+    from beyin.config import PackConfig, write_config
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     original_sources = [
         SourceEntry(url="https://example.com/article-1", title="Article One"),
@@ -424,15 +424,15 @@ def test_build_can_limit_to_selected_source_indexes_without_mutating_pack(tmp_pa
         fetch_calls.append(url)
         return f"content for {url}", f"title for {url}"
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli._has_audio_sources", return_value=False), \
-         patch("brainpack.cli.detect_source_type", return_value="article"), \
-         patch("brainpack.cli.is_processed", return_value=False), \
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli._has_audio_sources", return_value=False), \
+         patch("beyin.cli.detect_source_type", return_value="article"), \
+         patch("beyin.cli.is_processed", return_value=False), \
          patch(
-             "brainpack.cli.resolve_article_ingestion",
+             "beyin.cli.resolve_article_ingestion",
              side_effect=lambda url: (
                  lambda content, title: {
                      "mode": "article",
@@ -442,8 +442,8 @@ def test_build_can_limit_to_selected_source_indexes_without_mutating_pack(tmp_pa
                  }
              )(*_fetch(url)),
          ), \
-         patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
-         patch("brainpack.cli.embed_and_store", return_value=1):
+         patch("beyin.cli.chunk_text", return_value=["chunk1"]), \
+         patch("beyin.cli.embed_and_store", return_value=1):
         result = runner.invoke(app, ["build", "test-pack", "--source", "1-2"])
 
     config = load_config(pack_dir)
@@ -510,12 +510,12 @@ def test_build_whisper_settings_precedence_for_audio_sources(
     expected_model,
 ):
     """build resolves whisper defaults as CLI > pack config > global settings > fallback."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
     monkeypatch.setenv("HOME", str(tmp_path))
     _save_global_settings(tmp_path, preferred_whisper_model=settings_model)
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(pack_yaml, encoding="utf-8")
@@ -527,23 +527,23 @@ def test_build_whisper_settings_precedence_for_audio_sources(
     segments = [{"start": 0.0, "end": 5.0, "text": "Content"}]
     mock_transcribe = MagicMock(return_value=segments)
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli._youtube_build_issue", return_value=None), \
-         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
-         patch("brainpack.cli.download_audio", return_value=audio_file), \
-         patch("brainpack.cli.transcribe_audio", mock_transcribe), \
-         patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
-         patch("brainpack.cli.embed_and_store", return_value=1), \
-         patch("brainpack.cli.is_audio_step_done", return_value=False), \
-         patch("brainpack.cli.get_audio_step", return_value={}), \
-         patch("brainpack.cli.mark_audio_step"), \
-         patch("brainpack.cli.mark_failed"):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli._youtube_build_issue", return_value=None), \
+         patch("beyin.cli._check_ffmpeg_available", return_value=True), \
+         patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
+         patch("beyin.cli.download_audio", return_value=audio_file), \
+         patch("beyin.cli.transcribe_audio", mock_transcribe), \
+         patch("beyin.cli.chunk_text", return_value=["chunk1"]), \
+         patch("beyin.cli.embed_and_store", return_value=1), \
+         patch("beyin.cli.is_audio_step_done", return_value=False), \
+         patch("beyin.cli.get_audio_step", return_value={}), \
+         patch("beyin.cli.mark_audio_step"), \
+         patch("beyin.cli.mark_failed"):
         result = runner.invoke(app, ["build", "test-pack", *build_args])
 
     assert result.exit_code == 0, f"Exit: {result.exit_code}, output: {result.output}"
@@ -553,9 +553,9 @@ def test_build_whisper_settings_precedence_for_audio_sources(
 
 def test_build_local_media_source_transcribes_without_download(tmp_path):
     """build should route local media sources through transcription without downloader calls."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     local_video = tmp_path / "demo.mp4"
@@ -573,23 +573,23 @@ def test_build_local_media_source_transcribes_without_download(tmp_path):
     segments = [{"start": 0.0, "end": 5.0, "text": "Content"}]
     mock_transcribe = MagicMock(return_value=segments)
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.check_transcription_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
-         patch("brainpack.cli.download_audio") as mock_download_audio, \
-         patch("brainpack.cli.download_podcast_audio") as mock_download_podcast_audio, \
-         patch("brainpack.cli.transcribe_audio", mock_transcribe), \
-         patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
-         patch("brainpack.cli.embed_and_store", return_value=1), \
-         patch("brainpack.cli.is_audio_step_done", return_value=False), \
-         patch("brainpack.cli.get_audio_step", return_value={}), \
-         patch("brainpack.cli.mark_audio_step"), \
-         patch("brainpack.cli.mark_failed"):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.check_transcription_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli._check_ffmpeg_available", return_value=True), \
+         patch("beyin.cli.download_audio") as mock_download_audio, \
+         patch("beyin.cli.download_podcast_audio") as mock_download_podcast_audio, \
+         patch("beyin.cli.transcribe_audio", mock_transcribe), \
+         patch("beyin.cli.chunk_text", return_value=["chunk1"]), \
+         patch("beyin.cli.embed_and_store", return_value=1), \
+         patch("beyin.cli.is_audio_step_done", return_value=False), \
+         patch("beyin.cli.get_audio_step", return_value={}), \
+         patch("beyin.cli.mark_audio_step"), \
+         patch("beyin.cli.mark_failed"):
         result = runner.invoke(app, ["build", "test-pack"])
 
     assert result.exit_code == 0, result.output
@@ -603,10 +603,10 @@ def test_build_local_media_source_transcribes_without_download(tmp_path):
 
 def test_build_persists_structured_transcripts_with_timestamps(tmp_path):
     """Fresh audio transcripts persist structured segments and chunk timestamp metadata."""
-    from brainpack.cli import app
-    from brainpack.source_ids import artifact_stem, canonical_source_id
+    from beyin.cli import app
+    from beyin.source_ids import artifact_stem, canonical_source_id
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -640,17 +640,17 @@ def test_build_persists_structured_transcripts_with_timestamps(tmp_path):
         captured["url"] = url
         return len(chunks)
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
-         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
-         patch("brainpack.cli._youtube_build_issue", return_value=None), \
-         patch("brainpack.cli.download_audio", return_value=audio_path), \
-         patch("brainpack.cli.transcribe_audio", return_value=segments), \
-         patch("brainpack.cli.embed_and_store", side_effect=_capture_embed):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="youtube"), \
+         patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
+         patch("beyin.cli._check_ffmpeg_available", return_value=True), \
+         patch("beyin.cli._youtube_build_issue", return_value=None), \
+         patch("beyin.cli.download_audio", return_value=audio_path), \
+         patch("beyin.cli.transcribe_audio", return_value=segments), \
+         patch("beyin.cli.embed_and_store", side_effect=_capture_embed):
 
         result = runner.invoke(app, ["build", "test-pack"])
 
@@ -665,11 +665,11 @@ def test_build_persists_structured_transcripts_with_timestamps(tmp_path):
 
 def test_build_resume_reuses_structured_transcript_segments(tmp_path):
     """Resumed audio builds reload structured transcripts instead of collapsing timestamps."""
-    from brainpack.cli import app
-    from brainpack.pack_state import save_state
-    from brainpack.source_ids import artifact_stem, canonical_source_id
+    from beyin.cli import app
+    from beyin.pack_state import save_state
+    from beyin.source_ids import artifact_stem, canonical_source_id
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -721,17 +721,17 @@ def test_build_resume_reuses_structured_transcript_segments(tmp_path):
         captured["url"] = url
         return len(chunks)
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
-         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
-         patch("brainpack.cli._youtube_build_issue", return_value=None), \
-         patch("brainpack.cli.download_audio") as mock_download, \
-         patch("brainpack.cli.transcribe_audio") as mock_transcribe, \
-         patch("brainpack.cli.embed_and_store", side_effect=_capture_embed):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="youtube"), \
+         patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
+         patch("beyin.cli._check_ffmpeg_available", return_value=True), \
+         patch("beyin.cli._youtube_build_issue", return_value=None), \
+         patch("beyin.cli.download_audio") as mock_download, \
+         patch("beyin.cli.transcribe_audio") as mock_transcribe, \
+         patch("beyin.cli.embed_and_store", side_effect=_capture_embed):
 
         result = runner.invoke(app, ["build", "test-pack"])
 
@@ -744,8 +744,8 @@ def test_build_resume_reuses_structured_transcript_segments(tmp_path):
 
 def test_build_youtube_source_fails_when_ytdlp_unavailable(tmp_path):
     """YouTube builds fail cleanly when yt-dlp is missing or outdated."""
-    from brainpack.cli import app
-    packs_root = tmp_path / "brainpacks"
+    from beyin.cli import app
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -760,13 +760,13 @@ def test_build_youtube_source_fails_when_ytdlp_unavailable(tmp_path):
     runner = CliRunner()
     mock_config = _make_config([SourceEntry(url="https://www.youtube.com/@channel")])
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli._youtube_build_issue", return_value="yt-dlp is not installed. Install or upgrade with: pip install --upgrade yt-dlp"), \
-         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes") as mock_list:
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli._youtube_build_issue", return_value="yt-dlp is not installed. Install or upgrade with: pip install --upgrade yt-dlp"), \
+         patch("beyin.cli._check_ffmpeg_available", return_value=True), \
+         patch("beyin.cli.list_youtube_episodes") as mock_list:
         result = runner.invoke(app, ["build", "test-pack"])
 
     assert result.exit_code == 1
@@ -776,8 +776,8 @@ def test_build_youtube_source_fails_when_ytdlp_unavailable(tmp_path):
 
 def test_build_mixed_pack_keeps_articles_when_audio_is_blocked(tmp_path):
     """Mixed packs still build article sources when audio work is blocked by ffmpeg."""
-    from brainpack.cli import app
-    packs_root = tmp_path / "brainpacks"
+    from beyin.cli import app
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -798,16 +798,16 @@ def test_build_mixed_pack_keeps_articles_when_audio_is_blocked(tmp_path):
         ]
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", side_effect=["article", "youtube"]), \
-         patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
-         patch("brainpack.cli.chunk_text", return_value=["chunk one"]), \
-         patch("brainpack.cli.embed_and_store", return_value=1), \
-         patch("brainpack.cli._check_ffmpeg_available", return_value=False), \
-         patch("brainpack.cli._youtube_build_issue", return_value=None):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", side_effect=["article", "youtube"]), \
+         patch("beyin.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
+         patch("beyin.cli.chunk_text", return_value=["chunk one"]), \
+         patch("beyin.cli.embed_and_store", return_value=1), \
+         patch("beyin.cli._check_ffmpeg_available", return_value=False), \
+         patch("beyin.cli._youtube_build_issue", return_value=None):
         result = runner.invoke(app, ["build", "test-pack", "--verbose"])
 
     assert result.exit_code == 1
@@ -822,10 +822,10 @@ def test_build_mixed_pack_keeps_articles_when_audio_is_blocked(tmp_path):
 
 def test_build_always_prints_summary_table_for_zero_new_run(tmp_path):
     """build must print a compact summary table even when all sources are already up-to-date."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -848,10 +848,10 @@ def test_build_always_prints_summary_table_for_zero_new_run(tmp_path):
 
 def test_build_mixed_result_prints_completed_with_issues_verdict(tmp_path):
     """build with a mix of success and failure sources must print 'completed with issues' verdict."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -883,10 +883,10 @@ def test_build_mixed_result_prints_completed_with_issues_verdict(tmp_path):
 
 def test_build_blocked_result_prints_completed_with_issues_and_exit_nonzero(tmp_path):
     """build with blocked audio source exits non-zero and prints an explicit verdict."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -906,8 +906,8 @@ def test_build_blocked_result_prints_completed_with_issues_and_exit_nonzero(tmp_
         detect_side_effects=["article", "youtube"],
         embed_return=2,
         extra={
-            "brainpack.cli._check_ffmpeg_available": {"return_value": False},
-            "brainpack.cli._youtube_build_issue": {"return_value": None},
+            "beyin.cli._check_ffmpeg_available": {"return_value": False},
+            "beyin.cli._youtube_build_issue": {"return_value": None},
         },
     ):
         result = runner.invoke(app, ["build", "test-pack"])
@@ -922,10 +922,10 @@ def test_build_blocked_result_prints_completed_with_issues_and_exit_nonzero(tmp_
 
 def test_build_blocker_warnings_repeated_in_final_recap(tmp_path):
     """build repeats warning/blocker lines in a short recap at the end, not just inline."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -961,11 +961,11 @@ def test_build_blocker_warnings_repeated_in_final_recap(tmp_path):
 
 def test_build_persists_last_build_recap_for_mixed_result(tmp_path):
     """build persists last_build_result and last_build_summary into state for mixed outcomes."""
-    from brainpack.cli import app
-    from brainpack.pack_state import load_state
+    from beyin.cli import app
+    from beyin.pack_state import load_state
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -985,7 +985,7 @@ def test_build_persists_last_build_recap_for_mixed_result(tmp_path):
         fetch_side_effects=[("Article text", "Good Article"), None],
         embed_return=1,
         save_state_mock=False,
-        extra={"brainpack.cli._youtube_build_issue": {"return_value": None}},
+        extra={"beyin.cli._youtube_build_issue": {"return_value": None}},
     ):
         result = runner.invoke(app, ["build", "test-pack"])
 
@@ -1001,11 +1001,11 @@ def test_build_persists_last_build_recap_for_mixed_result(tmp_path):
 
 def test_build_persists_last_build_recap_for_clean_success(tmp_path):
     """build persists last_build_result='success' into state for clean builds."""
-    from brainpack.cli import app
-    from brainpack.pack_state import load_state
+    from beyin.cli import app
+    from beyin.pack_state import load_state
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -1021,7 +1021,7 @@ def test_build_persists_last_build_recap_for_clean_success(tmp_path):
         fetch_return=("Article text", "Good Article"),
         embed_return=2,
         save_state_mock=False,
-        extra={"brainpack.cli._youtube_build_issue": {"return_value": None}},
+        extra={"beyin.cli._youtube_build_issue": {"return_value": None}},
     ):
         result = runner.invoke(app, ["build", "test-pack"])
 
@@ -1035,10 +1035,10 @@ def test_build_persists_last_build_recap_for_clean_success(tmp_path):
 
 def test_build_audio_shows_episode_progress_with_counter(tmp_path):
     """build shows 'Episode N/Total' counter for each audio episode being processed."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "testpack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -1057,27 +1057,27 @@ def test_build_audio_shows_episode_progress_with_counter(tmp_path):
     mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
 
     stack = ExitStack()
-    stack.enter_context(patch("brainpack.cli._PACKS_DIR", packs_root))
-    stack.enter_context(patch("brainpack.cli.load_config", return_value=mock_config))
-    stack.enter_context(patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}))
-    stack.enter_context(patch("brainpack.cli.check_model_provenance"))
-    stack.enter_context(patch("brainpack.cli.save_state"))
-    stack.enter_context(patch("brainpack.cli.load_model", return_value=MagicMock()))
-    stack.enter_context(patch("brainpack.cli.get_collection", return_value=MagicMock()))
-    stack.enter_context(patch("brainpack.cli.detect_source_type", return_value="youtube"))
-    stack.enter_context(patch("brainpack.cli.check_deno_available", return_value=True))
-    stack.enter_context(patch("brainpack.cli._youtube_build_issue", return_value=None))
-    stack.enter_context(patch("brainpack.cli._check_ffmpeg_available", return_value=True))
-    stack.enter_context(patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)))
-    stack.enter_context(patch("brainpack.cli.is_audio_step_done", return_value=False))
-    stack.enter_context(patch("brainpack.cli.get_audio_step", return_value={}))
-    stack.enter_context(patch("brainpack.cli.download_audio", return_value=audio_file))
-    stack.enter_context(patch("brainpack.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]))
-    stack.enter_context(patch("brainpack.cli.embed_and_store", return_value=3))
-    stack.enter_context(patch("brainpack.cli.mark_audio_step"))
-    stack.enter_context(patch("brainpack.cli._canonical_audio_path", return_value=audio_file))
-    stack.enter_context(patch("brainpack.cli._save_transcript_segments"))
-    stack.enter_context(patch("brainpack.cli._chunk_transcript_segments", return_value=(["chunk"], [{}])))
+    stack.enter_context(patch("beyin.cli._PACKS_DIR", packs_root))
+    stack.enter_context(patch("beyin.cli.load_config", return_value=mock_config))
+    stack.enter_context(patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}))
+    stack.enter_context(patch("beyin.cli.check_model_provenance"))
+    stack.enter_context(patch("beyin.cli.save_state"))
+    stack.enter_context(patch("beyin.cli.load_model", return_value=MagicMock()))
+    stack.enter_context(patch("beyin.cli.get_collection", return_value=MagicMock()))
+    stack.enter_context(patch("beyin.cli.detect_source_type", return_value="youtube"))
+    stack.enter_context(patch("beyin.cli.check_deno_available", return_value=True))
+    stack.enter_context(patch("beyin.cli._youtube_build_issue", return_value=None))
+    stack.enter_context(patch("beyin.cli._check_ffmpeg_available", return_value=True))
+    stack.enter_context(patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)))
+    stack.enter_context(patch("beyin.cli.is_audio_step_done", return_value=False))
+    stack.enter_context(patch("beyin.cli.get_audio_step", return_value={}))
+    stack.enter_context(patch("beyin.cli.download_audio", return_value=audio_file))
+    stack.enter_context(patch("beyin.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]))
+    stack.enter_context(patch("beyin.cli.embed_and_store", return_value=3))
+    stack.enter_context(patch("beyin.cli.mark_audio_step"))
+    stack.enter_context(patch("beyin.cli._canonical_audio_path", return_value=audio_file))
+    stack.enter_context(patch("beyin.cli._save_transcript_segments"))
+    stack.enter_context(patch("beyin.cli._chunk_transcript_segments", return_value=(["chunk"], [{}])))
 
     with stack:
         result = runner.invoke(app, ["build", "testpack", "--verbose"])
@@ -1094,10 +1094,10 @@ def test_build_audio_shows_episode_progress_with_counter(tmp_path):
 
 def test_build_quiet_audio_shows_stage_progress_lines(tmp_path):
     """Non-verbose audio builds still show coarse download/transcribe/embed progress."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "testpack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -1112,26 +1112,26 @@ def test_build_quiet_audio_shows_stage_progress_lines(tmp_path):
     episode = {"url": "https://youtube.com/watch?v=1", "title": "Ep 1", "id": "1"}
     mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-         patch("brainpack.cli._youtube_build_issue", return_value=None), \
-         patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
-         patch("brainpack.cli.is_audio_step_done", return_value=False), \
-         patch("brainpack.cli.get_audio_step", return_value={}), \
-         patch("brainpack.cli.download_audio", return_value=audio_file), \
-         patch("brainpack.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
-         patch("brainpack.cli.embed_and_store", return_value=3), \
-         patch("brainpack.cli.mark_audio_step"), \
-         patch("brainpack.cli._canonical_audio_path", return_value=audio_file), \
-         patch("brainpack.cli._save_transcript_segments"), \
-         patch("brainpack.cli._chunk_transcript_segments", return_value=(["chunk"], [{}])):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="youtube"), \
+         patch("beyin.cli._youtube_build_issue", return_value=None), \
+         patch("beyin.cli._check_ffmpeg_available", return_value=True), \
+         patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
+         patch("beyin.cli.is_audio_step_done", return_value=False), \
+         patch("beyin.cli.get_audio_step", return_value={}), \
+         patch("beyin.cli.download_audio", return_value=audio_file), \
+         patch("beyin.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
+         patch("beyin.cli.embed_and_store", return_value=3), \
+         patch("beyin.cli.mark_audio_step"), \
+         patch("beyin.cli._canonical_audio_path", return_value=audio_file), \
+         patch("beyin.cli._save_transcript_segments"), \
+         patch("beyin.cli._chunk_transcript_segments", return_value=(["chunk"], [{}])):
         result = runner.invoke(app, ["build", "testpack"])
 
     output = result.output
@@ -1143,10 +1143,10 @@ def test_build_quiet_audio_shows_stage_progress_lines(tmp_path):
 
 def test_build_clean_success_exits_0_and_shows_summary(tmp_path):
     """Clean build (no failures) exits 0 and always shows a final summary table."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -1173,10 +1173,10 @@ def test_build_clean_success_exits_0_and_shows_summary(tmp_path):
 
 
 def test_build_reset_flag_clears_runtime_artifacts_before_rebuild(tmp_path):
-    """brainpack build <pack> --reset clears runtime artifacts and then runs the normal build path."""
-    from brainpack.cli import app
+    """beyin build <pack> --reset clears runtime artifacts and then runs the normal build path."""
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -1194,20 +1194,20 @@ def test_build_reset_flag_clears_runtime_artifacts_before_rebuild(tmp_path):
     mock_config = _make_config([SourceEntry(url="https://example.com/article")])
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="article"), \
-         patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
-         patch("brainpack.cli.chunk_text", return_value=["chunk"]), \
-         patch("brainpack.cli.embed_and_store", return_value=1), \
-         patch("brainpack.cli.mark_processed"), \
-         patch("brainpack.cli.mark_failed"):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="article"), \
+         patch("beyin.cli.is_processed", return_value=False), \
+         patch("beyin.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
+         patch("beyin.cli.chunk_text", return_value=["chunk"]), \
+         patch("beyin.cli.embed_and_store", return_value=1), \
+         patch("beyin.cli.mark_processed"), \
+         patch("beyin.cli.mark_failed"):
         result = runner.invoke(app, ["build", "test-pack", "--reset"])
 
     assert result.exit_code == 0, f"exit {result.exit_code}: {result.output}"
@@ -1215,10 +1215,10 @@ def test_build_reset_flag_clears_runtime_artifacts_before_rebuild(tmp_path):
 
 
 def test_build_reset_preserves_pack_yaml_and_origin_json(tmp_path):
-    """brainpack build <pack> --reset must not remove pack.yaml or origin.json."""
-    from brainpack.cli import app
+    """beyin build <pack> --reset must not remove pack.yaml or origin.json."""
+    from beyin.cli import app
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     pack_yaml_text = (
@@ -1233,20 +1233,20 @@ def test_build_reset_preserves_pack_yaml_and_origin_json(tmp_path):
     mock_config = _make_config([SourceEntry(url="https://example.com/article")])
     runner = CliRunner()
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="article"), \
-         patch("brainpack.cli.is_processed", return_value=False), \
-         patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
-         patch("brainpack.cli.chunk_text", return_value=["chunk"]), \
-         patch("brainpack.cli.embed_and_store", return_value=1), \
-         patch("brainpack.cli.mark_processed"), \
-         patch("brainpack.cli.mark_failed"):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="article"), \
+         patch("beyin.cli.is_processed", return_value=False), \
+         patch("beyin.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
+         patch("beyin.cli.chunk_text", return_value=["chunk"]), \
+         patch("beyin.cli.embed_and_store", return_value=1), \
+         patch("beyin.cli.mark_processed"), \
+         patch("beyin.cli.mark_failed"):
         result = runner.invoke(app, ["build", "test-pack", "--reset"])
 
     assert result.exit_code == 0, f"exit {result.exit_code}: {result.output}"
@@ -1255,8 +1255,8 @@ def test_build_reset_preserves_pack_yaml_and_origin_json(tmp_path):
 
 
 def test_model_mismatch_remediation_points_to_build_reset(tmp_path):
-    """Embedding model mismatch error message must point to `brainpack build <pack> --reset`."""
-    from brainpack.pack_state import check_model_provenance
+    """Embedding model mismatch error message must point to `beyin build <pack> --reset`."""
+    from beyin.pack_state import check_model_provenance
 
     state = {"embedding_model": "all-MiniLM-L6-v2"}
     import typer as _typer
@@ -1274,8 +1274,8 @@ def test_model_mismatch_remediation_points_to_build_reset(tmp_path):
 
 
 def test_transcription_model_mismatch_remediation_points_to_build_reset():
-    """Whisper model mismatch error message must point to `brainpack build <pack> --reset`."""
-    from brainpack.pack_state import check_transcription_provenance
+    """Whisper model mismatch error message must point to `beyin build <pack> --reset`."""
+    from beyin.pack_state import check_transcription_provenance
 
     state = {
         "transcription_model": "medium",
@@ -1300,10 +1300,10 @@ def test_transcription_model_mismatch_remediation_points_to_build_reset():
 
 def test_build_blocks_audio_pack_when_whisper_model_changes_without_reset(tmp_path):
     """Audio packs must not silently mix transcripts built with different Whisper models."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -1326,11 +1326,11 @@ def test_build_blocks_audio_pack_when_whisper_model_changes_without_reset(tmp_pa
         },
     }
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value=state), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli._has_audio_sources", return_value=True):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value=state), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli._has_audio_sources", return_value=True):
         result = runner.invoke(app, ["build", "test-pack", "--model", "small"])
 
     assert result.exit_code == 2
@@ -1348,19 +1348,19 @@ class TestAudioBuild:
     def _base_patches(self, packs_root, extra_patches=None):
         """Return common patch context for audio build tests."""
         patches = {
-            "brainpack.cli._PACKS_DIR": packs_root,
-            "brainpack.cli.load_state": {"embedding_model": None, "processed": {}, "audio_steps": {}},
-            "brainpack.cli.check_model_provenance": MagicMock(),
-            "brainpack.cli.save_state": MagicMock(),
-            "brainpack.cli.load_model": MagicMock(),
-            "brainpack.cli.get_collection": MagicMock(),
-            "brainpack.cli.embed_and_store": 1,
-            "brainpack.cli.chunk_text": ["chunk1"],
-            "brainpack.cli.mark_audio_step": MagicMock(),
-            "brainpack.cli.is_audio_step_done": False,
-            "brainpack.cli.get_audio_step": {},
-            "brainpack.cli.mark_failed": MagicMock(),
-            "brainpack.cli.check_deno_available": True,
+            "beyin.cli._PACKS_DIR": packs_root,
+            "beyin.cli.load_state": {"embedding_model": None, "processed": {}, "audio_steps": {}},
+            "beyin.cli.check_model_provenance": MagicMock(),
+            "beyin.cli.save_state": MagicMock(),
+            "beyin.cli.load_model": MagicMock(),
+            "beyin.cli.get_collection": MagicMock(),
+            "beyin.cli.embed_and_store": 1,
+            "beyin.cli.chunk_text": ["chunk1"],
+            "beyin.cli.mark_audio_step": MagicMock(),
+            "beyin.cli.is_audio_step_done": False,
+            "beyin.cli.get_audio_step": {},
+            "beyin.cli.mark_failed": MagicMock(),
+            "beyin.cli.check_deno_available": True,
         }
         if extra_patches:
             patches.update(extra_patches)
@@ -1368,8 +1368,8 @@ class TestAudioBuild:
 
     def test_build_youtube_source(self, tmp_path):
         """build routes youtube source through list_youtube_episodes + download_audio + transcribe_audio."""
-        from brainpack.cli import app
-        packs_root = tmp_path / "brainpacks"
+        from beyin.cli import app
+        packs_root = tmp_path / "beyin"
         pack_dir = packs_root / "test-pack"
         pack_dir.mkdir(parents=True)
         (pack_dir / "pack.yaml").write_text(
@@ -1389,24 +1389,24 @@ class TestAudioBuild:
         mock_transcribe = MagicMock(return_value=segments)
         mock_download = MagicMock(return_value=audio_file)
 
-        with patch("brainpack.cli._PACKS_DIR", packs_root), \
-             patch("brainpack.cli.load_config", return_value=mock_config), \
-             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-             patch("brainpack.cli.check_model_provenance"), \
-             patch("brainpack.cli.save_state"), \
-             patch("brainpack.cli.load_model", return_value=MagicMock()), \
-             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-             patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-             patch("brainpack.cli.check_deno_available", return_value=True), \
-             patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
-             patch("brainpack.cli.download_audio", mock_download), \
-             patch("brainpack.cli.transcribe_audio", mock_transcribe), \
-             patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
-             patch("brainpack.cli.embed_and_store", mock_embed), \
-             patch("brainpack.cli.is_audio_step_done", return_value=False), \
-             patch("brainpack.cli.get_audio_step", return_value={}), \
-             patch("brainpack.cli.mark_audio_step"), \
-             patch("brainpack.cli.mark_failed"):
+        with patch("beyin.cli._PACKS_DIR", packs_root), \
+             patch("beyin.cli.load_config", return_value=mock_config), \
+             patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("beyin.cli.check_model_provenance"), \
+             patch("beyin.cli.save_state"), \
+             patch("beyin.cli.load_model", return_value=MagicMock()), \
+             patch("beyin.cli.get_collection", return_value=MagicMock()), \
+             patch("beyin.cli.detect_source_type", return_value="youtube"), \
+             patch("beyin.cli.check_deno_available", return_value=True), \
+             patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
+             patch("beyin.cli.download_audio", mock_download), \
+             patch("beyin.cli.transcribe_audio", mock_transcribe), \
+             patch("beyin.cli.chunk_text", return_value=["chunk1"]), \
+             patch("beyin.cli.embed_and_store", mock_embed), \
+             patch("beyin.cli.is_audio_step_done", return_value=False), \
+             patch("beyin.cli.get_audio_step", return_value={}), \
+             patch("beyin.cli.mark_audio_step"), \
+             patch("beyin.cli.mark_failed"):
 
             result = runner.invoke(app, ["build", "test-pack", "--verbose"])
 
@@ -1418,8 +1418,8 @@ class TestAudioBuild:
 
     def test_build_podcast_source(self, tmp_path):
         """build routes podcast source through list_podcast_episodes + download_podcast_audio + transcribe_audio."""
-        from brainpack.cli import app
-        packs_root = tmp_path / "brainpacks"
+        from beyin.cli import app
+        packs_root = tmp_path / "beyin"
         pack_dir = packs_root / "test-pack"
         pack_dir.mkdir(parents=True)
         (pack_dir / "pack.yaml").write_text(
@@ -1438,23 +1438,23 @@ class TestAudioBuild:
         mock_transcribe = MagicMock(return_value=segments)
         mock_download = MagicMock(return_value=audio_file)
 
-        with patch("brainpack.cli._PACKS_DIR", packs_root), \
-             patch("brainpack.cli.load_config", return_value=mock_config), \
-             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-             patch("brainpack.cli.check_model_provenance"), \
-             patch("brainpack.cli.save_state"), \
-             patch("brainpack.cli.load_model", return_value=MagicMock()), \
-             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-             patch("brainpack.cli.detect_source_type", return_value="podcast"), \
-             patch("brainpack.cli.list_podcast_episodes", return_value=[episode]), \
-             patch("brainpack.cli.download_podcast_audio", mock_download), \
-             patch("brainpack.cli.transcribe_audio", mock_transcribe), \
-             patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
-             patch("brainpack.cli.embed_and_store", return_value=1), \
-             patch("brainpack.cli.is_audio_step_done", return_value=False), \
-             patch("brainpack.cli.get_audio_step", return_value={}), \
-             patch("brainpack.cli.mark_audio_step"), \
-             patch("brainpack.cli.mark_failed"):
+        with patch("beyin.cli._PACKS_DIR", packs_root), \
+             patch("beyin.cli.load_config", return_value=mock_config), \
+             patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("beyin.cli.check_model_provenance"), \
+             patch("beyin.cli.save_state"), \
+             patch("beyin.cli.load_model", return_value=MagicMock()), \
+             patch("beyin.cli.get_collection", return_value=MagicMock()), \
+             patch("beyin.cli.detect_source_type", return_value="podcast"), \
+             patch("beyin.cli.list_podcast_episodes", return_value=[episode]), \
+             patch("beyin.cli.download_podcast_audio", mock_download), \
+             patch("beyin.cli.transcribe_audio", mock_transcribe), \
+             patch("beyin.cli.chunk_text", return_value=["chunk1"]), \
+             patch("beyin.cli.embed_and_store", return_value=1), \
+             patch("beyin.cli.is_audio_step_done", return_value=False), \
+             patch("beyin.cli.get_audio_step", return_value={}), \
+             patch("beyin.cli.mark_audio_step"), \
+             patch("beyin.cli.mark_failed"):
 
             result = runner.invoke(app, ["build", "test-pack"])
 
@@ -1464,8 +1464,8 @@ class TestAudioBuild:
 
     def test_build_podcast_source_uses_feed_transcript_without_audio(self, tmp_path):
         """Podcast entries with transcript text should bypass download/transcription and not require ffmpeg."""
-        from brainpack.cli import app
-        packs_root = tmp_path / "brainpacks"
+        from beyin.cli import app
+        packs_root = tmp_path / "beyin"
         pack_dir = packs_root / "test-pack"
         pack_dir.mkdir(parents=True)
         (pack_dir / "pack.yaml").write_text(
@@ -1483,24 +1483,24 @@ class TestAudioBuild:
         }
         mock_config = _make_config([SourceEntry(url="https://example.com/feed.rss")])
 
-        with patch("brainpack.cli._PACKS_DIR", packs_root), \
-             patch("brainpack.cli.load_config", return_value=mock_config), \
-             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-             patch("brainpack.cli.check_model_provenance"), \
-             patch("brainpack.cli.check_transcription_provenance"), \
-             patch("brainpack.cli.save_state"), \
-             patch("brainpack.cli.load_model", return_value=MagicMock()), \
-             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-             patch("brainpack.cli.detect_source_type", return_value="podcast"), \
-             patch("brainpack.cli.list_podcast_episodes", return_value=[episode]), \
-             patch("brainpack.cli._check_ffmpeg_available", return_value=False), \
-             patch("brainpack.cli.download_podcast_audio") as mock_download, \
-             patch("brainpack.cli.transcribe_audio") as mock_transcribe, \
-             patch("brainpack.cli.embed_and_store", return_value=1), \
-             patch("brainpack.cli.is_audio_step_done", return_value=False), \
-             patch("brainpack.cli.get_audio_step", return_value={}), \
-             patch("brainpack.cli.mark_audio_step"), \
-             patch("brainpack.cli.mark_failed"):
+        with patch("beyin.cli._PACKS_DIR", packs_root), \
+             patch("beyin.cli.load_config", return_value=mock_config), \
+             patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("beyin.cli.check_model_provenance"), \
+             patch("beyin.cli.check_transcription_provenance"), \
+             patch("beyin.cli.save_state"), \
+             patch("beyin.cli.load_model", return_value=MagicMock()), \
+             patch("beyin.cli.get_collection", return_value=MagicMock()), \
+             patch("beyin.cli.detect_source_type", return_value="podcast"), \
+             patch("beyin.cli.list_podcast_episodes", return_value=[episode]), \
+             patch("beyin.cli._check_ffmpeg_available", return_value=False), \
+             patch("beyin.cli.download_podcast_audio") as mock_download, \
+             patch("beyin.cli.transcribe_audio") as mock_transcribe, \
+             patch("beyin.cli.embed_and_store", return_value=1), \
+             patch("beyin.cli.is_audio_step_done", return_value=False), \
+             patch("beyin.cli.get_audio_step", return_value={}), \
+             patch("beyin.cli.mark_audio_step"), \
+             patch("beyin.cli.mark_failed"):
 
             result = runner.invoke(app, ["build", "test-pack"])
 
@@ -1511,9 +1511,9 @@ class TestAudioBuild:
 
     def test_build_podcast_transcript_text_persists_real_chunks(self, tmp_path):
         """Transcript-aware RSS should split long transcript text into indexable chunks instead of saving one oversized segment."""
-        from brainpack.cli import app
+        from beyin.cli import app
 
-        packs_root = tmp_path / "brainpacks"
+        packs_root = tmp_path / "beyin"
         pack_dir = packs_root / "test-pack"
         pack_dir.mkdir(parents=True)
         (pack_dir / "pack.yaml").write_text(
@@ -1544,24 +1544,24 @@ class TestAudioBuild:
             captured["url"] = url
             return len(chunks)
 
-        with patch("brainpack.cli._PACKS_DIR", packs_root), \
-             patch("brainpack.cli.load_config", return_value=mock_config), \
-             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-             patch("brainpack.cli.check_model_provenance"), \
-             patch("brainpack.cli.check_transcription_provenance"), \
-             patch("brainpack.cli.save_state"), \
-             patch("brainpack.cli.load_model", return_value=MagicMock()), \
-             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-             patch("brainpack.cli.detect_source_type", return_value="podcast"), \
-             patch("brainpack.cli.list_podcast_episodes", return_value=[episode]), \
-             patch("brainpack.cli._check_ffmpeg_available", return_value=False), \
-             patch("brainpack.cli.download_podcast_audio") as mock_download, \
-             patch("brainpack.cli.transcribe_audio") as mock_transcribe, \
-             patch("brainpack.cli.embed_and_store", side_effect=_capture_embed), \
-             patch("brainpack.cli.is_audio_step_done", return_value=False), \
-             patch("brainpack.cli.get_audio_step", return_value={}), \
-             patch("brainpack.cli.mark_audio_step"), \
-             patch("brainpack.cli.mark_failed"):
+        with patch("beyin.cli._PACKS_DIR", packs_root), \
+             patch("beyin.cli.load_config", return_value=mock_config), \
+             patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("beyin.cli.check_model_provenance"), \
+             patch("beyin.cli.check_transcription_provenance"), \
+             patch("beyin.cli.save_state"), \
+             patch("beyin.cli.load_model", return_value=MagicMock()), \
+             patch("beyin.cli.get_collection", return_value=MagicMock()), \
+             patch("beyin.cli.detect_source_type", return_value="podcast"), \
+             patch("beyin.cli.list_podcast_episodes", return_value=[episode]), \
+             patch("beyin.cli._check_ffmpeg_available", return_value=False), \
+             patch("beyin.cli.download_podcast_audio") as mock_download, \
+             patch("beyin.cli.transcribe_audio") as mock_transcribe, \
+             patch("beyin.cli.embed_and_store", side_effect=_capture_embed), \
+             patch("beyin.cli.is_audio_step_done", return_value=False), \
+             patch("beyin.cli.get_audio_step", return_value={}), \
+             patch("beyin.cli.mark_audio_step"), \
+             patch("beyin.cli.mark_failed"):
 
             result = runner.invoke(app, ["build", "test-pack"])
 
@@ -1573,8 +1573,8 @@ class TestAudioBuild:
 
     def test_build_model_flag_passed_to_transcribe(self, tmp_path):
         """build --model medium passes model_size='medium' to transcribe_audio."""
-        from brainpack.cli import app
-        packs_root = tmp_path / "brainpacks"
+        from beyin.cli import app
+        packs_root = tmp_path / "beyin"
         pack_dir = packs_root / "test-pack"
         pack_dir.mkdir(parents=True)
         (pack_dir / "pack.yaml").write_text(
@@ -1591,24 +1591,24 @@ class TestAudioBuild:
         mock_config = _make_config([SourceEntry(url="https://www.youtube.com/@channel")])
         mock_transcribe = MagicMock(return_value=segments)
 
-        with patch("brainpack.cli._PACKS_DIR", packs_root), \
-             patch("brainpack.cli.load_config", return_value=mock_config), \
-             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-             patch("brainpack.cli.check_model_provenance"), \
-             patch("brainpack.cli.save_state"), \
-             patch("brainpack.cli.load_model", return_value=MagicMock()), \
-             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-             patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-             patch("brainpack.cli.check_deno_available", return_value=True), \
-             patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
-             patch("brainpack.cli.download_audio", return_value=audio_file), \
-             patch("brainpack.cli.transcribe_audio", mock_transcribe), \
-             patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
-             patch("brainpack.cli.embed_and_store", return_value=1), \
-             patch("brainpack.cli.is_audio_step_done", return_value=False), \
-             patch("brainpack.cli.get_audio_step", return_value={}), \
-             patch("brainpack.cli.mark_audio_step"), \
-             patch("brainpack.cli.mark_failed"):
+        with patch("beyin.cli._PACKS_DIR", packs_root), \
+             patch("beyin.cli.load_config", return_value=mock_config), \
+             patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("beyin.cli.check_model_provenance"), \
+             patch("beyin.cli.save_state"), \
+             patch("beyin.cli.load_model", return_value=MagicMock()), \
+             patch("beyin.cli.get_collection", return_value=MagicMock()), \
+             patch("beyin.cli.detect_source_type", return_value="youtube"), \
+             patch("beyin.cli.check_deno_available", return_value=True), \
+             patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
+             patch("beyin.cli.download_audio", return_value=audio_file), \
+             patch("beyin.cli.transcribe_audio", mock_transcribe), \
+             patch("beyin.cli.chunk_text", return_value=["chunk1"]), \
+             patch("beyin.cli.embed_and_store", return_value=1), \
+             patch("beyin.cli.is_audio_step_done", return_value=False), \
+             patch("beyin.cli.get_audio_step", return_value={}), \
+             patch("beyin.cli.mark_audio_step"), \
+             patch("beyin.cli.mark_failed"):
 
             result = runner.invoke(app, ["build", "test-pack", "--model", "medium"])
 
@@ -1619,8 +1619,8 @@ class TestAudioBuild:
 
     def test_build_language_flag_passed_to_transcribe(self, tmp_path):
         """build --language tr passes language='tr' to transcribe_audio."""
-        from brainpack.cli import app
-        packs_root = tmp_path / "brainpacks"
+        from beyin.cli import app
+        packs_root = tmp_path / "beyin"
         pack_dir = packs_root / "test-pack"
         pack_dir.mkdir(parents=True)
         (pack_dir / "pack.yaml").write_text(
@@ -1637,24 +1637,24 @@ class TestAudioBuild:
         mock_config = _make_config([SourceEntry(url="https://www.youtube.com/@channel")])
         mock_transcribe = MagicMock(return_value=segments)
 
-        with patch("brainpack.cli._PACKS_DIR", packs_root), \
-             patch("brainpack.cli.load_config", return_value=mock_config), \
-             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-             patch("brainpack.cli.check_model_provenance"), \
-             patch("brainpack.cli.save_state"), \
-             patch("brainpack.cli.load_model", return_value=MagicMock()), \
-             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-             patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-             patch("brainpack.cli.check_deno_available", return_value=True), \
-             patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
-             patch("brainpack.cli.download_audio", return_value=audio_file), \
-             patch("brainpack.cli.transcribe_audio", mock_transcribe), \
-             patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
-             patch("brainpack.cli.embed_and_store", return_value=1), \
-             patch("brainpack.cli.is_audio_step_done", return_value=False), \
-             patch("brainpack.cli.get_audio_step", return_value={}), \
-             patch("brainpack.cli.mark_audio_step"), \
-             patch("brainpack.cli.mark_failed"):
+        with patch("beyin.cli._PACKS_DIR", packs_root), \
+             patch("beyin.cli.load_config", return_value=mock_config), \
+             patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("beyin.cli.check_model_provenance"), \
+             patch("beyin.cli.save_state"), \
+             patch("beyin.cli.load_model", return_value=MagicMock()), \
+             patch("beyin.cli.get_collection", return_value=MagicMock()), \
+             patch("beyin.cli.detect_source_type", return_value="youtube"), \
+             patch("beyin.cli.check_deno_available", return_value=True), \
+             patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])), \
+             patch("beyin.cli.download_audio", return_value=audio_file), \
+             patch("beyin.cli.transcribe_audio", mock_transcribe), \
+             patch("beyin.cli.chunk_text", return_value=["chunk1"]), \
+             patch("beyin.cli.embed_and_store", return_value=1), \
+             patch("beyin.cli.is_audio_step_done", return_value=False), \
+             patch("beyin.cli.get_audio_step", return_value={}), \
+             patch("beyin.cli.mark_audio_step"), \
+             patch("beyin.cli.mark_failed"):
 
             result = runner.invoke(app, ["build", "test-pack", "--language", "tr"])
 
@@ -1665,8 +1665,8 @@ class TestAudioBuild:
 
     def test_build_article_source_unchanged(self, tmp_path):
         """Article source still calls fetch_article; transcribe_audio NOT called."""
-        from brainpack.cli import app
-        packs_root = tmp_path / "brainpacks"
+        from beyin.cli import app
+        packs_root = tmp_path / "beyin"
         pack_dir = packs_root / "test-pack"
         pack_dir.mkdir(parents=True)
         (pack_dir / "pack.yaml").write_text(
@@ -1679,21 +1679,21 @@ class TestAudioBuild:
         mock_fetch = MagicMock(return_value=("Article text", "Article Title"))
         mock_transcribe = MagicMock()
 
-        with patch("brainpack.cli._PACKS_DIR", packs_root), \
-             patch("brainpack.cli.load_config", return_value=mock_config), \
-             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-             patch("brainpack.cli.check_model_provenance"), \
-             patch("brainpack.cli.save_state"), \
-             patch("brainpack.cli.load_model", return_value=MagicMock()), \
-             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-             patch("brainpack.cli.detect_source_type", return_value="article"), \
-             patch("brainpack.cli.is_processed", return_value=False), \
-             patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
-             patch("brainpack.cli.transcribe_audio", mock_transcribe), \
-             patch("brainpack.cli.chunk_text", return_value=["chunk1"]), \
-             patch("brainpack.cli.embed_and_store", return_value=1), \
-             patch("brainpack.cli.mark_processed"), \
-             patch("brainpack.cli.mark_failed"):
+        with patch("beyin.cli._PACKS_DIR", packs_root), \
+             patch("beyin.cli.load_config", return_value=mock_config), \
+             patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("beyin.cli.check_model_provenance"), \
+             patch("beyin.cli.save_state"), \
+             patch("beyin.cli.load_model", return_value=MagicMock()), \
+             patch("beyin.cli.get_collection", return_value=MagicMock()), \
+             patch("beyin.cli.detect_source_type", return_value="article"), \
+             patch("beyin.cli.is_processed", return_value=False), \
+             patch("beyin.cli.resolve_article_ingestion", return_value={"mode": "article", "text": "Article text", "title": "Article Title", "metadata_url": "https://example.com/article"}), \
+             patch("beyin.cli.transcribe_audio", mock_transcribe), \
+             patch("beyin.cli.chunk_text", return_value=["chunk1"]), \
+             patch("beyin.cli.embed_and_store", return_value=1), \
+             patch("beyin.cli.mark_processed"), \
+             patch("beyin.cli.mark_failed"):
 
             result = runner.invoke(app, ["build", "test-pack"])
 
@@ -1702,9 +1702,9 @@ class TestAudioBuild:
 
     def test_build_article_source_can_fallback_to_podcast_audio(self, tmp_path):
         """Article-like episode pages should download/transcribe direct audio instead of indexing landing-page text."""
-        from brainpack.cli import app
+        from beyin.cli import app
 
-        packs_root = tmp_path / "brainpacks"
+        packs_root = tmp_path / "beyin"
         pack_dir = packs_root / "test-pack"
         pack_dir.mkdir(parents=True)
         (pack_dir / "pack.yaml").write_text(
@@ -1718,23 +1718,23 @@ class TestAudioBuild:
         audio_file.write_bytes(b"x" * 20_000)
         segments = [{"start": 0.0, "end": 10.0, "text": "Podcast content here"}]
 
-        with patch("brainpack.cli._PACKS_DIR", packs_root), \
-             patch("brainpack.cli.load_config", return_value=mock_config), \
-             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-             patch("brainpack.cli.check_model_provenance"), \
-             patch("brainpack.cli.check_transcription_provenance"), \
-             patch("brainpack.cli.save_state"), \
-             patch("brainpack.cli.load_model", return_value=MagicMock()), \
-             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-             patch("brainpack.cli.detect_source_type", return_value="article"), \
-             patch("brainpack.cli.is_processed", return_value=False), \
-             patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "podcast_audio", "audio_url": "https://cdn.example.com/episode.mp3", "title": "Episode 1", "metadata_url": "https://example.com/episode"}), \
-             patch("brainpack.cli._check_ffmpeg_available", return_value=True), \
-             patch("brainpack.cli.download_podcast_audio", return_value=audio_file) as mock_download, \
-             patch("brainpack.cli.transcribe_audio", return_value=segments) as mock_transcribe, \
-             patch("brainpack.cli.embed_and_store", return_value=1) as mock_embed, \
-             patch("brainpack.cli.mark_audio_step"), \
-             patch("brainpack.cli.mark_failed"):
+        with patch("beyin.cli._PACKS_DIR", packs_root), \
+             patch("beyin.cli.load_config", return_value=mock_config), \
+             patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("beyin.cli.check_model_provenance"), \
+             patch("beyin.cli.check_transcription_provenance"), \
+             patch("beyin.cli.save_state"), \
+             patch("beyin.cli.load_model", return_value=MagicMock()), \
+             patch("beyin.cli.get_collection", return_value=MagicMock()), \
+             patch("beyin.cli.detect_source_type", return_value="article"), \
+             patch("beyin.cli.is_processed", return_value=False), \
+             patch("beyin.cli.resolve_article_ingestion", return_value={"mode": "podcast_audio", "audio_url": "https://cdn.example.com/episode.mp3", "title": "Episode 1", "metadata_url": "https://example.com/episode"}), \
+             patch("beyin.cli._check_ffmpeg_available", return_value=True), \
+             patch("beyin.cli.download_podcast_audio", return_value=audio_file) as mock_download, \
+             patch("beyin.cli.transcribe_audio", return_value=segments) as mock_transcribe, \
+             patch("beyin.cli.embed_and_store", return_value=1) as mock_embed, \
+             patch("beyin.cli.mark_audio_step"), \
+             patch("beyin.cli.mark_failed"):
             result = runner.invoke(app, ["build", "test-pack"])
 
         assert result.exit_code == 0, result.output
@@ -1744,9 +1744,9 @@ class TestAudioBuild:
 
     def test_build_article_source_rejects_podcast_page_without_transcript_or_audio(self, tmp_path):
         """Podcast-like article pages should fail instead of indexing shallow landing-page show notes."""
-        from brainpack.cli import app
+        from beyin.cli import app
 
-        packs_root = tmp_path / "brainpacks"
+        packs_root = tmp_path / "beyin"
         pack_dir = packs_root / "test-pack"
         pack_dir.mkdir(parents=True)
         (pack_dir / "pack.yaml").write_text(
@@ -1757,19 +1757,19 @@ class TestAudioBuild:
         runner = CliRunner()
         mock_config = _make_config([SourceEntry(url="https://example.com/episode")])
 
-        with patch("brainpack.cli._PACKS_DIR", packs_root), \
-             patch("brainpack.cli.load_config", return_value=mock_config), \
-             patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-             patch("brainpack.cli.check_model_provenance"), \
-             patch("brainpack.cli.save_state"), \
-             patch("brainpack.cli.load_model", return_value=MagicMock()), \
-             patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-             patch("brainpack.cli.detect_source_type", return_value="article"), \
-             patch("brainpack.cli.is_processed", return_value=False), \
-             patch("brainpack.cli.resolve_article_ingestion", return_value={"mode": "podcast_unresolved", "title": "Episode 1", "reason": "no transcript or audio found for podcast episode page: https://example.com/episode"}), \
-             patch("brainpack.cli.embed_and_store") as mock_embed, \
-             patch("brainpack.cli.mark_processed") as mock_mark, \
-             patch("brainpack.cli.mark_failed") as mock_fail:
+        with patch("beyin.cli._PACKS_DIR", packs_root), \
+             patch("beyin.cli.load_config", return_value=mock_config), \
+             patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("beyin.cli.check_model_provenance"), \
+             patch("beyin.cli.save_state"), \
+             patch("beyin.cli.load_model", return_value=MagicMock()), \
+             patch("beyin.cli.get_collection", return_value=MagicMock()), \
+             patch("beyin.cli.detect_source_type", return_value="article"), \
+             patch("beyin.cli.is_processed", return_value=False), \
+             patch("beyin.cli.resolve_article_ingestion", return_value={"mode": "podcast_unresolved", "title": "Episode 1", "reason": "no transcript or audio found for podcast episode page: https://example.com/episode"}), \
+             patch("beyin.cli.embed_and_store") as mock_embed, \
+             patch("beyin.cli.mark_processed") as mock_mark, \
+             patch("beyin.cli.mark_failed") as mock_fail:
             result = runner.invoke(app, ["build", "test-pack"])
 
         assert result.exit_code == 1, result.output
@@ -1780,7 +1780,7 @@ class TestAudioBuild:
 
     def test_build_help_shows_model_and_language_flags(self):
         """build --help shows --model and --language options."""
-        from brainpack.cli import app
+        from beyin.cli import app
         runner = CliRunner()
         result = runner.invoke(app, ["build", "--help"])
         assert result.exit_code == 0
@@ -1795,10 +1795,10 @@ class TestAudioBuild:
 @pytest.mark.xfail(strict=False)
 def test_build_transcribe_counter(tmp_path):
     """build shows '[transcribe] Episode N/Total: title' for each episode."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "testpack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -1817,24 +1817,24 @@ def test_build_transcribe_counter(tmp_path):
     ]
     mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-         patch("brainpack.cli.check_deno_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
-         patch("brainpack.cli.is_audio_step_done", return_value=False), \
-         patch("brainpack.cli.get_audio_step", return_value={}), \
-         patch("brainpack.cli.download_audio", return_value=audio_file), \
-         patch("brainpack.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
-         patch("brainpack.cli.embed_and_store", return_value=5), \
-         patch("brainpack.cli.mark_audio_step"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.check_model_provenance"):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="youtube"), \
+         patch("beyin.cli.check_deno_available", return_value=True), \
+         patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
+         patch("beyin.cli.is_audio_step_done", return_value=False), \
+         patch("beyin.cli.get_audio_step", return_value={}), \
+         patch("beyin.cli.download_audio", return_value=audio_file), \
+         patch("beyin.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
+         patch("beyin.cli.embed_and_store", return_value=5), \
+         patch("beyin.cli.mark_audio_step"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.check_model_provenance"):
         result = runner.invoke(app, ["build", "testpack"])
 
     assert "[transcribe] Episode 1/3:" in result.output
@@ -1845,10 +1845,10 @@ def test_build_transcribe_counter(tmp_path):
 @pytest.mark.xfail(strict=False)
 def test_build_embed_label(tmp_path):
     """build shows '[embed] title - N chunks' after embed_and_store call."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "testpack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -1864,23 +1864,23 @@ def test_build_embed_label(tmp_path):
     ]
     mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-         patch("brainpack.cli.check_deno_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
-         patch("brainpack.cli.is_audio_step_done", return_value=False), \
-         patch("brainpack.cli.get_audio_step", return_value={}), \
-         patch("brainpack.cli.download_audio", return_value=audio_file), \
-         patch("brainpack.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
-         patch("brainpack.cli.embed_and_store", return_value=5), \
-         patch("brainpack.cli.mark_audio_step"), \
-         patch("brainpack.cli.check_model_provenance"):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="youtube"), \
+         patch("beyin.cli.check_deno_available", return_value=True), \
+         patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
+         patch("beyin.cli.is_audio_step_done", return_value=False), \
+         patch("beyin.cli.get_audio_step", return_value={}), \
+         patch("beyin.cli.download_audio", return_value=audio_file), \
+         patch("beyin.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
+         patch("beyin.cli.embed_and_store", return_value=5), \
+         patch("beyin.cli.mark_audio_step"), \
+         patch("beyin.cli.check_model_provenance"):
         result = runner.invoke(app, ["build", "testpack"])
 
     assert "[embed]" in result.output
@@ -1890,10 +1890,10 @@ def test_build_embed_label(tmp_path):
 @pytest.mark.xfail(strict=False)
 def test_build_final_summary_table(tmp_path):
     """build prints a summary table with Source/Status/Chunks columns when new chunks processed."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "testpack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -1909,23 +1909,23 @@ def test_build_final_summary_table(tmp_path):
     ]
     mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-         patch("brainpack.cli.check_deno_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
-         patch("brainpack.cli.is_audio_step_done", return_value=False), \
-         patch("brainpack.cli.get_audio_step", return_value={}), \
-         patch("brainpack.cli.download_audio", return_value=audio_file), \
-         patch("brainpack.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
-         patch("brainpack.cli.embed_and_store", return_value=3), \
-         patch("brainpack.cli.mark_audio_step"), \
-         patch("brainpack.cli.check_model_provenance"):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="youtube"), \
+         patch("beyin.cli.check_deno_available", return_value=True), \
+         patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
+         patch("beyin.cli.is_audio_step_done", return_value=False), \
+         patch("beyin.cli.get_audio_step", return_value={}), \
+         patch("beyin.cli.download_audio", return_value=audio_file), \
+         patch("beyin.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]), \
+         patch("beyin.cli.embed_and_store", return_value=3), \
+         patch("beyin.cli.mark_audio_step"), \
+         patch("beyin.cli.check_model_provenance"):
         result = runner.invoke(app, ["build", "testpack"])
 
     output = result.output
@@ -1936,10 +1936,10 @@ def test_build_final_summary_table(tmp_path):
 @pytest.mark.xfail(strict=False)
 def test_build_all_up_to_date(tmp_path):
     """build prints '0 new chunks -- all sources up to date' when all episodes already embedded."""
-    from brainpack.cli import app
+    from beyin.cli import app
     runner = CliRunner()
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "testpack"
     pack_dir.mkdir(parents=True)
     (pack_dir / "pack.yaml").write_text(
@@ -1953,21 +1953,21 @@ def test_build_all_up_to_date(tmp_path):
     ]
     mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), \
-         patch("brainpack.cli.load_config", return_value=mock_config), \
-         patch("brainpack.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
-         patch("brainpack.cli.check_model_provenance"), \
-         patch("brainpack.cli.save_state"), \
-         patch("brainpack.cli.load_model", return_value=MagicMock()), \
-         patch("brainpack.cli.get_collection", return_value=MagicMock()), \
-         patch("brainpack.cli.detect_source_type", return_value="youtube"), \
-         patch("brainpack.cli.check_deno_available", return_value=True), \
-         patch("brainpack.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
-         patch("brainpack.cli.is_audio_step_done", return_value=True), \
-         patch("brainpack.cli.get_audio_step", return_value={}), \
-         patch("brainpack.cli.embed_and_store", return_value=0), \
-         patch("brainpack.cli.mark_audio_step"), \
-         patch("brainpack.cli.check_model_provenance"):
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.detect_source_type", return_value="youtube"), \
+         patch("beyin.cli.check_deno_available", return_value=True), \
+         patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", episodes)), \
+         patch("beyin.cli.is_audio_step_done", return_value=True), \
+         patch("beyin.cli.get_audio_step", return_value={}), \
+         patch("beyin.cli.embed_and_store", return_value=0), \
+         patch("beyin.cli.mark_audio_step"), \
+         patch("beyin.cli.check_model_provenance"):
         result = runner.invoke(app, ["build", "testpack"])
 
     assert "0 new chunks" in result.output

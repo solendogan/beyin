@@ -5,14 +5,14 @@ from unittest.mock import patch, MagicMock
 
 
 def test_ollama_config():
-    from brainpack.query import _provider_settings
+    from beyin.query import _provider_settings
     base_url, api_key = _provider_settings("ollama")
     assert base_url == "http://localhost:11434/v1"
     assert api_key == "ollama"
 
 
 def test_provider_routing():
-    from brainpack.query import _provider_settings
+    from beyin.query import _provider_settings
     with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
         base_url, api_key = _provider_settings("openai")
     assert "openai.com" in base_url
@@ -20,7 +20,7 @@ def test_provider_routing():
 
 
 def test_anthropic_raises():
-    from brainpack.query import _provider_settings
+    from beyin.query import _provider_settings
     with pytest.raises(NotImplementedError) as exc_info:
         _provider_settings("anthropic")
     assert "not supported" in str(exc_info.value)
@@ -29,7 +29,7 @@ def test_anthropic_raises():
 
 
 def test_context_cap():
-    from brainpack.query import _cap_context
+    from beyin.query import _cap_context
     # 6 chunks of ~600 tokens each should result in fewer than 6 being returned
     long_chunk = "word " * 600
     chunks = [long_chunk] * 6
@@ -38,7 +38,7 @@ def test_context_cap():
 
 
 def test_context_cap_small_chunks_pass_through():
-    from brainpack.query import _cap_context
+    from beyin.query import _cap_context
     # 2 small chunks well under 3000 tokens should be returned unchanged
     small_chunk = "This is a short sentence."
     chunks = [small_chunk, small_chunk]
@@ -48,7 +48,7 @@ def test_context_cap_small_chunks_pass_through():
 
 
 def test_retrieve_evidence_returns_raw_text_metadata_and_rank(mock_model):
-    from brainpack.query import retrieve_evidence
+    from beyin.query import retrieve_evidence
 
     collection = MagicMock()
     collection.query.return_value = {
@@ -83,7 +83,7 @@ def test_retrieve_evidence_returns_raw_text_metadata_and_rank(mock_model):
 
 
 def test_retrieve_evidence_defaults_to_broader_than_answer_path(mock_model):
-    from brainpack.query import retrieve_evidence
+    from beyin.query import retrieve_evidence
 
     collection = MagicMock()
     collection.query.return_value = {
@@ -98,8 +98,8 @@ def test_retrieve_evidence_defaults_to_broader_than_answer_path(mock_model):
 
 
 def test_topk(tmp_pack_dir, mock_model):
-    from brainpack.store import get_collection, embed_and_store
-    from brainpack.query import run_query
+    from beyin.store import get_collection, embed_and_store
+    from beyin.query import run_query
     col = get_collection(tmp_pack_dir, "test-pack")
     # Add 7 chunks so we can verify only 5 are retrieved
     for i in range(7):
@@ -108,7 +108,7 @@ def test_topk(tmp_pack_dir, mock_model):
             [{"url": f"https://example.com/{i}", "title": f"Article {i}"}],
             url=f"https://example.com/{i}",
         )
-    with patch("brainpack.query.OpenAI") as MockOpenAI:
+    with patch("beyin.query.OpenAI") as MockOpenAI:
         client = MockOpenAI.return_value
         choice = MagicMock()
         choice.message.content = "Answer with citations."
@@ -119,13 +119,13 @@ def test_topk(tmp_pack_dir, mock_model):
 
 
 def test_run_query_caps_context_after_shared_retrieval(mock_model):
-    from brainpack.query import run_query
+    from beyin.query import run_query
 
     long_chunk = "word " * 2500
     short_chunk = "second " * 700
 
     with patch(
-        "brainpack.query.retrieve_evidence",
+        "beyin.query.retrieve_evidence",
         return_value=[
             {
                 "text": long_chunk,
@@ -142,7 +142,7 @@ def test_run_query_caps_context_after_shared_retrieval(mock_model):
                 "distance": 0.2,
             },
         ],
-    ), patch("brainpack.query.OpenAI") as MockOpenAI:
+    ), patch("beyin.query.OpenAI") as MockOpenAI:
         client = MockOpenAI.return_value
         choice = MagicMock()
         choice.message.content = "Capped answer."
@@ -158,7 +158,7 @@ def test_run_query_caps_context_after_shared_retrieval(mock_model):
 
 def test_timestamp_source_labels_include_ranges():
     """Timestamp-capable source labels include a human-readable range."""
-    from brainpack.query import _source_label
+    from beyin.query import _source_label
 
     label = _source_label(
         {
@@ -174,7 +174,7 @@ def test_timestamp_source_labels_include_ranges():
 
 def test_source_labels_fall_back_cleanly_without_timestamps():
     """Sources without timing data should not invent timestamp output."""
-    from brainpack.query import _source_label
+    from beyin.query import _source_label
 
     label = _source_label(
         {"title": "Article", "url": "https://example.com/article"}
@@ -187,8 +187,8 @@ def test_source_labels_fall_back_cleanly_without_timestamps():
 
 def test_run_query_prefers_answering_in_turkish_for_turkish_questions(tmp_pack_dir, mock_model):
     """run_query instructs the model to stay in Turkish when the question/context are Turkish."""
-    from brainpack.store import get_collection, embed_and_store
-    from brainpack.query import run_query
+    from beyin.store import get_collection, embed_and_store
+    from beyin.query import run_query
 
     col = get_collection(tmp_pack_dir, "test-pack")
     embed_and_store(
@@ -199,7 +199,7 @@ def test_run_query_prefers_answering_in_turkish_for_turkish_questions(tmp_pack_d
         url="https://example.com/a",
     )
 
-    with patch("brainpack.query.OpenAI") as MockOpenAI:
+    with patch("beyin.query.OpenAI") as MockOpenAI:
         client = MockOpenAI.return_value
         choice = MagicMock()
         choice.message.content = "Turkce cevap."

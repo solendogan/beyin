@@ -1,4 +1,4 @@
-# Brainpack Registry Format
+# Beyin Registry Format
 
 This file describes the final registry pack format used in the repository.
 
@@ -48,7 +48,7 @@ sources:
 
 ## Sources
 
-Sources are plain URLs. Brainpack auto-detects the type:
+Sources are plain URLs. Beyin auto-detects the type:
 
 - YouTube video, playlist, or channel URLs → `youtube`
 - RSS feed URLs → `podcast`

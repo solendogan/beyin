@@ -1,4 +1,4 @@
-"""TTY-only interactive helpers for Brainpack."""
+"""TTY-only interactive helpers for Beyin."""
 
 from __future__ import annotations
 
@@ -12,21 +12,21 @@ from typing import Any
 
 import typer
 
-from brainpack import __version__
-from brainpack.authoring import (
+from beyin import __version__
+from beyin.authoring import (
     add_source_to_pack,
     build_new_pack_config,
     update_pack_metadata,
 )
-from brainpack.config import load_config, write_config, write_public_config
-from brainpack.settings import (
-    BrainpackSettings,
+from beyin.config import load_config, write_config, write_public_config
+from beyin.settings import (
+    BeyinSettings,
     available_setup_choices,
     describe_settings_summary,
     load_settings,
     save_settings,
 )
-from brainpack.ui import render_header, render_meta, render_review, render_status
+from beyin.ui import render_header, render_meta, render_review, render_status
 
 
 class InteractiveAbort(RuntimeError):
@@ -157,13 +157,13 @@ def _model_description(value: str) -> str:
 
 
 def _print_setup_intro(*, first_run: bool) -> None:
-    title = "Start your first setup now" if first_run else "Update Brainpack settings"
+    title = "Start your first setup now" if first_run else "Update Beyin settings"
     intro_lines = [
         "Turn your favorite content into local queryable packs.",
         f"Detected machine: {_machine_label()}",
     ]
     footer_lines = [
-        "You can change these defaults later with `brainpack settings`.",
+        "You can change these defaults later with `beyin settings`.",
         "Press Ctrl+C at any time to cancel without writing changes.",
     ]
     _print_screen(title, intro_lines, footer_lines=footer_lines, show_brand=True)
@@ -204,10 +204,10 @@ def _print_create_intro() -> None:
     _print_screen(
         "Create a new pack",
         [
-            "Start with one source. Brainpack infers the content path from the value you paste.",
+            "Start with one source. Beyin infers the content path from the value you paste.",
         ],
         footer_lines=[
-            "After creation, run `brainpack build <name>` to index the source into local retrieval memory.",
+            "After creation, run `beyin build <name>` to index the source into local retrieval memory.",
         ],
         show_brand=True,
     )
@@ -217,7 +217,7 @@ def _print_import_intro() -> None:
     _print_screen(
         "Import an existing pack",
         [
-            "This keeps `brainpack add` semantics intact and only imports an already-authored pack.",
+            "This keeps `beyin add` semantics intact and only imports an already-authored pack.",
         ],
         show_brand=True,
     )
@@ -312,18 +312,18 @@ def _select_setup_path(prompt_backend: Any, *, current: str = "recommended") -> 
 
 
 def _stage_settings(
-    current: BrainpackSettings,
+    current: BeyinSettings,
     *,
     prompt_backend: Any,
     first_run: bool,
-) -> BrainpackSettings:
+) -> BeyinSettings:
     choices = available_setup_choices()
     _print_setup_intro(first_run=first_run)
     setup_path = _select_setup_path(prompt_backend)
 
     if setup_path == "recommended":
         recommended = choices["recommended"]
-        staged = BrainpackSettings(
+        staged = BeyinSettings(
             version=current.version,
             setup_completed=True,
             preferred_transcription_backend=str(
@@ -359,7 +359,7 @@ def _stage_settings(
         default=current.preferred_llm_model,
         instruction="Used for local answers through Ollama.",
     )
-    staged = BrainpackSettings(
+    staged = BeyinSettings(
         version=current.version,
         setup_completed=True,
         preferred_transcription_backend=transcription_backend,
@@ -370,12 +370,12 @@ def _stage_settings(
     return staged
 
 
-def _print_applied_summary(settings: BrainpackSettings) -> None:
+def _print_applied_summary(settings: BeyinSettings) -> None:
     next_lines = [
         "Quick start for agent mode:",
-        "  1. brainpack mcp-server  \u2190 add this to your agent's MCP config",
-        "  2. brainpack create       \u2190 create your first pack",
-        "  3. brainpack build <pack>",
+        "  1. beyin mcp-server  \u2190 add this to your agent's MCP config",
+        "  2. beyin create       \u2190 create your first pack",
+        "  3. beyin build <pack>",
     ]
     _echo_lines(
         render_status(
@@ -392,7 +392,7 @@ def _print_applied_summary(settings: BrainpackSettings) -> None:
 
 def _run_settings_flow(
     *,
-    current: BrainpackSettings,
+    current: BeyinSettings,
     prompt_backend: Any,
     cancel_message: str,
     first_run: bool,
@@ -539,7 +539,7 @@ def run_create_flow(
     if pack_dir.exists():
         typer.echo(
             f"Error: Pack '{config.id}' already exists.\n"
-            f"Choose a new name or run `brainpack update {config.id}`.",
+            f"Choose a new name or run `beyin update {config.id}`.",
             err=True,
         )
         return False
@@ -555,7 +555,7 @@ def run_create_flow(
             [
                 f"Source saved: {config.sources[0].url}",
                 "",
-                f"Next step: brainpack build {config.id}",
+                f"Next step: beyin build {config.id}",
                 "Build indexes the source into local expert memory.",
             ],
             tone="success",
@@ -585,7 +585,7 @@ def run_import_flow(
         source = _text(
             backend,
             "Path, URL, or marketplace id for pack.yaml",
-            instruction="This uses the same import path as `brainpack add`.",
+            instruction="This uses the same import path as `beyin add`.",
         )
     except InteractiveAbort:
         typer.echo("Pack import cancelled.")
@@ -616,7 +616,7 @@ def run_manage_pack_flow(
         _echo_lines(
             render_status(
                 "No packs installed yet",
-                ["Create one with `brainpack create` first."],
+                ["Create one with `beyin create` first."],
                 tone="warn",
             )
         )
@@ -673,7 +673,7 @@ def run_manage_pack_flow(
         render_status(
             f"Updated pack '{pack_name}'",
             [
-                f"Next step: brainpack build {pack_name}",
+                f"Next step: beyin build {pack_name}",
                 "Rebuild after authoring changes so retrieval uses the latest sources.",
             ],
             tone="success",

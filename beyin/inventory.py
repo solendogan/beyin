@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from brainpack.config import PackConfig, _load_config_from_file, load_config
-from brainpack.downloader import detect_source_type
-from brainpack.pack_state import load_state
-from brainpack.source_ids import canonical_source_id
+from beyin.config import PackConfig, _load_config_from_file, load_config
+from beyin.downloader import detect_source_type
+from beyin.pack_state import load_state
+from beyin.source_ids import canonical_source_id
 
 _ORIGIN_FILE = "origin.json"
 _MARKETPLACE_MAP_FILE = "marketplace-map.json"
@@ -276,7 +276,7 @@ def summarize_pack(
             "provider": "unknown",
             "source_count": 0,
             "recent_summary": "invalid-pack",
-            "next_action": f"brainpack add {pack_dir / 'pack.yaml'}",
+            "next_action": f"beyin add {pack_dir / 'pack.yaml'}",
             "blockers": [f"Invalid pack.yaml: {exc}"],
             "warnings": [],
             "origin": origin,
@@ -316,31 +316,31 @@ def summarize_pack(
 
     if blockers:
         status = "blocked"
-        next_action = f"brainpack status {config.id}"
+        next_action = f"beyin status {config.id}"
     elif has_error and has_build:
         status = "partially-ready"
-        next_action = f"brainpack build {config.id}"
+        next_action = f"beyin build {config.id}"
     elif has_error:
         status = "error"
-        next_action = f"brainpack build {config.id}"
+        next_action = f"beyin build {config.id}"
     elif (partial_selection or needs_build) and some_sources_ready and not all_sources_ready:
         status = "partially-ready"
-        next_action = f"brainpack build {config.id}"
+        next_action = f"beyin build {config.id}"
     elif partial_selection:
         status = "needs-build"
-        next_action = f"brainpack build {config.id}"
+        next_action = f"beyin build {config.id}"
     elif is_new:
         status = "new"
-        next_action = f"brainpack build {config.id}"
+        next_action = f"beyin build {config.id}"
     elif needs_build:
         status = "needs-build"
-        next_action = f"brainpack build {config.id}"
+        next_action = f"beyin build {config.id}"
     elif some_sources_ready and not all_sources_ready:
         status = "partially-ready"
-        next_action = f"brainpack build {config.id}"
+        next_action = f"beyin build {config.id}"
     else:
         status = "ready"
-        next_action = f'brainpack query {config.id} "question"'
+        next_action = f'beyin query {config.id} "question"'
 
     build_date = _format_when(state.get("last_build_at"))
     update_date = _format_when(origin.get("last_updated_at") or origin.get("added_at"))
@@ -543,10 +543,10 @@ def human_guidance_command(summary: Dict[str, Any]) -> str:
     name = str(summary.get("name", "<pack>"))
     status = summary.get("status")
     if status == "blocked":
-        return f"brainpack status {name}"
+        return f"beyin status {name}"
     if status in {"new", "needs-build", "partially-ready", "error"}:
-        return f"brainpack build {name}"
-    return "brainpack mcp-server"
+        return f"beyin build {name}"
+    return "beyin mcp-server"
 
 
 def next_action_reason(summary: Dict[str, Any]) -> str:
@@ -555,7 +555,7 @@ def next_action_reason(summary: Dict[str, Any]) -> str:
     if status == "blocked":
         return "Resolve the blocker so this pack is ready for agent or local-model use."
     if status == "new":
-        return "Build this pack before Brainpack can serve it to an agent or local model."
+        return "Build this pack before Beyin can serve it to an agent or local model."
     if status == "needs-build":
         return "Rebuild this pack so agent and local-mode retrieval use the latest indexed changes."
     if status == "partially-ready":

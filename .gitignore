@@ -14,12 +14,9 @@ build/
 # macOS
 .DS_Store
 
-# Brainpack data
+# packs data
 chroma/
 
-# Project planning docs
-brainpack.md
-brainpack-techstack.md
 
 # Env
 .env

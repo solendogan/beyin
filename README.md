@@ -1,25 +1,25 @@
 <div align="center">
 
-# Brainpack
+# Beyin
 
 **Build local, queryable packs from text extracted from videos, articles, podcasts, and local files. Query them through MCP with your AI agent, or use a local model to explore them directly.**
 
-[![PyPI](https://img.shields.io/pypi/v/brainpack?style=for-the-badge)](https://pypi.org/project/brainpack/)
+[![PyPI](https://img.shields.io/pypi/v/beyin?style=for-the-badge)](https://pypi.org/project/beyin/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-compatible-6f42c1?style=for-the-badge)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 
 </div>
 
-## What is Brainpack?
+## What is Beyin?
 
-Brainpack is a local-first tool for turning useful information into queryable knowledge packs.
+Beyin is a local-first tool for turning useful information into queryable knowledge packs.
 
 Useful information shows up everywhere, but it rarely stays usable.
 
 You come across valuable information worth keeping, but it remains tied to the format where you found it. A video contains insights you want to reference later. An article has details you may want to use again. A saved post, note, or file can hold something important long after you first saw it.
 
-Brainpack was built to turn that scattered information into something structured, local, and queryable through your AI agent, so the useful parts stay accessible whenever you need them.
+Beyin was built to turn that scattered information into something structured, local, and queryable through your AI agent, so the useful parts stay accessible whenever you need them.
 
 ## ✨ Features
 
@@ -34,10 +34,10 @@ Brainpack was built to turn that scattered information into something structured
 
 ## **How it works**
 
-The easiest way to use Brainpack is through MCP with the AI agent you already use.
+The easiest way to use Beyin is through MCP with the AI agent you already use.
 
 1. Build a pack from your sources
-2. Connect Brainpack to your agent through MCP
+2. Connect Beyin to your agent through MCP
 3. Ask questions naturally — your agent handles retrieval from your packs automatically
 
 Once connected, you do not need to run commands or manage packs manually in the terminal. You can ask your agent to:
@@ -62,7 +62,7 @@ You can also query packs directly with a local model, no external API or agent n
 | Local audio | `.mp3`, `.m4a`, `.wav` |
 | Local video | `.mp4`, `.mov`, `.mkv`, `.webm` |
 
-> Brainpack is built for local processing on your own machine. Use it with content you are allowed to process, preferably public, permitted sources or material you own or have rights to use. Avoid copied, paywalled, private, restricted, or illegally shared content.
+> Beyin is built for local processing on your own machine. Use it with content you are allowed to process, preferably public, permitted sources or material you own or have rights to use. Avoid copied, paywalled, private, restricted, or illegally shared content.
 
 ---
 
@@ -71,13 +71,13 @@ You can also query packs directly with a local model, no external API or agent n
 ### Step 1: Install
 
 ```bash
-pip install brainpack
+pip install beyin
 ```
 
 Verify your setup:
 
 ```bash
-brainpack check-deps
+beyin check-deps
 ```
 
 **Only needed for video and audio sources. Skip if you only use articles and local text:**
@@ -110,21 +110,21 @@ You only need to do this once.
 #### Claude Code
 
 ```bash
-claude mcp add brainpack -- brainpack mcp-server
+claude mcp add beyin -- beyin mcp-server
 ```
 
-No config file editing needed, and **no need to keep a terminal open**. Claude Code launches and manages the server process automatically. Restart Claude Code and `brainpack` will appear in your MCP tools.
+No config file editing needed, and **no need to keep a terminal open**. Claude Code launches and manages the server process automatically. Restart Claude Code and `beyin` will appear in your MCP tools.
 
 To make it available across all your projects:
 
 ```bash
-claude mcp add --scope user brainpack -- brainpack mcp-server
+claude mcp add --scope user beyin -- beyin mcp-server
 ```
 
 #### Codex (OpenAI)
 
 ```bash
-codex mcp add brainpack -- brainpack mcp-server
+codex mcp add beyin -- beyin mcp-server
 ```
 
 #### Cursor
@@ -133,8 +133,8 @@ Open or create `~/.cursor/mcp.json` and add:
 
 ```json
 {
-  "brainpack": {
-    "command": "brainpack",
+  "beyin": {
+    "command": "beyin",
     "args": ["mcp-server"]
   }
 }
@@ -149,8 +149,8 @@ Open or create `~/.codeium/windsurf/mcp_config.json` and add:
 ```json
 {
   "mcpServers": {
-    "brainpack": {
-      "command": "brainpack",
+    "beyin": {
+      "command": "beyin",
       "args": ["mcp-server"]
     }
   }
@@ -166,9 +166,9 @@ In `~/.config/zed/settings.json`:
 ```json
 {
   "context_servers": {
-    "brainpack": {
+    "beyin": {
       "source": "custom",
-      "command": "brainpack",
+      "command": "beyin",
       "args": ["mcp-server"]
     }
   }
@@ -182,8 +182,8 @@ Go to **Manage MCP Servers** → **View raw config** and add:
 ```json
 {
   "mcpServers": {
-    "brainpack": {
-      "command": "brainpack",
+    "beyin": {
+      "command": "beyin",
       "args": ["mcp-server"]
     }
   }
@@ -192,19 +192,19 @@ Go to **Manage MCP Servers** → **View raw config** and add:
 
 #### Any other MCP-compatible agent
 
-The command is `brainpack mcp-server`. It runs a stdio MCP server, compatible with any agent that supports the MCP protocol.
+The command is `beyin mcp-server`. It runs a stdio MCP server, compatible with any agent that supports the MCP protocol.
 
 ---
 
 ## Example Usage with MCP
 
-Once Brainpack is connected through MCP, you can talk to your agent naturally. You do not need to memorize commands or even say "Brainpack" every time. Just ask for what you want, and your agent can handle the pack workflow behind the scenes.
+Once Beyin is connected through MCP, you can talk to your agent naturally. You do not need to memorize commands or even say "Beyin" every time. Just ask for what you want, and your agent can handle the pack workflow behind the scenes.
 
 > Some prompts that mention local files or folders, such as your Documents or Downloads folder, may require your AI agent to have read access to those locations first.
 
 | What you want | What to say |
 |---------------|-------------|
-| Check your packs | `List my Brainpack packs and show me their status.` |
+| Check your packs | `List my Beyin packs and show me their status.` |
 | Ask about a pack | `What's in my "mobile-marketing" pack? Show me the sources too.` |
 | Ask a question about a pack | `Any useful info about onboarding screens in my "mobile-marketing" pack?` |
 | Build a new pack | `Create a new pack called "ai-helper-tools" and add this URL I found: https://.... Then build the pack.` |
@@ -217,7 +217,7 @@ Once Brainpack is connected through MCP, you can talk to your agent naturally. Y
 
 ## MCP Tools Reference
 
-These are the tools Brainpack exposes to your agent. Your agent uses them automatically. You do not need to call them yourself.
+These are the tools Beyin exposes to your agent. Your agent uses them automatically. You do not need to call them yourself.
 
 | Tool | What it does |
 |------|-------------|
@@ -236,21 +236,21 @@ These are the tools Brainpack exposes to your agent. Your agent uses them automa
 
 | Command | What it does |
 |---------|-------------|
-| `brainpack create` | Create a new pack interactively |
-| `brainpack add <path-or-url>` | Import an existing pack from a file or URL |
-| `brainpack build <pack>` | Build or rebuild a pack |
-| `brainpack update <pack>` | Update a pack with new content |
-| `brainpack remove <pack>` | Remove a pack |
-| `brainpack list` | List all installed packs |
-| `brainpack status <pack>` | Show pack details and readiness |
-| `brainpack query <pack> "question"` | Ask a question directly (requires Ollama) |
-| `brainpack add-source <pack> <source>` | Add a new source to an installed pack |
-| `brainpack remove-source <pack> <selector>` | Remove a source from an installed pack by index or text match |
-| `brainpack mcp-server` | Start the MCP server |
-| `brainpack settings` | View and configure settings |
-| `brainpack check-deps` | Verify runtime dependencies |
-| `brainpack about` | Version and info |
-| `brainpack help` | List all commands |
+| `beyin create` | Create a new pack interactively |
+| `beyin add <path-or-url>` | Import an existing pack from a file or URL |
+| `beyin build <pack>` | Build or rebuild a pack |
+| `beyin update <pack>` | Update a pack with new content |
+| `beyin remove <pack>` | Remove a pack |
+| `beyin list` | List all installed packs |
+| `beyin status <pack>` | Show pack details and readiness |
+| `beyin query <pack> "question"` | Ask a question directly (requires Ollama) |
+| `beyin add-source <pack> <source>` | Add a new source to an installed pack |
+| `beyin remove-source <pack> <selector>` | Remove a source from an installed pack by index or text match |
+| `beyin mcp-server` | Start the MCP server |
+| `beyin settings` | View and configure settings |
+| `beyin check-deps` | Verify runtime dependencies |
+| `beyin about` | Version and info |
+| `beyin help` | List all commands |
 
 ---
 
@@ -258,7 +258,7 @@ These are the tools Brainpack exposes to your agent. Your agent uses them automa
 
 You can query your packs with a local model using Ollama, without sending anything to an external API. Everything stays on your machine.
 
-> **If you use Brainpack through an MCP-connected agent (Claude Code, Codex, etc.), you do not need Ollama.** Your agent is the LLM. Brainpack just retrieves results for it.
+> **If you use Beyin through an MCP-connected agent (Claude Code, Codex, etc.), you do not need Ollama.** Your agent is the LLM. Beyin just retrieves results for it.
 
 **Setup:**
 
@@ -279,10 +279,10 @@ ollama serve
 4. In another terminal, build a pack and query it:
 
 ```bash
-brainpack query my-pack "What does this source say about X?"
+beyin query my-pack "What does this source say about X?"
 ```
 
-To change the model, run `brainpack settings`.
+To change the model, run `beyin settings`.
 
 ---
 
@@ -291,18 +291,18 @@ To change the model, run `brainpack settings`.
 ### Pack is not queryable yet
 
 ```bash
-brainpack status my-pack
-brainpack build my-pack
+beyin status my-pack
+beyin build my-pack
 ```
 
 A `partial` pack may still be usable. Rebuilding recovers any failed sources.
 
 ### MCP is connected but retrieval is not working
 
-- Make sure the pack was built: `brainpack status my-pack`
-- Restart your agent after adding Brainpack for the first time
+- Make sure the pack was built: `beyin status my-pack`
+- Restart your agent after adding Beyin for the first time
 - Verify the server is registered: `claude mcp list`
-- Make sure the same Brainpack installation is used by both CLI and the MCP server
+- Make sure the same Beyin installation is used by both CLI and the MCP server
 
 ### Video or audio builds fail
 
@@ -312,28 +312,28 @@ A `partial` pack may still be usable. Rebuilding recovers any failed sources.
 
 ### Which `python` / `pip` should I use?
 
-Use the same Python environment for installation and for the MCP server. If you installed with `pip install brainpack`, running `brainpack mcp-server` will use that same environment automatically.
+Use the same Python environment for installation and for the MCP server. If you installed with `pip install beyin`, running `beyin mcp-server` will use that same environment automatically.
 
 ---
 
 ## Development (from the repo)
 
 ```bash
-git clone https://github.com/buralog/brainpack.git
-cd brainpack
+git clone https://github.com/buralog/beyin.git
+cd beyin
 uv sync
 ```
 
 Run commands from the repo:
 
 ```bash
-uv run python -m brainpack.cli help
+uv run python -m beyin.cli help
 ```
 
 MCP config for a local repo install:
 
 ```bash
-claude mcp add brainpack -- uv run python -m brainpack.cli mcp-server --cwd /absolute/path/to/brainpack
+claude mcp add beyin -- uv run python -m beyin.cli mcp-server --cwd /absolute/path/to/beyin
 ```
 
 Or manually in your agent's config file:
@@ -341,10 +341,10 @@ Or manually in your agent's config file:
 ```json
 {
   "mcpServers": {
-    "brainpack": {
+    "beyin": {
       "command": "uv",
-      "args": ["run", "python", "-m", "brainpack.cli", "mcp-server"],
-      "cwd": "/absolute/path/to/brainpack"
+      "args": ["run", "python", "-m", "beyin.cli", "mcp-server"],
+      "cwd": "/absolute/path/to/beyin"
     }
   }
 }
@@ -360,7 +360,7 @@ uv run pytest tests/test_cli.py tests/test_mcp_server.py
 
 ## Behind the Scenes
 
-1. Brainpack fetches or loads your source content
+1. Beyin fetches or loads your source content
 2. It extracts text or generates transcripts (for audio/video)
 3. It chunks the content into indexed segments
 4. It embeds those chunks into a local vector store
@@ -368,13 +368,13 @@ uv run pytest tests/test_cli.py tests/test_mcp_server.py
 
 Everything is local. No data is sent anywhere. Packs are just files on your disk.
 
-Brainpack uses a multilingual embedding model by default, so it works well for non-English content too, not just English sources.
+Beyin uses a multilingual embedding model by default, so it works well for non-English content too, not just English sources.
 
 ---
 
 ## Contributing
 
-Issues and pull requests are welcome at [github.com/buralog/brainpack](https://github.com/buralog/brainpack).
+Issues and pull requests are welcome at [github.com/buralog/beyin](https://github.com/buralog/beyin).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for pack submissions, pack policy, and code contribution guidelines.
 
@@ -382,9 +382,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for pack submissions, pack policy, and co
 
 ## Legal
 
-Brainpack does not host, publish, or redistribute third-party content. Public packs contain only source manifests and metadata. Any retrieval, transcription, indexing, or embedding of source material happens locally on the end user's own machine.
+Beyin does not host, publish, or redistribute third-party content. Public packs contain only source manifests and metadata. Any retrieval, transcription, indexing, or embedding of source material happens locally on the end user's own machine.
 
-Users are responsible for ensuring that their use of Brainpack complies with applicable laws, copyright rules, and the terms of service of the source platforms.
+Users are responsible for ensuring that their use of Beyin complies with applicable laws, copyright rules, and the terms of service of the source platforms.
 
 
 ## License

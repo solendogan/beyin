@@ -6,19 +6,19 @@ from pathlib import Path
 from typer.testing import CliRunner
 from unittest.mock import patch
 
-from brainpack.config import SourceEntry, load_config
+from beyin.config import SourceEntry, load_config
 
 from tests.conftest import _FakePromptBackend
 
 
 def test_create_writes_public_pack_yaml_shape(tmp_path):
     """create should write the cleaner public manifest shape for new packs."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
     runner = CliRunner()
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(
             app,
             ["create"],
@@ -39,10 +39,10 @@ def test_create_writes_public_pack_yaml_shape(tmp_path):
 
 def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp_path):
     """create should start from a source URL/path prompt and persist local text paths as sources."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
     runner = CliRunner()
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     local_source = tmp_path / "notes.md"
     local_source.write_text("# Notes\n")
     backend = _FakePromptBackend(
@@ -54,11 +54,11 @@ def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp
         ]
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
-        "brainpack.cli.is_interactive_session",
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli.is_interactive_session",
         return_value=True,
     ), patch(
-        "brainpack.cli.load_prompt_backend",
+        "beyin.cli.load_prompt_backend",
         return_value=backend,
     ):
         result = runner.invoke(app, ["create"])
@@ -93,10 +93,10 @@ def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp
 
 def test_create_command_accepts_local_media_source(tmp_path):
     """create should accept local media paths as supported source inputs."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
     runner = CliRunner()
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     local_source = tmp_path / "clip.mp4"
     local_source.write_bytes(b"x" * 20_000)
     backend = _FakePromptBackend(
@@ -108,11 +108,11 @@ def test_create_command_accepts_local_media_source(tmp_path):
         ]
     )
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root), patch(
-        "brainpack.cli.is_interactive_session",
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli.is_interactive_session",
         return_value=True,
     ), patch(
-        "brainpack.cli.load_prompt_backend",
+        "beyin.cli.load_prompt_backend",
         return_value=backend,
     ):
         result = runner.invoke(app, ["create"])
@@ -124,14 +124,14 @@ def test_create_command_accepts_local_media_source(tmp_path):
 
 def test_add_rejects_local_text_path_as_pack_import(tmp_path):
     """add remains import-only and should not reinterpret a local text file as pack authoring input."""
-    from brainpack.cli import app
+    from beyin.cli import app
 
     runner = CliRunner()
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     local_source = tmp_path / "notes.txt"
     local_source.write_text("plain text source")
 
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["add", str(local_source)])
 
     assert result.exit_code == 1
@@ -140,10 +140,10 @@ def test_add_rejects_local_text_path_as_pack_import(tmp_path):
 
 def test_manage_flow_can_edit_basic_metadata_and_add_source(tmp_path):
     """Manage flow should update description and add a local text-like source without manual YAML edits."""
-    from brainpack.config import write_config, PackConfig
-    from brainpack.interactive import run_manage_pack_flow
+    from beyin.config import write_config, PackConfig
+    from beyin.interactive import run_manage_pack_flow
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "managed-pack"
     local_source = tmp_path / "transcript.md"
     local_source.write_text("notes")
@@ -185,10 +185,10 @@ def test_manage_flow_can_edit_basic_metadata_and_add_source(tmp_path):
 
 def test_manage_flow_cancel_preserves_existing_pack_definition(tmp_path):
     """Cancelling managed edits should leave the current pack.yaml untouched."""
-    from brainpack.config import write_config, PackConfig
-    from brainpack.interactive import run_manage_pack_flow
+    from beyin.config import write_config, PackConfig
+    from beyin.interactive import run_manage_pack_flow
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "managed-pack"
     write_config(
         PackConfig(
@@ -221,10 +221,10 @@ def test_manage_flow_cancel_preserves_existing_pack_definition(tmp_path):
 
 def test_remove_source_command_removes_by_index(tmp_path):
     """remove-source should drop the selected current source index and preserve the others."""
-    from brainpack.cli import app
-    from brainpack.config import PackConfig, write_config
+    from beyin.cli import app
+    from beyin.config import PackConfig, write_config
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     write_config(
         PackConfig(
@@ -242,7 +242,7 @@ def test_remove_source_command_removes_by_index(tmp_path):
     )
 
     runner = CliRunner()
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["remove-source", "test-pack", "2"])
 
     config = load_config(pack_dir)
@@ -257,10 +257,10 @@ def test_remove_source_command_removes_by_index(tmp_path):
 
 def test_remove_source_command_removes_by_text_match(tmp_path):
     """remove-source should allow matching a source by visible title text."""
-    from brainpack.cli import app
-    from brainpack.config import PackConfig, write_config
+    from beyin.cli import app
+    from beyin.config import PackConfig, write_config
 
-    packs_root = tmp_path / "brainpacks"
+    packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     write_config(
         PackConfig(
@@ -277,7 +277,7 @@ def test_remove_source_command_removes_by_text_match(tmp_path):
     )
 
     runner = CliRunner()
-    with patch("brainpack.cli._PACKS_DIR", packs_root):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["remove-source", "test-pack", "meta ads"])
 
     config = load_config(pack_dir)
