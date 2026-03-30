@@ -363,6 +363,27 @@ def _transcription_needed(capabilities: list[str]) -> bool:
     return any(value in capabilities for value in ("youtube", "podcasts"))
 
 
+def _setup_followup_lines(settings: BeyinSettings) -> list[str]:
+    lines: list[str] = []
+    capabilities = set(settings.enabled_capabilities)
+    if _transcription_needed(settings.enabled_capabilities):
+        lines.append(
+            f"Audio/video transcription will use {settings.preferred_transcription_backend} with the {settings.preferred_whisper_model} model."
+        )
+    if settings.enabled_local_file_types:
+        file_types = ", ".join(file_type.upper() for file_type in settings.enabled_local_file_types)
+        lines.append(f"Optional local file support selected: {file_types}.")
+    if "local_query" in capabilities:
+        lines.append(
+            f"Local answers are configured for Ollama model `{settings.preferred_llm_model}`."
+        )
+        lines.append("Ollama stays user-managed. Install it separately if it is not available yet.")
+    else:
+        lines.append("Local answers are not enabled yet. You can add them later in `beyin settings`.")
+    lines.append("Additional file support can be enabled later in `beyin settings`.")
+    return lines
+
+
 def _stage_settings(
     current: BeyinSettings,
     *,
@@ -386,7 +407,14 @@ def _stage_settings(
             preferred_whisper_model=str(recommended["preferred_whisper_model"]),
             preferred_llm_model=str(recommended["preferred_llm_model"]),
         )
-        _print_review("Recommended defaults preview", describe_settings_summary(staged).splitlines())
+        _print_review(
+            "Recommended defaults preview",
+            [
+                *describe_settings_summary(staged).splitlines(),
+                "",
+                *_setup_followup_lines(staged),
+            ],
+        )
         return staged
 
     enabled_capabilities = _checkbox(
@@ -463,7 +491,14 @@ def _stage_settings(
         preferred_whisper_model=whisper_model,
         preferred_llm_model=llm_model or current.preferred_llm_model,
     )
-    _print_review("Review setup", describe_settings_summary(staged).splitlines())
+    _print_review(
+        "Review setup",
+        [
+            *describe_settings_summary(staged).splitlines(),
+            "",
+            *_setup_followup_lines(staged),
+        ],
+    )
     return staged
 
 
@@ -479,6 +514,8 @@ def _print_applied_summary(settings: BeyinSettings) -> None:
             "Setup complete",
             [
                 *describe_settings_summary(settings).splitlines(),
+                "",
+                *_setup_followup_lines(settings),
                 "",
                 *next_lines,
             ],
