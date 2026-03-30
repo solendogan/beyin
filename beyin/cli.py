@@ -84,6 +84,10 @@ from beyin.readiness import (
     _ytdlp_version_ok,
     _YTDLP_MIN_VERSION,
 )
+from beyin.runtime_summary import (
+    dependency_display_rows as _shared_dependency_display_rows,
+    settings_display_rows as _shared_settings_display_rows,
+)
 from beyin.ui import (
     bold, box_bottom, box_row, box_sep, box_top, cyan, dim, green, red,
     render_header, render_meta, render_review, render_rows, render_status, render_table, tbl_bottom,
@@ -640,80 +644,18 @@ def main(ctx: typer.Context) -> None:
 
 def _settings_display_rows(settings) -> list[tuple[str, str]]:
     """Return label/value rows for the current settings table."""
-    capability_map = {
-        "web": "Web",
-        "youtube": "YouTube/video",
-        "podcasts": "Podcasts/RSS",
-        "local_files": "Local files",
-        "local_query": "Local answers",
-    }
-    enabled = settings.enabled_capabilities or []
-    local_files = settings.enabled_local_file_types or []
-    return [
-        (
-            "Enabled",
-            ", ".join(capability_map.get(value, value) for value in enabled) or "none",
-        ),
-        (
-            "File types",
-            ", ".join(file_type.upper() for file_type in local_files) or "plain text only",
-        ),
-        ("Transcription", settings.preferred_transcription_backend),
-        ("Whisper model", settings.preferred_whisper_model),
-        ("Local model", settings.preferred_llm_model),
-    ]
+    return _shared_settings_display_rows(settings)
 
 
 def _dependency_display_rows(settings=None) -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[str]]:
     """Return capability-aware dependency rows plus hard failures."""
     current = settings or load_settings()
-    failures: list[str] = []
-    capabilities = set(current.enabled_capabilities or [])
-    selected_file_types = set(current.enabled_local_file_types or [])
-
-    runtime_rows: list[tuple[str, str]] = []
-    if capabilities.intersection({"youtube", "podcasts"}):
-        if shutil.which("ffmpeg"):
-            ffmpeg_status = "found"
-        else:
-            ffmpeg_status = f"NOT FOUND  →  {ffmpeg_install_hint()}"
-            failures.append("ffmpeg")
-        runtime_rows.append(("Audio/video", f"ffmpeg: {ffmpeg_status}"))
-
-    if "youtube" in capabilities:
-        ok, version = _ytdlp_version_ok()
-        if ok:
-            ytdlp_status = f"found ({version})"
-        elif version == "unknown":
-            ytdlp_status = f"NOT FOUND  →  {yt_dlp_install_hint()}"
-            failures.append("yt-dlp")
-        else:
-            ytdlp_status = f"OUTDATED ({version} < {_YTDLP_MIN_VERSION})  →  {yt_dlp_install_hint()}"
-            failures.append("yt-dlp")
-        runtime_rows.append(("YouTube", f"yt-dlp: {ytdlp_status}"))
-
-    if "local_query" in capabilities:
-        runtime_rows.append(("Local answers", "Ollama is user-managed  →  install and run separately"))
-
-    file_type_rows: list[tuple[str, str]] = []
-    for label, module, hint in [
-        ("PDF (.pdf)", "pdfplumber", "pip install pdfplumber"),
-        ("DOCX (.docx)", "docx", "pip install python-docx"),
-        ("PPTX (.pptx)", "pptx", "pip install python-pptx"),
-        ("EPUB (.epub)", "ebooklib", "pip install ebooklib"),
-        ("XLSX (.xlsx)", "openpyxl", "pip install openpyxl"),
-    ]:
-        extension = label.split("(")[1].split(")")[0].strip(".").lower()
-        if extension not in selected_file_types:
-            continue
-        try:
-            __import__(module)
-            status = f"{module}: found"
-        except ImportError:
-            status = f"{module}: not installed  →  {hint}"
-        file_type_rows.append((label, status))
-
-    return runtime_rows, file_type_rows, failures
+    return _shared_dependency_display_rows(
+        current,
+        command_exists=shutil.which,
+        import_module=__import__,
+        ytdlp_version_ok=_ytdlp_version_ok,
+    )
 
 
 def _render_dependency_section(*, title: str = "Dependencies", settings=None) -> list[str]:

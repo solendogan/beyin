@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import platform
 import re
+import shutil
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -26,6 +27,8 @@ from beyin.settings import (
     load_settings,
     save_settings,
 )
+from beyin.runtime_summary import readiness_summary_lines
+from beyin.readiness import _ytdlp_version_ok
 from beyin.ui import render_header, render_meta, render_review, render_status
 
 
@@ -381,6 +384,15 @@ def _setup_followup_lines(settings: BeyinSettings) -> list[str]:
     else:
         lines.append("Local answers are not enabled yet. You can add them later in `beyin settings`.")
     lines.append("Additional file support can be enabled later in `beyin settings`.")
+    lines.append("")
+    lines.extend(
+        readiness_summary_lines(
+            settings,
+            command_exists=shutil.which,
+            import_module=__import__,
+            ytdlp_version_ok=_ytdlp_version_ok,
+        )
+    )
     return lines
 
 
