@@ -394,6 +394,62 @@ def test_build_local_path_unsupported_suffix_fails_clearly(tmp_path):
     assert "unsupported local source type" in result.output.lower()
 
 
+def test_build_local_document_missing_parser_points_to_selected_support(tmp_path):
+    """build should explain missing document parser support in terms of the selected local file type."""
+    from beyin.cli import app
+
+    packs_root = tmp_path / "beyin"
+    pack_dir = packs_root / "pdf-pack"
+    pack_dir.mkdir(parents=True)
+    pdf_path = tmp_path / "report.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%stub\n")
+    (pack_dir / "pack.yaml").write_text(
+        "name: pdf-pack\n"
+        "description: Local pdf source pack\n"
+        "llm: ollama\n"
+        "sources:\n"
+        f"  - {pdf_path}\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    runner = CliRunner()
+    fake_settings = type(
+        "S",
+        (),
+        {
+            "enabled_capabilities": ["local_files"],
+            "enabled_local_file_types": ["pdf"],
+            "preferred_transcription_backend": "faster-whisper",
+            "preferred_whisper_model": "small",
+            "preferred_llm_model": "llama3.2",
+        },
+    )()
+
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}}), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.save_state"), \
+         patch("beyin.cli.load_settings", return_value=fake_settings), \
+         patch(
+             "beyin.cli.load_document_source",
+             side_effect=ImportError(
+                 ".pdf support requires 'pdfplumber'. Install it with: pip install pdfplumber"
+             ),
+         ), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.mark_processed") as mock_mark, \
+         patch("beyin.cli.mark_failed") as mock_fail:
+        result = runner.invoke(app, ["build", "pdf-pack"])
+
+    assert result.exit_code == 1, f"Exit code {result.exit_code}, output: {result.output}"
+    mock_mark.assert_not_called()
+    mock_fail.assert_called_once()
+    assert "pdf support is selected in your beyin settings" in result.output.lower()
+    assert "install it with: pip install pdfplumber" in result.output.lower()
+    assert "beyin build pdf-pack" in result.output
+
+
 def test_build_can_limit_to_selected_source_indexes_without_mutating_pack(tmp_path):
     """build --source should process only the selected current sources and keep pack.yaml unchanged."""
     from beyin.cli import app

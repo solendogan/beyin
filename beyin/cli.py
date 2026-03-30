@@ -871,6 +871,22 @@ def _render_next_step(command: str, reason: str, *, err: bool = False) -> None:
     typer.echo(reason, err=err)
 
 
+def _document_support_failure_message(source_url: str, exc: ImportError, *, pack: str) -> str:
+    """Explain missing local document parser support in terms of selected capabilities."""
+    suffix = Path(source_url).suffix.lower().lstrip(".")
+    settings = load_settings()
+    selected = set(settings.enabled_local_file_types or [])
+    if suffix and suffix in selected:
+        return (
+            f"{exc}. {suffix.upper()} support is selected in your beyin settings. "
+            f"After installing it, run `beyin build {pack}` again."
+        )
+    return (
+        f"{exc}. Enable this file type in `beyin settings` if you want beyin to expect it. "
+        f"After installing it, run `beyin build {pack}` again."
+    )
+
+
 
 def _render_query_output(result: dict) -> None:
     """Print the LLM answer followed by visible sources."""
@@ -1290,7 +1306,11 @@ def build(
                 except ImportError as exc:
                     result = None
                     failure_reason = str(exc)
-                    failure_message = f"{exc} — skipping"
+                    failure_message = _document_support_failure_message(
+                        source_url,
+                        exc,
+                        pack=config.id,
+                    )
                 except ValueError as exc:
                     result = None
                     failure_reason = str(exc)
