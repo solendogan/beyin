@@ -54,19 +54,21 @@ You can also query packs directly with a local model, no external API or agent n
 | Local audio | `.mp3`, `.m4a`, `.wav` |
 | Local video | `.mp4`, `.mov`, `.mkv`, `.webm` |
 
-> beyin is built for local processing on your own machine. Use it with content you are allowed to process: public sources, or material you own or have rights to use.
+> beyin is built for local processing on your own machine. Use it with content you are allowed to process, preferably public, permitted sources or material you own or have rights to use. Avoid copied, paywalled, private, restricted, or illegally shared content.
 
 ---
 
 ## 📦 Installation
 
-Install with `pip` if you already manage a Python environment yourself:
+Choose one:
+
+`pip install`: best if you already use Python and want `beyin` installed in your current Python environment.
 
 ```bash
 pip install beyin
 ```
 
-Or install it as an isolated CLI tool with `uv`:
+`uv tool install`: best if you just want a standalone `beyin` command without managing Python environments yourself. `uv` keeps it in a separate tool environment to avoid conflicts with your other projects.
 
 ```bash
 uv tool install beyin
@@ -101,7 +103,7 @@ You only need to do this once.
 
 #### Claude Code
 
-If you installed with `pip`:
+If you installed with `pip` and normally run `beyin` directly in your terminal:
 
 ```bash
 claude mcp add beyin -- beyin mcp-server
@@ -115,7 +117,7 @@ To make it available across all your projects:
 claude mcp add --scope user beyin -- beyin mcp-server
 ```
 
-If you installed with `uv tool`, use:
+If you installed with `uv tool` and want Claude Code to launch that tool-managed install:
 
 ```bash
 claude mcp add beyin -- uvx beyin mcp-server
@@ -123,13 +125,13 @@ claude mcp add beyin -- uvx beyin mcp-server
 
 #### Codex (OpenAI)
 
-If you installed with `pip`:
+If you installed with `pip` and normally run `beyin` directly in your terminal:
 
 ```bash
 codex mcp add beyin -- beyin mcp-server
 ```
 
-If you installed with `uv tool`:
+If you installed with `uv tool` and want Codex to launch that tool-managed install:
 
 ```bash
 codex mcp add beyin -- uvx beyin mcp-server
