@@ -2,6 +2,7 @@
 
 import json
 
+from beyin import __version__
 from pathlib import Path
 from unittest.mock import patch
 
@@ -189,7 +190,7 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
             "schema": "beyin.cli.v1",
             "command": "list",
             "surface": "mcp",
-            "server_version": "0.1.0",
+            "server_version": __version__,
         },
         "data": {
             "packs": [
@@ -294,7 +295,7 @@ async def test_mcp_retrieve_returns_structured_results_payload(mcp_app, tmp_path
             "command": "retrieve",
             "pack": "retrieve-pack",
             "surface": "mcp",
-            "server_version": "0.1.0",
+            "server_version": __version__,
         },
         "data": {
             "question": "What happened?",
@@ -494,7 +495,7 @@ async def test_mcp_add_returns_structured_command_result(mcp_app, tmp_path):
         "schema": "beyin.cli.v1",
         "command": "add",
         "surface": "mcp",
-        "server_version": "0.1.0",
+        "server_version": __version__,
     }
     assert structured["data"]["exit_code"] == 0
     assert "Pack 'imported-pack' added" in structured["data"]["stdout"]
@@ -552,7 +553,7 @@ async def test_mcp_add_rejects_source_and_yaml_together(mcp_app, tmp_path):
             "schema": "beyin.cli.v1",
             "command": "add",
             "surface": "mcp",
-            "server_version": "0.1.0",
+            "server_version": __version__,
         },
         "error": {
             "code": "invalid_add_input",
@@ -625,7 +626,7 @@ async def test_mcp_build_returns_structured_command_result(mcp_app, tmp_path):
         "command": "build",
         "pack": "build-pack",
         "surface": "mcp",
-        "server_version": "0.1.0",
+        "server_version": __version__,
     }
     assert structured["data"]["exit_code"] == 0
     # Build complete verdict with new always-on summary table format
