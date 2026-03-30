@@ -60,8 +60,16 @@ You can also query packs directly with a local model, no external API or agent n
 
 ## 📦 Installation
 
+Install with `pip` if you already manage a Python environment yourself:
+
 ```bash
 pip install beyin
+```
+
+Or install it as an isolated CLI tool with `uv`:
+
+```bash
+uv tool install beyin
 ```
 
 Verify your setup:
@@ -93,6 +101,8 @@ You only need to do this once.
 
 #### Claude Code
 
+If you installed with `pip`:
+
 ```bash
 claude mcp add beyin -- beyin mcp-server
 ```
@@ -105,10 +115,24 @@ To make it available across all your projects:
 claude mcp add --scope user beyin -- beyin mcp-server
 ```
 
+If you installed with `uv tool`, use:
+
+```bash
+claude mcp add beyin -- uvx beyin mcp-server
+```
+
 #### Codex (OpenAI)
+
+If you installed with `pip`:
 
 ```bash
 codex mcp add beyin -- beyin mcp-server
+```
+
+If you installed with `uv tool`:
+
+```bash
+codex mcp add beyin -- uvx beyin mcp-server
 ```
 
 #### Cursor
@@ -128,6 +152,8 @@ Open or create `~/.cursor/mcp.json` and add:
 
 Or go to Command Palette → **"View: Open MCP Settings"**.
 
+If you installed with `uv tool`, use `"command": "uvx"` and `"args": ["beyin", "mcp-server"]` instead.
+
 #### Windsurf
 
 Open or create `~/.codeium/windsurf/mcp_config.json` and add:
@@ -145,6 +171,8 @@ Open or create `~/.codeium/windsurf/mcp_config.json` and add:
 
 Or go to Command Palette → **"MCP: Add Server"**.
 
+If you installed with `uv tool`, use `"command": "uvx"` and `"args": ["beyin", "mcp-server"]` instead.
+
 #### Zed
 
 In `~/.config/zed/settings.json`:
@@ -160,6 +188,8 @@ In `~/.config/zed/settings.json`:
   }
 }
 ```
+
+If you installed with `uv tool`, use `"command": "uvx"` and `"args": ["beyin", "mcp-server"]` instead.
 
 #### Any other MCP-compatible agent
 
@@ -311,7 +341,12 @@ Pack IDs use kebab-case, not spaces. Use `my-pack` instead of `my pack`. The dis
 
 ### Which `python` / `pip` should I use?
 
-Use the same Python environment for installation and for the MCP server. If you installed with `pip install beyin`, running `beyin mcp-server` will use that same environment automatically.
+Use the same installation path for both CLI commands and the MCP server:
+
+- If you installed with `pip install beyin`, use `beyin ...`
+- If you installed with `uv tool install beyin`, use `uvx beyin ...`
+
+Mixing them can make the CLI and MCP server point at different environments.
 
 ---
 
@@ -390,4 +425,3 @@ Users are responsible for ensuring that their use of beyin complies with applica
 ## 📄 License
 
 MIT
-
