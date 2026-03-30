@@ -62,17 +62,19 @@ You can also query packs directly with a local model, no external API or agent n
 
 Choose one:
 
-`pip install`: best if you already use Python and want `beyin` installed in your current Python environment.
+`pip install`: good if you already use Python and know which Python environment you want to install into.
 
 ```bash
 pip install beyin
 ```
 
-`uv tool install`: best if you just want a standalone `beyin` command without managing Python environments yourself. `uv` keeps it in a separate tool environment to avoid conflicts with your other projects.
+`uv tool install`: good if you want Beyin installed like a standalone app, so it does not interfere with your other Python projects.
 
 ```bash
 uv tool install beyin
 ```
+
+Why this matters: Python users often have multiple environments, and `uv tool install` avoids the common "installed, but not in the environment I'm using" problem.
 
 Verify your setup:
 
