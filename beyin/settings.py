@@ -14,6 +14,14 @@ from beyin.paths import settings_path
 
 SETTINGS_VERSION = 1
 _SETUP_PATHS = ["recommended", "custom"]
+_CAPABILITY_CHOICES = [
+    "web",
+    "youtube",
+    "podcasts",
+    "local_files",
+    "local_query",
+]
+_LOCAL_FILE_TYPE_CHOICES = ["pdf", "docx", "pptx", "xlsx", "epub"]
 _WHISPER_MODELS = [
     "tiny",
     "tiny.en",
@@ -27,6 +35,7 @@ _WHISPER_MODELS = [
 ]
 DEFAULT_WHISPER_MODEL = "small"
 DEFAULT_LLM_MODEL = "llama3.2"
+DEFAULT_CAPABILITIES = ["web", "youtube", "podcasts"]
 
 
 def _recommended_transcription_backend() -> str:
@@ -41,6 +50,8 @@ def _recommended_transcription_backend() -> str:
 class BeyinSettings:
     version: int = SETTINGS_VERSION
     setup_completed: bool = False
+    enabled_capabilities: list[str] = field(default_factory=lambda: list(DEFAULT_CAPABILITIES))
+    enabled_local_file_types: list[str] = field(default_factory=list)
     preferred_transcription_backend: str = field(
         default_factory=_recommended_transcription_backend
     )
@@ -60,9 +71,13 @@ def available_setup_choices() -> dict[str, Any]:
         backends.append("faster-whisper")
     return {
         "setup_paths": list(_SETUP_PATHS),
+        "capabilities": list(_CAPABILITY_CHOICES),
+        "local_file_types": list(_LOCAL_FILE_TYPE_CHOICES),
         "transcription_backends": backends,
         "whisper_models": list(_WHISPER_MODELS),
         "recommended": {
+            "enabled_capabilities": list(recommended.enabled_capabilities),
+            "enabled_local_file_types": list(recommended.enabled_local_file_types),
             "preferred_transcription_backend": recommended.preferred_transcription_backend,
             "preferred_whisper_model": recommended.preferred_whisper_model,
             "preferred_llm_model": recommended.preferred_llm_model,
@@ -142,6 +157,24 @@ def resolve_build_defaults(
 def describe_settings_summary(settings: BeyinSettings) -> str:
     """Return a compact human summary of the active settings."""
     lines = []
+    if settings.enabled_capabilities:
+        capability_map = {
+            "web": "Web pages",
+            "youtube": "YouTube/video",
+            "podcasts": "Podcasts/RSS",
+            "local_files": "Local files",
+            "local_query": "Local answers",
+        }
+        labels = [
+            capability_map.get(value, value)
+            for value in settings.enabled_capabilities
+        ]
+        lines.append(f"Enabled: {', '.join(labels)}")
+    if settings.enabled_local_file_types:
+        lines.append(
+            "Local files: "
+            + ", ".join(file_type.upper() for file_type in settings.enabled_local_file_types)
+        )
     lines.append(
         "Transcription: "
         f"{settings.preferred_transcription_backend} / {settings.preferred_whisper_model}"

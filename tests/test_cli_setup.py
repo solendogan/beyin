@@ -6,6 +6,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 from unittest.mock import patch
 
+from beyin import __version__
 from tests.conftest import (
     _FakePromptBackend,
     _save_global_settings,
@@ -24,7 +25,7 @@ def test_no_arg_home_screen_guides_first_run(tmp_path):
         result = runner.invoke(app, [])
 
     assert result.exit_code == 0
-    assert "beyin v0.1.0" in result.output
+    assert f"beyin v{__version__}" in result.output
     assert "No packs installed yet" in result.output
     assert "Settings" in result.output
     assert "Dependencies" in result.output
@@ -71,7 +72,7 @@ def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
     assert help_result.exit_code == 0
     assert "Usage:" not in home_result.output
     assert "Commands:" not in home_result.output
-    assert "beyin v0.1.0" in home_result.output
+    assert f"beyin v{__version__}" in home_result.output
     assert "Home" not in home_result.output
     assert "Your local knowledge base" not in home_result.output
     assert home_result.output != help_result.output
@@ -209,7 +210,8 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
 
     assert first.exit_code == 0
     assert settings.setup_completed is True
-    assert "beyin v0.1.0" in first.output
+    assert settings.enabled_capabilities == ["web", "youtube", "podcasts"]
+    assert f"beyin v{__version__}" in first.output
     assert "Start your first setup now" in first.output
     first_select = next(
         kwargs for prompt_type, kwargs in backend.calls if prompt_type == "select"
@@ -233,6 +235,8 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
     backend = _FakePromptBackend(
         [
             "custom",
+            ["youtube", "local_files", "local_query"],
+            ["pdf", "xlsx"],
             "faster-whisper",
             "small",
             "llama3.2:latest",
@@ -256,6 +260,8 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
 
     assert completed is True
     assert settings.setup_completed is True
+    assert settings.enabled_capabilities == ["youtube", "local_files", "local_query"]
+    assert settings.enabled_local_file_types == ["pdf", "xlsx"]
     assert settings.preferred_transcription_backend == "faster-whisper"
     assert settings.preferred_whisper_model == "small"
     assert settings.preferred_llm_model == "llama3.2:latest"
@@ -436,6 +442,7 @@ def test_cancelled_settings_edit_preserves_previous_settings(monkeypatch, tmp_pa
     backend = _FakePromptBackend(
         [
             "custom",
+            ["local_query"],
             "mistral",
             KeyboardInterrupt(),
         ]

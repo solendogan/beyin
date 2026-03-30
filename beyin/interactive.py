@@ -305,6 +305,26 @@ def _confirm(
     )
 
 
+def _checkbox(
+    prompt_backend: Any,
+    message: str,
+    *,
+    choices: list[dict[str, Any]],
+    default: list[str] | None = None,
+    instruction: str | None = None,
+) -> list[str]:
+    selected = _prompt(
+        prompt_backend,
+        "checkbox",
+        message=message,
+        choices=choices,
+        default=default or [],
+        instruction="",
+        hint=instruction,
+    )
+    return [str(value) for value in selected]
+
+
 def _select_setup_path(prompt_backend: Any, *, current: str = "recommended") -> str:
     return _select(
         prompt_backend,
@@ -315,6 +335,32 @@ def _select_setup_path(prompt_backend: Any, *, current: str = "recommended") -> 
         ],
         default=current,
     )
+
+
+def _capability_description(value: str) -> str:
+    descriptions = {
+        "web": "Blog posts, web pages, and readable articles.",
+        "youtube": "YouTube videos, playlists, and other audio/video sources.",
+        "podcasts": "Podcasts and RSS or feed-based sources.",
+        "local_files": "Local text files and optional document formats.",
+        "local_query": "Ask questions locally through Ollama.",
+    }
+    return descriptions.get(value, value)
+
+
+def _local_file_type_description(value: str) -> str:
+    descriptions = {
+        "pdf": "Enable PDF ingestion support.",
+        "docx": "Enable Microsoft Word document support.",
+        "pptx": "Enable PowerPoint presentation support.",
+        "xlsx": "Enable Excel spreadsheet support.",
+        "epub": "Enable EPUB ebook support.",
+    }
+    return descriptions.get(value, value)
+
+
+def _transcription_needed(capabilities: list[str]) -> bool:
+    return any(value in capabilities for value in ("youtube", "podcasts"))
 
 
 def _stage_settings(
@@ -332,6 +378,8 @@ def _stage_settings(
         staged = BeyinSettings(
             version=current.version,
             setup_completed=True,
+            enabled_capabilities=list(recommended["enabled_capabilities"]),
+            enabled_local_file_types=list(recommended["enabled_local_file_types"]),
             preferred_transcription_backend=str(
                 recommended["preferred_transcription_backend"]
             ),
@@ -341,33 +389,76 @@ def _stage_settings(
         _print_review("Recommended defaults preview", describe_settings_summary(staged).splitlines())
         return staged
 
-    transcription_backend = _select(
+    enabled_capabilities = _checkbox(
         prompt_backend,
-        "Select a transcription backend",
+        "Choose what you want to work with",
         choices=[
-            _choice(value, value, help_text=_backend_description(value))
-            for value in choices["transcription_backends"]
+            _choice(value, {
+                "web": "Web pages and blog posts",
+                "youtube": "YouTube videos and playlists",
+                "podcasts": "Podcasts and RSS feeds",
+                "local_files": "Local files",
+                "local_query": "Ask questions locally with Ollama",
+            }[value], help_text=_capability_description(value))
+            for value in choices["capabilities"]
         ],
-        default=current.preferred_transcription_backend,
+        default=current.enabled_capabilities or choices["recommended"]["enabled_capabilities"],
+        instruction="Use space to toggle items, then press enter to continue.",
     )
-    whisper_model = _select(
-        prompt_backend,
-        "Select the default Whisper model",
-        choices=[
-            _choice(value, value, help_text=_model_description(value))
-            for value in choices["whisper_models"]
-        ],
-        default=current.preferred_whisper_model,
-    )
-    llm_model = _text(
-        prompt_backend,
-        "Local model",
-        default=current.preferred_llm_model,
-        instruction="Used for local answers through Ollama.",
-    )
+    if not enabled_capabilities:
+        enabled_capabilities = list(choices["recommended"]["enabled_capabilities"])
+
+    enabled_local_file_types = list(current.enabled_local_file_types)
+    if "local_files" in enabled_capabilities:
+        enabled_local_file_types = _checkbox(
+            prompt_backend,
+            "Choose local file types to enable",
+            choices=[
+                _choice(value, value.upper(), help_text=_local_file_type_description(value))
+                for value in choices["local_file_types"]
+            ],
+            default=current.enabled_local_file_types,
+            instruction="Plain text and markdown are included automatically.",
+        )
+    else:
+        enabled_local_file_types = []
+
+    transcription_backend = current.preferred_transcription_backend
+    whisper_model = current.preferred_whisper_model
+    if _transcription_needed(enabled_capabilities):
+        transcription_backend = _select(
+            prompt_backend,
+            "Select a transcription backend",
+            choices=[
+                _choice(value, value, help_text=_backend_description(value))
+                for value in choices["transcription_backends"]
+            ],
+            default=current.preferred_transcription_backend,
+        )
+        whisper_model = _select(
+            prompt_backend,
+            "Select the default Whisper model",
+            choices=[
+                _choice(value, value, help_text=_model_description(value))
+                for value in choices["whisper_models"]
+            ],
+            default=current.preferred_whisper_model,
+        )
+
+    llm_model = current.preferred_llm_model
+    if "local_query" in enabled_capabilities:
+        llm_model = _text(
+            prompt_backend,
+            "Local model",
+            default=current.preferred_llm_model,
+            instruction="Used for local answers through Ollama. Ollama itself is managed separately.",
+        )
+
     staged = BeyinSettings(
         version=current.version,
         setup_completed=True,
+        enabled_capabilities=enabled_capabilities,
+        enabled_local_file_types=enabled_local_file_types,
         preferred_transcription_backend=transcription_backend,
         preferred_whisper_model=whisper_model,
         preferred_llm_model=llm_model or current.preferred_llm_model,

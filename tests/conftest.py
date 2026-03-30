@@ -42,6 +42,9 @@ class _FakePromptBackend:
     def text(self, **kwargs):
         return self._record("text", **kwargs)
 
+    def checkbox(self, **kwargs):
+        return self._record("checkbox", **kwargs)
+
 
 def _save_global_settings(home: Path, **overrides):
     from beyin.settings import BeyinSettings, save_settings
@@ -50,6 +53,14 @@ def _save_global_settings(home: Path, **overrides):
         BeyinSettings(
             version=1,
             setup_completed=True,
+            enabled_capabilities=overrides.get(
+                "enabled_capabilities",
+                ["web", "youtube", "podcasts"],
+            ),
+            enabled_local_file_types=overrides.get(
+                "enabled_local_file_types",
+                [],
+            ),
             preferred_transcription_backend=overrides.get(
                 "preferred_transcription_backend",
                 "faster-whisper",
