@@ -60,15 +60,6 @@ from beyin.machine_output import MachineExit, run_machine_command
 from beyin.source_ids import artifact_stem, canonical_source_id
 from beyin.settings import load_settings, needs_initial_setup, resolve_build_defaults, save_settings
 from beyin.build_report import BuildReport
-from beyin.audio_pipeline import (
-    _candidate_audio_paths,
-    _canonical_audio_path,
-    _chunk_transcript_segments,
-    _legacy_transcript_path,
-    _load_transcript_segments,
-    _save_transcript_segments,
-    _transcript_path,
-)
 from beyin.payloads import (
     _list_payload,
     _load_query_runtime,
@@ -373,6 +364,48 @@ def _interactive_abort_type():
     from beyin.interactive import InteractiveAbort
 
     return InteractiveAbort
+
+
+def _candidate_audio_paths(*args, **kwargs):
+    from beyin.audio_pipeline import _candidate_audio_paths as _impl
+
+    return _impl(*args, **kwargs)
+
+
+def _canonical_audio_path(*args, **kwargs):
+    from beyin.audio_pipeline import _canonical_audio_path as _impl
+
+    return _impl(*args, **kwargs)
+
+
+def _chunk_transcript_segments(*args, **kwargs):
+    from beyin.audio_pipeline import _chunk_transcript_segments as _impl
+
+    return _impl(*args, **kwargs)
+
+
+def _legacy_transcript_path(*args, **kwargs):
+    from beyin.audio_pipeline import _legacy_transcript_path as _impl
+
+    return _impl(*args, **kwargs)
+
+
+def _load_transcript_segments(*args, **kwargs):
+    from beyin.audio_pipeline import _load_transcript_segments as _impl
+
+    return _impl(*args, **kwargs)
+
+
+def _save_transcript_segments(*args, **kwargs):
+    from beyin.audio_pipeline import _save_transcript_segments as _impl
+
+    return _impl(*args, **kwargs)
+
+
+def _transcript_path(*args, **kwargs):
+    from beyin.audio_pipeline import _transcript_path as _impl
+
+    return _impl(*args, **kwargs)
 
 
 def fetch_article(*args, **kwargs):

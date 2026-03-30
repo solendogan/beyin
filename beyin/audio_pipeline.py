@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from beyin.chunker import count_tokens
 from beyin.source_ids import artifact_stem
 
 
@@ -66,6 +65,8 @@ def _chunk_transcript_segments(
     max_tokens: int = 256,
 ) -> tuple[list[str], list[dict]]:
     """Chunk transcript segments while preserving timestamp ranges when available."""
+    from beyin.chunker import count_tokens
+
     filtered = [segment for segment in segments if segment.get("text", "").strip()]
     if not filtered:
         return [], []
