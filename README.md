@@ -324,7 +324,7 @@ beyin status my-pack
 beyin build my-pack
 ```
 
-A `partial` pack may still be usable. Rebuilding recovers any failed sources.
+A `partially-ready` pack is still queryable — sources that built successfully are available. Rebuilding recovers any failed sources.
 
 ### MCP is connected but retrieval is not working
 
@@ -332,6 +332,32 @@ A `partial` pack may still be usable. Rebuilding recovers any failed sources.
 - Restart your agent after adding beyin for the first time
 - Verify the server is registered: `claude mcp list`
 - Make sure the same beyin installation is used by both CLI and the MCP server
+
+### Audio and video builds are slow
+
+beyin uses [Whisper](https://github.com/openai/whisper) to transcribe audio and video sources. The model size controls the trade-off between speed and accuracy.
+
+| Model | Parameters | Download size | Speed | Accuracy | Best for |
+|-------|-----------|--------------|-------|----------|----------|
+| `tiny` | 39M | ~75 MB | fastest | lowest | Quick tests, clean English audio |
+| `base` | 74M | ~145 MB | fast | low | Simple content, English podcasts |
+| `small` | 244M | ~483 MB | moderate | good | Most use cases, multilingual content |
+| `medium` | 769M | ~1.5 GB | slow | better | Accented speech, noisy audio, non-English |
+| `large` | 1550M | ~3 GB | slowest | best | Maximum accuracy, difficult audio |
+
+The default model is `medium`. To use a faster model, change it in settings:
+
+```bash
+beyin settings
+```
+
+Or pass it per build:
+
+```bash
+beyin build my-pack --model small
+```
+
+`small` is a good default for most content. Use `medium` or `large` for non-English languages or poor audio quality.
 
 ### Video or audio builds fail
 

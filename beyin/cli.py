@@ -58,7 +58,13 @@ from beyin.pack_state import (
 from beyin.lifecycle import remove_installed_pack, reset_pack_runtime
 from beyin.machine_output import MachineExit, run_machine_command
 from beyin.source_ids import artifact_stem, canonical_source_id
-from beyin.settings import load_settings, needs_initial_setup, resolve_build_defaults, save_settings
+from beyin.settings import (
+    available_setup_choices,
+    load_settings,
+    needs_initial_setup,
+    resolve_build_defaults,
+    save_settings,
+)
 from beyin.build_report import BuildReport
 from beyin.payloads import (
     _list_payload,
@@ -352,6 +358,18 @@ def _interactive_text(*args, **kwargs):
     from beyin.interactive import _text as _text
 
     return _text(*args, **kwargs)
+
+
+def _interactive_model_description(*args, **kwargs):
+    from beyin.interactive import _model_description as _model_description
+
+    return _model_description(*args, **kwargs)
+
+
+def _interactive_choice(*args, **kwargs):
+    from beyin.interactive import _choice as _choice
+
+    return _choice(*args, **kwargs)
 
 
 def _interactive_confirm(*args, **kwargs):
@@ -758,13 +776,18 @@ def settings_command() -> None:
                     continue
 
             elif selection == "whisper_model":
+                choices = available_setup_choices()
                 new_val = _interactive_select(
                     backend,
                     "Whisper model",
                     choices=[
-                        {"value": "small", "name": "small"},
-                        {"value": "medium", "name": "medium"},
-                        {"value": "large", "name": "large"},
+                        _interactive_choice(
+                            value,
+                            value,
+                            help_text=_interactive_model_description(value),
+                        )
+                        for value in choices["whisper_models"]
+                    ] + [
                         {"value": "__back__", "name": "← Back"},
                     ],
                     default=staged.preferred_whisper_model,
@@ -1244,7 +1267,18 @@ def build(
         help="Show per-episode download, transcribe, and embed lines.",
     ),
 ):
-    """Build or incrementally update a pack from its pack.yaml sources."""
+    """Build or incrementally update a pack from its pack.yaml sources.
+
+    Examples:
+      - Full build:      beyin build <pack>
+      - One source:      beyin build <pack> --source 2
+      - Source range:    beyin build <pack> --source 1-3
+      - Text match:      beyin build <pack> --source "WWDC"
+      - Tiny model:      beyin build <pack> --model tiny
+      - Set language:    beyin build <pack> --language tr
+      - Reset runtime:   beyin build <pack> --reset
+      - Verbose build:   beyin build <pack> --verbose
+    """
     pack_dir = _resolve_pack_dir(pack)
     if reset:
         reset_pack_runtime(pack_dir)
@@ -2292,7 +2326,14 @@ def add_source_command(
         help="Run build immediately after adding sources.",
     ),
 ) -> None:
-    """Add one or more sources to an existing pack's pack.yaml."""
+    """Add one or more sources to an existing pack's pack.yaml.
+
+    Examples:
+      - Single URL:     beyin add-source <pack> https://example.com/article
+      - Multiple URLs:  beyin add-source <pack> https://a.com https://b.com
+      - Local file:     beyin add-source <pack> ./notes.md
+      - Add + build:    beyin add-source <pack> https://example.com/feed.xml --build
+    """
     from beyin.config import write_config
     from beyin.authoring import add_source_to_pack as _add_source
     pack_dir = _resolve_pack_dir(pack)
@@ -2341,10 +2382,10 @@ def remove_source_command(
     """Remove one or more sources from an existing pack by index or text match.
 
     Selectors can be:
-      - Single index:   beyin remove-source apple 2
-      - Multiple:       beyin remove-source apple 1 3 5
-      - Range:          beyin remove-source apple 1-3
-      - Text match:     beyin remove-source apple "WWDC"
+      - Single index:   beyin remove-source <pack> 2
+      - Multiple:       beyin remove-source <pack> 1 3 5
+      - Range:          beyin remove-source <pack> 1-3
+      - Text match:     beyin remove-source <pack> "WWDC"
 
     Removed sources are no longer re-indexed on build, but their existing chunks remain
     in the vector store until you rebuild. Run with --build to clean up immediately.

@@ -300,6 +300,47 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
     assert "Settings saved" in result.output
 
 
+def test_settings_command_whisper_menu_includes_all_models_and_help_text(monkeypatch, tmp_path):
+    """TTY settings should expose the same Whisper model choices as initial setup."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from beyin.cli import app
+
+    _save_global_settings(tmp_path, preferred_whisper_model="small")
+    runner = CliRunner()
+    backend = _FakePromptBackend(
+        [
+            "whisper_model",
+            "__back__",
+            "__exit__",
+        ]
+    )
+
+    with patch("beyin.cli.is_interactive_session", return_value=True), patch(
+        "beyin.cli.load_prompt_backend",
+        return_value=backend,
+    ):
+        result = runner.invoke(app, ["settings"])
+
+    assert result.exit_code == 0
+    whisper_call = next(
+        kwargs
+        for prompt_type, kwargs in backend.calls
+        if prompt_type == "select" and kwargs["message"] == "Whisper model"
+    )
+    values = [choice["value"] for choice in whisper_call["choices"]]
+    names = {
+        choice["value"]: choice.get("name")
+        for choice in whisper_call["choices"]
+        if choice["value"] != "__back__"
+    }
+
+    assert values == ["tiny", "base", "small", "medium", "large", "__back__"]
+    assert "Fastest. ~75 MB. Clean English audio only." in names["tiny"]
+    assert "Fast. ~145 MB. Simple content, English podcasts." in names["base"]
+    assert "Moderate. ~483 MB. Most use cases" in names["small"]
+
+
 def test_settings_command_shows_table_in_non_tty(
     monkeypatch,
     tmp_path,

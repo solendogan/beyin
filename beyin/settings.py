@@ -14,7 +14,7 @@ from beyin.paths import settings_path
 
 SETTINGS_VERSION = 1
 _SETUP_PATHS = ["recommended", "custom"]
-_WHISPER_MODELS = ["small", "medium", "large"]
+_WHISPER_MODELS = ["tiny", "base", "small", "medium", "large"]
 DEFAULT_WHISPER_MODEL = "medium"
 DEFAULT_LLM_MODEL = "llama3.2"
 

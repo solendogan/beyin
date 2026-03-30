@@ -149,9 +149,11 @@ def _backend_description(value: str) -> str:
 
 def _model_description(value: str) -> str:
     descriptions = {
-        "small": "Fast. Lower accuracy, especially for mixed-language content.",
-        "medium": "Recommended. Better accuracy for technical and multilingual audio.",
-        "large": "Best quality. Needs 16 GB+ RAM, slower.",
+        "tiny": "Fastest. ~75 MB. Clean English audio only.",
+        "base": "Fast. ~145 MB. Simple content, English podcasts.",
+        "small": "Moderate. ~483 MB. Most use cases, multilingual content.",
+        "medium": "Recommended. ~1.5 GB. Better accuracy for non-English and noisy audio.",
+        "large": "Best quality. ~3 GB. Needs 16 GB+ RAM, slowest.",
     }
     return descriptions.get(value, value)
 
@@ -204,7 +206,7 @@ def _print_create_intro() -> None:
     _print_screen(
         "Create a new pack",
         [
-            "Start with one source. beyin infers the content path from the value you paste.",
+            "Start with one source or paste several URLs on separate lines.",
         ],
         footer_lines=[
             "After creation, run `beyin build <name>` to index the source into local retrieval memory.",
@@ -501,8 +503,8 @@ def run_create_flow(
     try:
         source_input = _text(
             backend,
-            "Source URL or local path",
-            instruction="Use a URL, feed, YouTube link, or a local text-like path.",
+            "Source URL(s) or local path(s)",
+            instruction="Use URLs, feeds, YouTube links, or local text-like paths. Paste multiple entries on separate lines.",
         )
         name = _text(backend, "Pack name")
         description = _text(backend, "Short description")
@@ -516,6 +518,7 @@ def run_create_flow(
             [
                 f"Name: {config.name}",
                 f"Description: {config.description}",
+                f"Source count: {len(config.sources)}",
                 f"First source: {config.sources[0].url}",
             ],
         )
@@ -553,7 +556,7 @@ def run_create_flow(
         render_status(
             f"Created pack '{config.id}'",
             [
-                f"Source saved: {config.sources[0].url}",
+                f"Sources saved: {len(config.sources)}",
                 "",
                 f"Next step: beyin build {config.id}",
                 "Build indexes the source into local expert memory.",
@@ -643,8 +646,8 @@ def run_manage_pack_flow(
         if add_source:
             source_input = _text(
                 backend,
-                "New source URL or local path",
-                instruction="Local text-like paths stay authored as content sources.",
+                "New source URL(s) or local path(s)",
+                instruction="Local text-like paths stay authored as content sources. Paste multiple entries on separate lines.",
             )
             staged = add_source_to_pack(staged, source_input)
 
