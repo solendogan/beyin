@@ -150,9 +150,13 @@ def _backend_description(value: str) -> str:
 def _model_description(value: str) -> str:
     descriptions = {
         "tiny": "Fastest. ~75 MB. Clean English audio only.",
+        "tiny.en": "English-only. ~75 MB. Fastest option when all audio is English.",
         "base": "Fast. ~145 MB. Simple content, English podcasts.",
+        "base.en": "English-only. ~145 MB. Better fit for English podcasts and interviews.",
         "small": "Moderate. ~483 MB. Most use cases, multilingual content.",
-        "medium": "Recommended. ~1.5 GB. Better accuracy for non-English and noisy audio.",
+        "small.en": "English-only. ~483 MB. Strong default when all speech is English.",
+        "medium": "~1.5 GB. Better accuracy for harder English, multilingual, accented, or noisy audio.",
+        "medium.en": "English-only. ~1.5 GB. Higher English accuracy for harder English audio.",
         "large": "Best quality. ~3 GB. Needs 16 GB+ RAM, slowest.",
     }
     return descriptions.get(value, value)

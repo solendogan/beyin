@@ -202,7 +202,7 @@ def retrieve(
 @app.tool()
 def build(
     pack: Annotated[str, Field(description="Pack name to build.")],
-    model: Annotated[str | None, Field(description="Whisper model size: tiny/base/small/medium/large.")] = None,
+    model: Annotated[str | None, Field(description="Whisper model size: tiny/tiny.en/base/base.en/small/small.en/medium/medium.en/large.")] = None,
     language: Annotated[str | None, Field(description="Whisper language code (e.g. 'en', 'fr', 'es'). Default: auto-detect.")] = None,
     sources: Annotated[list[str] | None, Field(description="Build only selected sources by index (e.g. ['1', '3', '5']) or range (e.g. ['1-3']). Omit to build all.")] = None,
 ) -> dict[str, Any]:
@@ -265,7 +265,7 @@ def add(
 def add_sources(
     pack: Annotated[str, Field(description="Pack name to add sources to.")],
     urls: Annotated[list[str], Field(description="One or more URLs to add. Playlists and RSS feeds are expanded into individual sources.")],
-    model: Annotated[str | None, Field(description="Whisper model size: tiny/base/small/medium/large.")] = None,
+    model: Annotated[str | None, Field(description="Whisper model size: tiny/tiny.en/base/base.en/small/small.en/medium/medium.en/large.")] = None,
     language: Annotated[str | None, Field(description="Whisper language code (e.g. 'en', 'fr', 'es'). Default: auto-detect.")] = None,
 ) -> dict[str, Any]:
     """Add one or more sources to a pack. Rebuilds automatically for single sources. For playlists or RSS feeds, sources are expanded and saved individually — review with status tool, then call build when ready."""
@@ -293,7 +293,7 @@ def remove_sources(
     pack: Annotated[str, Field(description="Pack name to remove sources from.")],
     selectors: Annotated[list[str], Field(description="Source selectors to remove — by index (e.g. ['1', '3', '5']), range (e.g. ['1-3']), or visible title/URL text.")],
     rebuild: Annotated[bool, Field(description="If true, rebuild the pack immediately after removal.")] = False,
-    model: Annotated[str | None, Field(description="Whisper model size: tiny/base/small/medium/large.")] = None,
+    model: Annotated[str | None, Field(description="Whisper model size: tiny/tiny.en/base/base.en/small/small.en/medium/medium.en/large.")] = None,
     language: Annotated[str | None, Field(description="Whisper language code (e.g. 'en', 'fr', 'es'). Default: auto-detect.")] = None,
 ) -> dict[str, Any]:
     """Remove sources from a pack by current index or visible source text.

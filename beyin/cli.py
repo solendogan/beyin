@@ -1247,7 +1247,7 @@ def build(
         None,
         "--model",
         "-m",
-        help="Whisper model size: tiny/base/small/medium/large",
+        help="Whisper model size: tiny/tiny.en/base/base.en/small/small.en/medium/medium.en/large",
     ),
     language: Optional[str] = typer.Option(
         None,
@@ -2201,7 +2201,7 @@ def update(
         None,
         "--model",
         "-m",
-        help="Whisper model size: tiny/base/small/medium/large",
+        help="Whisper model size: tiny/tiny.en/base/base.en/small/small.en/medium/medium.en/large",
     ),
     language: Optional[str] = typer.Option(
         None,

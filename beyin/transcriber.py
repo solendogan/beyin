@@ -5,11 +5,15 @@ from pathlib import Path
 from typing import Optional
 
 _MLX_MODEL_MAP = {
-    "tiny":   "mlx-community/whisper-tiny-mlx",
-    "base":   "mlx-community/whisper-base-mlx",
-    "small":  "mlx-community/whisper-small-mlx",
-    "medium": "mlx-community/whisper-medium-mlx",
-    "large":  "mlx-community/whisper-large-v3-mlx",
+    "tiny":      "mlx-community/whisper-tiny-mlx",
+    "tiny.en":   "mlx-community/whisper-tiny.en-mlx",
+    "base":      "mlx-community/whisper-base-mlx",
+    "base.en":   "mlx-community/whisper-base.en-mlx",
+    "small":     "mlx-community/whisper-small-mlx",
+    "small.en":  "mlx-community/whisper-small.en-mlx",
+    "medium":    "mlx-community/whisper-medium-mlx",
+    "medium.en": "mlx-community/whisper-medium.en-mlx",
+    "large":     "mlx-community/whisper-large-v3-mlx",
 }
 
 

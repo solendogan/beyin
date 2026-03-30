@@ -335,10 +335,24 @@ def test_settings_command_whisper_menu_includes_all_models_and_help_text(monkeyp
         if choice["value"] != "__back__"
     }
 
-    assert values == ["tiny", "base", "small", "medium", "large", "__back__"]
+    assert values == [
+        "tiny",
+        "tiny.en",
+        "base",
+        "base.en",
+        "small",
+        "small.en",
+        "medium",
+        "medium.en",
+        "large",
+        "__back__",
+    ]
     assert "Fastest. ~75 MB. Clean English audio only." in names["tiny"]
+    assert "English-only. ~75 MB." in names["tiny.en"]
     assert "Fast. ~145 MB. Simple content, English podcasts." in names["base"]
+    assert "English-only. ~145 MB." in names["base.en"]
     assert "Moderate. ~483 MB. Most use cases" in names["small"]
+    assert "English-only. ~483 MB." in names["small.en"]
 
 
 def test_settings_command_shows_table_in_non_tty(

@@ -499,6 +499,17 @@ def test_build_can_limit_to_selected_source_indexes_without_mutating_pack(tmp_pa
             [],
             "medium",
         ),
+        (
+            "name: test-pack\n"
+            "description: Test\n"
+            "llm: ollama\n"
+            "sources:\n"
+            "  - https://www.youtube.com/@channel\n"
+            "embedding_model: all-MiniLM-L6-v2\n",
+            "small",
+            ["--model", "small.en"],
+            "small.en",
+        ),
     ],
 )
 def test_build_whisper_settings_precedence_for_audio_sources(

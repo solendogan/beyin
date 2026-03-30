@@ -335,17 +335,21 @@ A `partially-ready` pack is still queryable — sources that built successfully 
 
 ### Audio and video builds are slow
 
-beyin uses [Whisper](https://github.com/openai/whisper) to transcribe audio and video sources. The model size controls the trade-off between speed and accuracy.
+beyin uses [Whisper](https://github.com/openai/whisper) to transcribe audio and video sources. The model size controls the trade-off between speed and accuracy. OpenAI’s official model family also includes English-only `.en` variants through `medium.en`, which are useful when you know the audio is only English.
 
-| Model | Parameters | Download size | Speed | Accuracy | Best for |
-|-------|-----------|--------------|-------|----------|----------|
-| `tiny` | 39M | ~75 MB | fastest | lowest | Quick tests, clean English audio |
-| `base` | 74M | ~145 MB | fast | low | Simple content, English podcasts |
-| `small` | 244M | ~483 MB | moderate | good | Most use cases, multilingual content |
-| `medium` | 769M | ~1.5 GB | slow | better | Accented speech, noisy audio, non-English |
-| `large` | 1550M | ~3 GB | slowest | best | Maximum accuracy, difficult audio |
+| Model | Type | Download size | Speed | Accuracy | Best for |
+|-------|------|---------------|-------|----------|----------|
+| `tiny` | multilingual | ~75 MB | fastest | lowest | Quick tests, clean audio, mixed-language detection |
+| `tiny.en` | English-only | ~75 MB | fastest | low | Fastest English-only transcripts |
+| `base` | multilingual | ~145 MB | fast | low | Simple podcasts, lightweight multilingual audio |
+| `base.en` | English-only | ~145 MB | fast | low+ | English podcasts and interviews |
+| `small` | multilingual | ~483 MB | moderate | good | Most use cases, multilingual content |
+| `small.en` | English-only | ~483 MB | moderate | good+ | Strong default for English-only speech |
+| `medium` | multilingual | ~1.5 GB | slow | better | Harder English, multilingual, accented, or noisy audio |
+| `medium.en` | English-only | ~1.5 GB | slow | better+ | Higher English accuracy without multilingual support |
+| `large` | multilingual | ~3 GB | slowest | best | Maximum accuracy, difficult audio |
 
-The default model is `medium`. To use a faster model, change it in settings:
+The default model is `small`. To use a faster or English-only model, change it in settings:
 
 ```bash
 beyin settings
@@ -357,7 +361,7 @@ Or pass it per build:
 beyin build my-pack --model small
 ```
 
-`small` is a good default for most content. Use `medium` or `large` for non-English languages or poor audio quality.
+`small` is a good default for most content. If your audio is strictly English, `small.en` is a good faster/simpler option. Use `medium`, `medium.en`, or `large` for harder audio.
 
 ### Video or audio builds fail
 
