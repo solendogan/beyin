@@ -10,6 +10,14 @@ from beyin.config import PackConfig, SourceEntry
 from beyin.downloader import detect_source_type, expand_playlist_sources
 
 
+def split_source_inputs(source_input: str) -> list[str]:
+    """Split one pasted source field into one or more newline-delimited sources."""
+    parts = [part.strip() for part in re.split(r"[\r\n]+", source_input) if part.strip()]
+    if not parts:
+        raise ValueError("Source input cannot be empty.")
+    return parts
+
+
 def infer_source_intent(source_input: str) -> dict[str, str]:
     """Infer whether a value is content to author from or an existing pack import."""
     source = source_input.strip()
@@ -34,19 +42,8 @@ def build_new_pack_config(
     source_input: str,
     llm: str = "ollama",
 ) -> PackConfig:
-    """Build a new pack config from one inferred authoring source."""
-    intent = infer_source_intent(source_input)
-    if intent["kind"] != "content":
-        raise ValueError(
-            "Existing pack imports belong on `beyin add <path-or-url-or-id>`, not `beyin create`."
-        )
-    source = source_input.strip()
-    expanded = expand_playlist_sources(source)
-    sources = (
-        [SourceEntry(url=ep["url"], title=ep.get("title"), parent_url=source, parent_title=ep.get("parent_title")) for ep in expanded]
-        if expanded
-        else [SourceEntry(url=source)]
-    )
+    """Build a new pack config from one or more authored sources."""
+    sources = _normalize_authored_sources(source_input)
     return PackConfig(
         id=name,
         name=name,
@@ -62,28 +59,52 @@ def add_source_to_pack(config: PackConfig, source_input: str) -> PackConfig:
     If source_input is a YouTube playlist or RSS feed, expands it into
     individual titled sources instead of storing the playlist URL.
     """
-    intent = infer_source_intent(source_input)
-    if intent["kind"] != "content":
-        raise ValueError(
-            "Adding an existing pack belongs on `beyin add <path-or-url-or-id>`, not manage pack."
-        )
-    source = source_input.strip()
     existing_urls = {e.url for e in config.sources}
-
-    expanded = expand_playlist_sources(source)
-    if expanded:
-        new_entries = [
-            SourceEntry(url=ep["url"], title=ep.get("title"), parent_url=source, parent_title=ep.get("parent_title"))
-            for ep in expanded
-            if ep.get("url") and ep["url"] not in existing_urls
-        ]
-        if not new_entries:
-            return config
-        return replace(config, sources=[*config.sources, *new_entries])
-
-    if source in existing_urls:
+    new_entries = _normalize_authored_sources(source_input, existing_urls=existing_urls)
+    if not new_entries:
         return config
-    return replace(config, sources=[*config.sources, SourceEntry(url=source)])
+    return replace(config, sources=[*config.sources, *new_entries])
+
+
+def _normalize_authored_sources(
+    source_input: str,
+    *,
+    existing_urls: set[str] | None = None,
+) -> list[SourceEntry]:
+    """Normalize one or more authored sources, expanding feeds/playlists and deduping URLs."""
+    seen_urls = set(existing_urls or set())
+    normalized: list[SourceEntry] = []
+
+    for source in split_source_inputs(source_input):
+        intent = infer_source_intent(source)
+        if intent["kind"] != "content":
+            raise ValueError(
+                "Existing pack imports belong on `beyin add <path-or-url-or-id>`, not `beyin create`."
+            )
+
+        expanded = expand_playlist_sources(source)
+        if expanded:
+            for ep in expanded:
+                url = ep.get("url")
+                if not url or url in seen_urls:
+                    continue
+                normalized.append(
+                    SourceEntry(
+                        url=url,
+                        title=ep.get("title"),
+                        parent_url=source,
+                        parent_title=ep.get("parent_title"),
+                    )
+                )
+                seen_urls.add(url)
+            continue
+
+        if source in seen_urls:
+            continue
+        normalized.append(SourceEntry(url=source))
+        seen_urls.add(source)
+
+    return normalized
 
 
 def remove_sources_from_pack(

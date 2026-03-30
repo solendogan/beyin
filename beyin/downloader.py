@@ -12,6 +12,17 @@ _YOUTUBE_RE = re.compile(
     r"(youtube\.com/(watch|playlist|channel|@|c/|user/)|youtu\.be/)"
 )
 _RSS_HINTS_RE = re.compile(r"\.(rss|xml)$|/feed/?|/rss/?", re.IGNORECASE)
+_PODCAST_HOST_HINTS = (
+    "fireside.fm",
+    "simplecast.com",
+    "libsyn.com",
+    "transistor.fm",
+    "buzzsprout.com",
+    "captivate.fm",
+    "podbean.com",
+    "redcircle.com",
+    "spreaker.com",
+)
 _PACK_CONFIG_SUFFIXES = {".yaml", ".yml"}
 _TEXT_LIKE_SUFFIXES = {
     ".txt",
@@ -62,9 +73,13 @@ def detect_source_type(url: str) -> str:
             return "youtube"
         if _RSS_HINTS_RE.search(url):
             return "podcast"
-        # Remote audio file (e.g. direct podcast CDN links)
         from urllib.parse import urlparse
-        path = urlparse(url).path.lower()
+        parsed = urlparse(url)
+        path = parsed.path.lower()
+        hostname = (parsed.hostname or "").lower()
+        if any(hostname == hint or hostname.endswith(f".{hint}") for hint in _PODCAST_HOST_HINTS):
+            return "podcast"
+        # Remote audio file (e.g. direct podcast CDN links)
         if any(path.endswith(ext) for ext in _REMOTE_AUDIO_EXTENSIONS):
             return "podcast_audio"
         return "article"

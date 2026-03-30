@@ -65,7 +65,7 @@ def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp
 
     assert result.exit_code == 0
     assert "Create a new pack" in result.output
-    assert "Start with one source." in result.output
+    assert "Start with one source or paste several URLs on separate lines." in result.output
     assert "Review pack" in result.output
 
     pack_dir = packs_root / "creator-pack"
@@ -87,8 +87,42 @@ def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp
         for prompt_type, kwargs in backend.calls
         if prompt_type == "text"
     ]
-    assert text_prompts[0] == "Source URL or local path"
+    assert text_prompts[0] == "Source URL(s) or local path(s)"
     assert "Source type" not in " ".join(text_prompts)
+
+
+def test_create_command_splits_multiline_source_paste_into_multiple_sources(tmp_path):
+    """Interactive create should treat newline-separated pasted URLs as separate sources."""
+    from beyin.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "beyin"
+    backend = _FakePromptBackend(
+        [
+            "https://lexfridman.com/peter-steinberger\nhttps://berlinkafasi.fireside.fm/8",
+            "creator-pack",
+            "Creator notes",
+            True,
+        ]
+    )
+
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli.is_interactive_session",
+        return_value=True,
+    ), patch(
+        "beyin.cli.load_prompt_backend",
+        return_value=backend,
+    ):
+        result = runner.invoke(app, ["create"])
+
+    assert result.exit_code == 0, result.output
+    config = load_config(packs_root / "creator-pack")
+    assert [source.url for source in config.sources] == [
+        "https://lexfridman.com/peter-steinberger",
+        "https://berlinkafasi.fireside.fm/8",
+    ]
+    assert "Source count" in result.output
+    assert "Sources saved: 2" in result.output
 
 
 def test_create_command_accepts_local_media_source(tmp_path):
@@ -252,6 +286,41 @@ def test_remove_source_command_removes_by_index(tmp_path):
     assert [source.url for source in config.sources] == [
         "https://example.com/article-1",
         str(tmp_path / "notes.md"),
+    ]
+
+
+def test_add_source_command_splits_multiline_argument_and_labels_fireside_as_podcast(tmp_path):
+    """add-source should split pasted newline-separated URLs and classify fireside episode pages as podcast."""
+    from beyin.cli import app
+    from beyin.config import PackConfig, write_config
+
+    packs_root = tmp_path / "beyin"
+    pack_dir = packs_root / "test-pack"
+    write_config(
+        PackConfig(
+            id="test-pack",
+            name="test-pack",
+            description="Test pack",
+            llm="ollama",
+            sources=[],
+        ),
+        pack_dir / "pack.yaml",
+    )
+
+    runner = CliRunner()
+    pasted = "https://lexfridman.com/peter-steinberger\nhttps://berlinkafasi.fireside.fm/8"
+    with patch("beyin.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["add-source", "test-pack", pasted])
+
+    config = load_config(pack_dir)
+
+    assert result.exit_code == 0, result.output
+    assert "Added 2 source(s) to 'test-pack':" in result.output
+    assert "  + [article] https://lexfridman.com/peter-steinberger" in result.output
+    assert "  + [podcast] https://berlinkafasi.fireside.fm/8" in result.output
+    assert [source.url for source in config.sources] == [
+        "https://lexfridman.com/peter-steinberger",
+        "https://berlinkafasi.fireside.fm/8",
     ]
 
 
