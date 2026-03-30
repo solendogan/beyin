@@ -283,7 +283,8 @@ class BeyinCommand(TyperCommand):
 app = typer.Typer(
     help=(
         "beyin — use with an agent for evidence retrieval, or run query in local model mode"
-    )
+    ),
+    add_completion=False,
 )
 
 _PACKS_DIR = packs_dir()
