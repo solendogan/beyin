@@ -674,9 +674,6 @@ def _render_dependency_section(*, title: str = "Dependencies", settings=None) ->
 @app.command(name="settings", cls=BeyinCommand)
 def settings_command() -> None:
     """Show current settings and edit them interactively in a terminal."""
-    from beyin.settings import BeyinSettings
-    InteractiveAbort = _interactive_abort_type()
-
     current = load_settings()
 
     # Always show current settings as a table
@@ -695,98 +692,9 @@ def settings_command() -> None:
         typer.echo(f"  {_hint}")
         return
 
-    # TTY: inline edit menu loop
-    backend = load_prompt_backend()
+    from beyin.interactive import run_settings_flow as interactive_run_settings_flow
 
-    # Work on a mutable copy of the settings fields
-    staged = BeyinSettings(
-        version=current.version,
-        setup_completed=current.setup_completed,
-        enabled_capabilities=list(current.enabled_capabilities),
-        enabled_local_file_types=list(current.enabled_local_file_types),
-        preferred_transcription_backend=current.preferred_transcription_backend,
-        preferred_whisper_model=current.preferred_whisper_model,
-        preferred_llm_model=current.preferred_llm_model,
-    )
-
-    _DIVIDER = {"value": "__divider__", "name": "──────────────────────"}
-    _SAVE = {"value": "__save__", "name": "Save and exit"}
-    _EXIT = {"value": "__exit__", "name": "Exit without saving"}
-
-    try:
-        while True:
-            choices = [
-                {"value": "transcription", "name": f"Transcription backend ({staged.preferred_transcription_backend})"},
-                {"value": "whisper_model", "name": f"Whisper model         ({staged.preferred_whisper_model})"},
-                {"value": "llm_model", "name": f"Local model           ({staged.preferred_llm_model})"},
-                _DIVIDER,
-                _SAVE,
-                _EXIT,
-            ]
-            selection = _interactive_select(
-                backend,
-                "What would you like to change?",
-                choices=choices,
-            )
-
-            if selection == "__save__":
-                save_settings(staged)
-                typer.echo(f"  {green('OK')} {bold('Settings saved.')}")
-                return
-
-            if selection == "__exit__" or selection == "__divider__":
-                typer.echo("  Settings unchanged.")
-                return
-
-            if selection == "llm_model":
-                try:
-                    typer.echo(f"  {dim('← Back  (Ctrl+C)')}")
-                    new_val = _interactive_text(
-                        backend,
-                        "Local model",
-                        default=staged.preferred_llm_model,
-                    )
-                    staged.preferred_llm_model = new_val or staged.preferred_llm_model
-                except InteractiveAbort:
-                    continue
-
-            elif selection == "whisper_model":
-                choices = available_setup_choices()
-                new_val = _interactive_select(
-                    backend,
-                    "Whisper model",
-                    choices=[
-                        _interactive_choice(
-                            value,
-                            value,
-                            help_text=_interactive_model_description(value),
-                        )
-                        for value in choices["whisper_models"]
-                    ] + [
-                        {"value": "__back__", "name": "← Back"},
-                    ],
-                    default=staged.preferred_whisper_model,
-                )
-                if new_val != "__back__":
-                    staged.preferred_whisper_model = new_val
-
-            elif selection == "transcription":
-                new_val = _interactive_select(
-                    backend,
-                    "Transcription backend",
-                    choices=[
-                        {"value": "mlx-whisper", "name": "mlx-whisper"},
-                        {"value": "faster-whisper", "name": "faster-whisper"},
-                        {"value": "__back__", "name": "← Back"},
-                    ],
-                    default=staged.preferred_transcription_backend,
-                )
-                if new_val != "__back__":
-                    staged.preferred_transcription_backend = new_val
-
-    except InteractiveAbort:
-        typer.echo("  Settings unchanged.")
-        return
+    interactive_run_settings_flow(prompt_backend=load_prompt_backend())
 
 
 @app.command(cls=BeyinCommand)

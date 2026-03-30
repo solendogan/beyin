@@ -516,6 +516,9 @@ def _stage_settings(
 
 def _print_applied_summary(settings: BeyinSettings) -> None:
     next_lines = [
+        "These changes apply to future commands.",
+        "If you want existing packs to use new transcription or file support settings, run `beyin build <pack>` again.",
+        "",
         "Quick start for agent mode:",
         "  1. beyin mcp-server  \u2190 add this to your agent's MCP config",
         "  2. beyin create       \u2190 create your first pack",

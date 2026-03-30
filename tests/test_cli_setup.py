@@ -269,24 +269,26 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
 
 
 def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch, tmp_path):
-    """beyin settings should show the inline edit menu and persist saved changes."""
+    """beyin settings should reuse the guided setup flow and persist saved changes."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
     from beyin.cli import app
     from beyin.settings import load_settings
 
-    _save_global_settings(tmp_path, preferred_whisper_model="small")
+    _save_global_settings(
+        tmp_path,
+        enabled_capabilities=["youtube"],
+        preferred_whisper_model="small",
+    )
     runner = CliRunner()
-    # Sequence: menu -> "llm_model", edit local model -> "qwen2.5",
-    #           menu -> "whisper_model", edit whisper -> "large",
-    #           menu -> "__save__"
     backend = _FakePromptBackend(
         [
-            "llm_model",
-            "qwen2.5",
-            "whisper_model",
+            "custom",
+            ["youtube", "local_query"],
+            "faster-whisper",
             "large",
-            "__save__",
+            "qwen2.5",
+            True,
         ]
     )
 
@@ -301,24 +303,27 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
     assert result.exit_code == 0
     assert settings.preferred_whisper_model == "large"
     assert settings.preferred_llm_model == "qwen2.5"
+    assert settings.enabled_capabilities == ["youtube", "local_query"]
     # Settings table is always shown
     assert "beyin Settings" in result.output
-    assert "Settings saved" in result.output
+    assert "Setup complete" in result.output
 
 
 def test_settings_command_whisper_menu_includes_all_models_and_help_text(monkeypatch, tmp_path):
-    """TTY settings should expose the same Whisper model choices as initial setup."""
+    """TTY settings should expose the same guided Whisper model choices as initial setup."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
     from beyin.cli import app
 
-    _save_global_settings(tmp_path, preferred_whisper_model="small")
+    _save_global_settings(tmp_path, enabled_capabilities=["youtube"], preferred_whisper_model="small")
     runner = CliRunner()
     backend = _FakePromptBackend(
         [
-            "whisper_model",
-            "__back__",
-            "__exit__",
+            "custom",
+            ["youtube"],
+            "faster-whisper",
+            "small",
+            True,
         ]
     )
 
@@ -332,13 +337,12 @@ def test_settings_command_whisper_menu_includes_all_models_and_help_text(monkeyp
     whisper_call = next(
         kwargs
         for prompt_type, kwargs in backend.calls
-        if prompt_type == "select" and kwargs["message"] == "Whisper model"
+        if prompt_type == "select" and kwargs["message"] == "Select the default Whisper model"
     )
     values = [choice["value"] for choice in whisper_call["choices"]]
     names = {
         choice["value"]: choice.get("name")
         for choice in whisper_call["choices"]
-        if choice["value"] != "__back__"
     }
 
     assert values == [
@@ -351,7 +355,6 @@ def test_settings_command_whisper_menu_includes_all_models_and_help_text(monkeyp
         "medium",
         "medium.en",
         "large",
-        "__back__",
     ]
     assert "Fastest. ~75 MB. Clean English audio only." in names["tiny"]
     assert "English-only. ~75 MB." in names["tiny.en"]
