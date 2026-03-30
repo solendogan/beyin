@@ -519,6 +519,8 @@ def serialize_pack_sources(config: Any, state: Dict[str, Any]) -> list:
 def serialize_pack_detail(summary: Dict[str, Any]) -> Dict[str, Any]:
     """Return the stable public machine payload for one pack detail record."""
     payload = serialize_pack_summary(summary)
+    payload.pop("provider", None)
+    payload.pop("next_action", None)
     config = summary.get("config")
     state = summary.get("state", {})
     payload.update(

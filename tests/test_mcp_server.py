@@ -240,6 +240,8 @@ async def test_mcp_status_exposes_pack_id_and_indexed_sources(mcp_app, tmp_path)
     pack = structured["data"]["pack"]
     assert pack["id"] == "mobile-marketing-pack"
     assert pack["name"] == "Mobile Marketing"
+    assert "provider" not in pack
+    assert "next_action" not in pack
     assert pack["sources"][0]["index"] == 1
     assert pack["sources"][0]["source"] == "https://example.com/article"
     assert pack["sources"][1]["index"] == 2
