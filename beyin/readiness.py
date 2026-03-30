@@ -5,6 +5,7 @@ import os
 import shutil
 from typing import Optional
 
+from beyin.install_hints import ollama_install_hint, yt_dlp_install_hint
 
 _YTDLP_MIN_VERSION = "2025.11.12"
 
@@ -43,10 +44,10 @@ def _youtube_build_issue() -> Optional[str]:
     if ok:
         return None
     if version == "unknown":
-        return "yt-dlp is not installed. Install or upgrade with: pip install --upgrade yt-dlp"
+        return f"yt-dlp is not installed. Install or upgrade with: {yt_dlp_install_hint()}"
     return (
         f"yt-dlp is outdated ({version} < {_YTDLP_MIN_VERSION}). "
-        "Upgrade with: pip install --upgrade yt-dlp"
+        f"Upgrade with: {yt_dlp_install_hint()}"
     )
 
 
@@ -70,11 +71,7 @@ def _query_provider_error(provider: str) -> Optional[str]:
             return None
         if shutil.which("ollama"):
             return "Error: Ollama is not running.\nStart it with: ollama serve"
-        return (
-            "Error: Ollama is not installed.\n"
-            "Install: brew install ollama\n"
-            "Or: curl -fsSL https://ollama.com/install.sh | sh"
-        )
+        return f"Error: Ollama is not installed.\nInstall it with: {ollama_install_hint()}"
     if provider == "openai":
         if os.environ.get("OPENAI_API_KEY"):
             return None

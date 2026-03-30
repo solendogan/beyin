@@ -42,6 +42,7 @@ from beyin.inventory import (
     summarize_pack_changes,
     utc_now_iso,
 )
+from beyin.install_hints import ffmpeg_install_hint, yt_dlp_install_hint
 from beyin.pack_state import (
     check_model_provenance,
     check_transcription_provenance,
@@ -675,7 +676,7 @@ def _dependency_display_rows(settings=None) -> tuple[list[tuple[str, str]], list
         if shutil.which("ffmpeg"):
             ffmpeg_status = "found"
         else:
-            ffmpeg_status = "NOT FOUND  →  brew install ffmpeg"
+            ffmpeg_status = f"NOT FOUND  →  {ffmpeg_install_hint()}"
             failures.append("ffmpeg")
         runtime_rows.append(("Audio/video", f"ffmpeg: {ffmpeg_status}"))
 
@@ -684,10 +685,10 @@ def _dependency_display_rows(settings=None) -> tuple[list[tuple[str, str]], list
         if ok:
             ytdlp_status = f"found ({version})"
         elif version == "unknown":
-            ytdlp_status = "NOT FOUND  →  pip install --upgrade yt-dlp"
+            ytdlp_status = f"NOT FOUND  →  {yt_dlp_install_hint()}"
             failures.append("yt-dlp")
         else:
-            ytdlp_status = f"OUTDATED ({version} < {_YTDLP_MIN_VERSION})  →  pip install --upgrade yt-dlp"
+            ytdlp_status = f"OUTDATED ({version} < {_YTDLP_MIN_VERSION})  →  {yt_dlp_install_hint()}"
             failures.append("yt-dlp")
         runtime_rows.append(("YouTube", f"yt-dlp: {ytdlp_status}"))
 
@@ -1008,7 +1009,7 @@ def _pack_readiness_details(config) -> dict[str, list[str]]:
 
     if _has_audio_sources(config) and not _check_ffmpeg_available():
         blockers.append(
-            "ffmpeg is required for audio builds. Install: brew install ffmpeg"
+            f"ffmpeg is required for audio builds. Install: {ffmpeg_install_hint()}"
         )
 
     return {"blockers": blockers, "warnings": warnings}
@@ -1476,7 +1477,7 @@ def build(
                 if not ffmpeg_available:
                     failure_reason = (
                         "ffmpeg is required for audio builds. "
-                        "Install: brew install ffmpeg or visit https://ffmpeg.org/download.html"
+                        f"Install: {ffmpeg_install_hint()}"
                     )
                     typer.echo(f"  [warn] {failure_reason}", err=True)
                     mark_failed(state, source_url, reason=failure_reason)
@@ -1584,7 +1585,7 @@ def build(
                 if not ffmpeg_available:
                     ffmpeg_reason = (
                         "ffmpeg is required for audio builds. "
-                        "Install: brew install ffmpeg or visit https://ffmpeg.org/download.html"
+                        f"Install: {ffmpeg_install_hint()}"
                     )
                     typer.echo(f"  [warn] {ffmpeg_reason}", err=True)
                     report.record(source_url[:40], "blocked", failure_reason=ffmpeg_reason)
@@ -1696,7 +1697,7 @@ def build(
                         if not ffmpeg_available:
                             ffmpeg_reason = (
                                 "ffmpeg is required for audio builds. "
-                                "Install: brew install ffmpeg or visit https://ffmpeg.org/download.html"
+                                f"Install: {ffmpeg_install_hint()}"
                             )
                             typer.echo(f"  [warn] {ffmpeg_reason}", err=True)
                             report.record(episode_title, "blocked", failure_reason=ffmpeg_reason)

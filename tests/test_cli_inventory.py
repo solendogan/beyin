@@ -1,4 +1,5 @@
 """Tests for inventory, list, status, and check-deps commands."""
+from beyin.install_hints import ffmpeg_install_hint, yt_dlp_install_hint
 import json
 import pytest
 from pathlib import Path
@@ -625,7 +626,7 @@ def test_check_deps_ytdlp_outdated():
     assert result.exit_code == 1
     output = result.output
     assert "outdated" in output.lower() or "OUTDATED" in output
-    assert "pip install --upgrade yt-dlp" in output
+    assert yt_dlp_install_hint() in output
 
 
 def test_check_deps_ffmpeg_missing():
@@ -656,8 +657,7 @@ def test_check_deps_ffmpeg_missing():
     assert result.exit_code == 1
     output = result.output
     assert "ffmpeg" in output.lower()
-    # Should include install instruction
-    assert "brew install ffmpeg" in output or "ffmpeg.org" in output
+    assert ffmpeg_install_hint() in output
 
 
 def test_check_deps_only_shows_selected_file_types():

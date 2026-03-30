@@ -380,6 +380,7 @@ def test_query_ollama_not_running():
 def test_query_ollama_not_installed():
     """query exits 1 with install guide when ollama binary absent."""
     from beyin.cli import app
+    from beyin.install_hints import ollama_install_hint
     runner = CliRunner()
     mock_config = _make_config([SourceEntry(url="https://example.com/article")], llm="ollama")
 
@@ -387,12 +388,11 @@ def test_query_ollama_not_installed():
          patch("beyin.cli.load_config", return_value=mock_config), \
          patch(
              "beyin.cli._query_provider_error",
-             return_value="Error: Ollama is not installed.\nInstall it with: brew install ollama",
+             return_value=f"Error: Ollama is not installed.\nInstall it with: {ollama_install_hint()}",
          ):
         result = runner.invoke(app, ["query", "mypack", "test"])
 
     assert result.exit_code == 1
     output = result.output
     assert "not installed" in output.lower() or "Ollama is not installed" in output
-    # Should contain an install guide (brew or curl)
-    assert "brew install ollama" in output or "curl" in output
+    assert ollama_install_hint() in output

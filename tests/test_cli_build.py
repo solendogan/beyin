@@ -756,6 +756,7 @@ def test_build_resume_reuses_structured_transcript_segments(tmp_path):
 def test_build_youtube_source_fails_when_ytdlp_unavailable(tmp_path):
     """YouTube builds fail cleanly when yt-dlp is missing or outdated."""
     from beyin.cli import app
+    from beyin.install_hints import yt_dlp_install_hint
     packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "test-pack"
     pack_dir.mkdir(parents=True)
@@ -775,7 +776,7 @@ def test_build_youtube_source_fails_when_ytdlp_unavailable(tmp_path):
          patch("beyin.cli.load_config", return_value=mock_config), \
          patch("beyin.cli.load_model", return_value=MagicMock()), \
          patch("beyin.cli.get_collection", return_value=MagicMock()), \
-         patch("beyin.cli._youtube_build_issue", return_value="yt-dlp is not installed. Install or upgrade with: pip install --upgrade yt-dlp"), \
+         patch("beyin.cli._youtube_build_issue", return_value=f"yt-dlp is not installed. Install or upgrade with: {yt_dlp_install_hint()}"), \
          patch("beyin.cli._check_ffmpeg_available", return_value=True), \
          patch("beyin.cli.list_youtube_episodes") as mock_list:
         result = runner.invoke(app, ["build", "test-pack"])
