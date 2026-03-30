@@ -16,12 +16,6 @@ import typer
 from typer.core import TyperCommand
 
 from beyin import __version__
-from beyin.authoring import (
-    build_new_pack_config,
-    remove_sources_from_pack,
-    select_sources_from_pack,
-)
-from beyin.chunker import chunk_text, count_tokens
 from beyin.config import (
     PackConfig,
     SourceEntry,
@@ -29,18 +23,6 @@ from beyin.config import (
     load_config,
     write_public_config,
     write_config,
-)
-from beyin.interactive import (
-    InteractiveAbort,
-    _confirm,
-    _select,
-    _text,
-    is_interactive_session,
-    load_prompt_backend,
-    run_authoring_menu as interactive_run_authoring_menu,
-    run_create_flow as interactive_run_create_flow,
-    run_initial_setup_flow as interactive_run_initial_setup_flow,
-    run_settings_flow as interactive_run_settings_flow,
 )
 from beyin.inventory import (
     human_guidance_command,
@@ -333,6 +315,66 @@ def load_model(*args, **kwargs):
     return _load_model(*args, **kwargs)
 
 
+def build_new_pack_config(*args, **kwargs):
+    from beyin.authoring import build_new_pack_config as _build_new_pack_config
+
+    return _build_new_pack_config(*args, **kwargs)
+
+
+def remove_sources_from_pack(*args, **kwargs):
+    from beyin.authoring import remove_sources_from_pack as _remove_sources_from_pack
+
+    return _remove_sources_from_pack(*args, **kwargs)
+
+
+def select_sources_from_pack(*args, **kwargs):
+    from beyin.authoring import select_sources_from_pack as _select_sources_from_pack
+
+    return _select_sources_from_pack(*args, **kwargs)
+
+
+def chunk_text(*args, **kwargs):
+    from beyin.chunker import chunk_text as _chunk_text
+
+    return _chunk_text(*args, **kwargs)
+
+
+def is_interactive_session(*args, **kwargs):
+    from beyin.interactive import is_interactive_session as _is_interactive_session
+
+    return _is_interactive_session(*args, **kwargs)
+
+
+def load_prompt_backend():
+    from beyin.interactive import load_prompt_backend as _load_prompt_backend
+
+    return _load_prompt_backend()
+
+
+def _interactive_select(*args, **kwargs):
+    from beyin.interactive import _select as _select
+
+    return _select(*args, **kwargs)
+
+
+def _interactive_text(*args, **kwargs):
+    from beyin.interactive import _text as _text
+
+    return _text(*args, **kwargs)
+
+
+def _interactive_confirm(*args, **kwargs):
+    from beyin.interactive import _confirm as _confirm
+
+    return _confirm(*args, **kwargs)
+
+
+def _interactive_abort_type():
+    from beyin.interactive import InteractiveAbort
+
+    return InteractiveAbort
+
+
 def fetch_article(*args, **kwargs):
     from beyin.ingester import fetch_article as _fetch_article
 
@@ -497,11 +539,15 @@ def _render_home_screen() -> None:
 
 def _run_initial_setup_flow() -> bool:
     """Run the interactive first-run setup and return True when it handled output."""
+    from beyin.interactive import run_initial_setup_flow as interactive_run_initial_setup_flow
+
     return interactive_run_initial_setup_flow(prompt_backend=load_prompt_backend())
 
 
 def run_authoring_menu() -> bool:
     """Run the TTY-only create/import/manage chooser for no-arg interactive sessions."""
+    from beyin.interactive import run_authoring_menu as interactive_run_authoring_menu
+
     summaries = list_packs(_PACKS_DIR, _pack_readiness_details)
     return interactive_run_authoring_menu(
         packs_dir=_PACKS_DIR,
@@ -513,6 +559,8 @@ def run_authoring_menu() -> bool:
 
 def run_create_flow() -> bool:
     """Run the interactive create flow behind the direct `beyin create` command."""
+    from beyin.interactive import run_create_flow as interactive_run_create_flow
+
     return interactive_run_create_flow(
         packs_dir=_PACKS_DIR,
         prompt_backend=load_prompt_backend(),
@@ -603,6 +651,7 @@ def _render_dependency_section(*, title: str = "Dependencies") -> list[str]:
 def settings_command() -> None:
     """Show current settings and edit them interactively in a terminal."""
     from beyin.settings import BeyinSettings
+    InteractiveAbort = _interactive_abort_type()
 
     current = load_settings()
 
@@ -648,7 +697,7 @@ def settings_command() -> None:
                 _SAVE,
                 _EXIT,
             ]
-            selection = _select(
+            selection = _interactive_select(
                 backend,
                 "What would you like to change?",
                 choices=choices,
@@ -666,7 +715,7 @@ def settings_command() -> None:
             if selection == "llm_model":
                 try:
                     typer.echo(f"  {dim('← Back  (Ctrl+C)')}")
-                    new_val = _text(
+                    new_val = _interactive_text(
                         backend,
                         "Local model",
                         default=staged.preferred_llm_model,
@@ -676,7 +725,7 @@ def settings_command() -> None:
                     continue
 
             elif selection == "whisper_model":
-                new_val = _select(
+                new_val = _interactive_select(
                     backend,
                     "Whisper model",
                     choices=[
@@ -691,7 +740,7 @@ def settings_command() -> None:
                     staged.preferred_whisper_model = new_val
 
             elif selection == "transcription":
-                new_val = _select(
+                new_val = _interactive_select(
                     backend,
                     "Transcription backend",
                     choices=[
@@ -2334,7 +2383,7 @@ def remove_command(
         from beyin.interactive import _confirm, InteractiveAbort
         try:
             backend = load_prompt_backend()
-            confirmed = _confirm(
+            confirmed = _interactive_confirm(
                 backend,
                 f"Permanently remove pack '{pack}' and all its data?",
                 default=False,
