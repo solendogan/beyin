@@ -1,9 +1,12 @@
 """Sentence embedding using sentence-transformers."""
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
+from threading import Lock
 from typing import Any, List
 
 SentenceTransformer = None
+_MODEL_CACHE: dict[str, Any] = {}
+_MODEL_CACHE_LOCK = Lock()
 
 
 def load_model(model_name: str = "all-MiniLM-L6-v2") -> Any:
@@ -34,9 +37,16 @@ def load_model(model_name: str = "all-MiniLM-L6-v2") -> Any:
     except Exception:
         pass
 
-    sink = StringIO()
-    with redirect_stdout(sink), redirect_stderr(sink):
-        return SentenceTransformer(model_name)
+    with _MODEL_CACHE_LOCK:
+        cached = _MODEL_CACHE.get(model_name)
+        if cached is not None:
+            return cached
+
+        sink = StringIO()
+        with redirect_stdout(sink), redirect_stderr(sink):
+            model = SentenceTransformer(model_name)
+        _MODEL_CACHE[model_name] = model
+        return model
 
 
 def embed_chunks(model: Any, chunks: List[str]) -> List[List[float]]:
