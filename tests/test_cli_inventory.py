@@ -544,7 +544,20 @@ def test_check_deps_all_pass():
     from beyin.cli import app
     runner = CliRunner()
 
-    with patch("beyin.cli.shutil") as mock_shutil, \
+    with patch(
+        "beyin.cli.load_settings",
+        return_value=type(
+            "S",
+            (),
+            {
+                "enabled_capabilities": ["youtube", "podcasts"],
+                "enabled_local_file_types": [],
+                "preferred_transcription_backend": "faster-whisper",
+                "preferred_whisper_model": "small",
+                "preferred_llm_model": "llama3.2",
+            },
+        )(),
+    ), patch("beyin.cli.shutil") as mock_shutil, \
          patch("beyin.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
@@ -559,7 +572,20 @@ def test_check_deps_does_not_surface_deno():
     from beyin.cli import app
     runner = CliRunner()
 
-    with patch("beyin.cli.shutil") as mock_shutil, \
+    with patch(
+        "beyin.cli.load_settings",
+        return_value=type(
+            "S",
+            (),
+            {
+                "enabled_capabilities": ["youtube", "podcasts"],
+                "enabled_local_file_types": [],
+                "preferred_transcription_backend": "faster-whisper",
+                "preferred_whisper_model": "small",
+                "preferred_llm_model": "llama3.2",
+            },
+        )(),
+    ), patch("beyin.cli.shutil") as mock_shutil, \
          patch("beyin.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
@@ -576,7 +602,20 @@ def test_check_deps_ytdlp_outdated():
     from beyin.cli import app
     runner = CliRunner()
 
-    with patch("beyin.cli.shutil") as mock_shutil, \
+    with patch(
+        "beyin.cli.load_settings",
+        return_value=type(
+            "S",
+            (),
+            {
+                "enabled_capabilities": ["youtube"],
+                "enabled_local_file_types": [],
+                "preferred_transcription_backend": "faster-whisper",
+                "preferred_whisper_model": "small",
+                "preferred_llm_model": "llama3.2",
+            },
+        )(),
+    ), patch("beyin.cli.shutil") as mock_shutil, \
          patch("beyin.cli._ytdlp_version_ok", return_value=(False, "2025.10.01")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
@@ -594,7 +633,20 @@ def test_check_deps_ffmpeg_missing():
     from beyin.cli import app
     runner = CliRunner()
 
-    with patch("beyin.cli.shutil") as mock_shutil, \
+    with patch(
+        "beyin.cli.load_settings",
+        return_value=type(
+            "S",
+            (),
+            {
+                "enabled_capabilities": ["podcasts"],
+                "enabled_local_file_types": [],
+                "preferred_transcription_backend": "faster-whisper",
+                "preferred_whisper_model": "small",
+                "preferred_llm_model": "llama3.2",
+            },
+        )(),
+    ), patch("beyin.cli.shutil") as mock_shutil, \
          patch("beyin.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": None,
@@ -606,3 +658,30 @@ def test_check_deps_ffmpeg_missing():
     assert "ffmpeg" in output.lower()
     # Should include install instruction
     assert "brew install ffmpeg" in output or "ffmpeg.org" in output
+
+
+def test_check_deps_only_shows_selected_file_types():
+    """check-deps should only surface optional document deps selected in settings."""
+    from beyin.cli import app
+    runner = CliRunner()
+
+    with patch(
+        "beyin.cli.load_settings",
+        return_value=type(
+            "S",
+            (),
+            {
+                "enabled_capabilities": ["local_files"],
+                "enabled_local_file_types": ["pdf"],
+                "preferred_transcription_backend": "faster-whisper",
+                "preferred_whisper_model": "small",
+                "preferred_llm_model": "llama3.2",
+            },
+        )(),
+    ):
+        result = runner.invoke(app, ["check-deps"])
+
+    assert result.exit_code == 0
+    assert "PDF (.pdf)" in result.output
+    assert "DOCX (.docx)" not in result.output
+    assert "XLSX (.xlsx)" not in result.output

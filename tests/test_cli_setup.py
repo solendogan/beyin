@@ -370,7 +370,11 @@ def test_settings_command_shows_table_in_non_tty(
 
     from beyin.cli import app
 
-    _save_global_settings(tmp_path)
+    _save_global_settings(
+        tmp_path,
+        enabled_capabilities=["local_files"],
+        enabled_local_file_types=["pdf"],
+    )
     runner = CliRunner()
 
     with patch("beyin.cli.is_interactive_session", return_value=False), patch(

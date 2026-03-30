@@ -639,37 +639,60 @@ def main(ctx: typer.Context) -> None:
 
 def _settings_display_rows(settings) -> list[tuple[str, str]]:
     """Return label/value rows for the current settings table."""
+    capability_map = {
+        "web": "Web",
+        "youtube": "YouTube/video",
+        "podcasts": "Podcasts/RSS",
+        "local_files": "Local files",
+        "local_query": "Local answers",
+    }
+    enabled = settings.enabled_capabilities or []
+    local_files = settings.enabled_local_file_types or []
     return [
+        (
+            "Enabled",
+            ", ".join(capability_map.get(value, value) for value in enabled) or "none",
+        ),
+        (
+            "File types",
+            ", ".join(file_type.upper() for file_type in local_files) or "plain text only",
+        ),
         ("Transcription", settings.preferred_transcription_backend),
         ("Whisper model", settings.preferred_whisper_model),
         ("Local model", settings.preferred_llm_model),
     ]
 
 
-def _dependency_display_rows() -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[str]]:
-    """Return runtime and file-type dependency rows plus hard failures."""
+def _dependency_display_rows(settings=None) -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[str]]:
+    """Return capability-aware dependency rows plus hard failures."""
+    current = settings or load_settings()
     failures: list[str] = []
+    capabilities = set(current.enabled_capabilities or [])
+    selected_file_types = set(current.enabled_local_file_types or [])
 
-    if shutil.which("ffmpeg"):
-        ffmpeg_status = "found"
-    else:
-        ffmpeg_status = "NOT FOUND  →  brew install ffmpeg"
-        failures.append("ffmpeg")
+    runtime_rows: list[tuple[str, str]] = []
+    if capabilities.intersection({"youtube", "podcasts"}):
+        if shutil.which("ffmpeg"):
+            ffmpeg_status = "found"
+        else:
+            ffmpeg_status = "NOT FOUND  →  brew install ffmpeg"
+            failures.append("ffmpeg")
+        runtime_rows.append(("Audio/video", f"ffmpeg: {ffmpeg_status}"))
 
-    ok, version = _ytdlp_version_ok()
-    if ok:
-        ytdlp_status = f"found ({version})"
-    elif version == "unknown":
-        ytdlp_status = "NOT FOUND  →  pip install --upgrade yt-dlp"
-        failures.append("yt-dlp")
-    else:
-        ytdlp_status = f"OUTDATED ({version} < {_YTDLP_MIN_VERSION})  →  pip install --upgrade yt-dlp"
-        failures.append("yt-dlp")
+    if "youtube" in capabilities:
+        ok, version = _ytdlp_version_ok()
+        if ok:
+            ytdlp_status = f"found ({version})"
+        elif version == "unknown":
+            ytdlp_status = "NOT FOUND  →  pip install --upgrade yt-dlp"
+            failures.append("yt-dlp")
+        else:
+            ytdlp_status = f"OUTDATED ({version} < {_YTDLP_MIN_VERSION})  →  pip install --upgrade yt-dlp"
+            failures.append("yt-dlp")
+        runtime_rows.append(("YouTube", f"yt-dlp: {ytdlp_status}"))
 
-    runtime_rows = [
-        ("Audio/video", f"ffmpeg: {ffmpeg_status}"),
-        ("Audio/video", f"yt-dlp: {ytdlp_status}"),
-    ]
+    if "local_query" in capabilities:
+        runtime_rows.append(("Local answers", "Ollama is user-managed  →  install and run separately"))
 
     file_type_rows: list[tuple[str, str]] = []
     for label, module, hint in [
@@ -679,6 +702,9 @@ def _dependency_display_rows() -> tuple[list[tuple[str, str]], list[tuple[str, s
         ("EPUB (.epub)", "ebooklib", "pip install ebooklib"),
         ("XLSX (.xlsx)", "openpyxl", "pip install openpyxl"),
     ]:
+        extension = label.split("(")[1].split(")")[0].strip(".").lower()
+        if extension not in selected_file_types:
+            continue
         try:
             __import__(module)
             status = f"{module}: found"
@@ -689,12 +715,16 @@ def _dependency_display_rows() -> tuple[list[tuple[str, str]], list[tuple[str, s
     return runtime_rows, file_type_rows, failures
 
 
-def _render_dependency_section(*, title: str = "Dependencies") -> list[str]:
-    runtime_rows, file_type_rows, _ = _dependency_display_rows()
+def _render_dependency_section(*, title: str = "Dependencies", settings=None) -> list[str]:
+    runtime_rows, file_type_rows, _ = _dependency_display_rows(settings=settings)
     lines = [f"  {bold(title)}", f"  {dim('─' * 38)}"]
-    lines.extend(render_rows(runtime_rows))
-    lines.append("")
-    lines.extend(render_rows(file_type_rows))
+    if runtime_rows:
+        lines.extend(render_rows(runtime_rows))
+    else:
+        lines.append(f"  {dim('No extra runtime tools selected.')}")
+    if file_type_rows:
+        lines.append("")
+        lines.extend(render_rows(file_type_rows))
     return lines
 
 
@@ -729,6 +759,8 @@ def settings_command() -> None:
     staged = BeyinSettings(
         version=current.version,
         setup_completed=current.setup_completed,
+        enabled_capabilities=list(current.enabled_capabilities),
+        enabled_local_file_types=list(current.enabled_local_file_types),
         preferred_transcription_backend=current.preferred_transcription_backend,
         preferred_whisper_model=current.preferred_whisper_model,
         preferred_llm_model=current.preferred_llm_model,
@@ -1875,15 +1907,22 @@ def query(
 @app.command(name="check-deps", cls=BeyinCommand)
 def check_deps() -> None:
     """Check runtime dependencies: ffmpeg, yt-dlp, and optional document libs."""
-    runtime_rows, file_type_rows, failures = _dependency_display_rows()
+    current = load_settings()
+    runtime_rows, file_type_rows, failures = _dependency_display_rows(current)
+
+    typer.echo("Selected capabilities:")
+    for label, value in _settings_display_rows(current)[:2]:
+        typer.echo(f"{label}: {value}")
+    typer.echo("")
 
     for label, value in runtime_rows:
         typer.echo(f"{label}: {value}")
 
-    typer.echo("")
-    typer.echo("Document sources:")
-    for label, value in file_type_rows:
-        typer.echo(f"  {label}: {value}")
+    if file_type_rows:
+        typer.echo("")
+        typer.echo("Document sources:")
+        for label, value in file_type_rows:
+            typer.echo(f"  {label}: {value}")
 
     if failures:
         raise typer.Exit(code=1)
