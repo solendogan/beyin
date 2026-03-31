@@ -660,8 +660,8 @@ def test_check_deps_ffmpeg_missing():
     assert ffmpeg_install_hint() in output
 
 
-def test_check_deps_only_shows_selected_file_types():
-    """check-deps should only surface optional document deps selected in settings."""
+def test_check_deps_shows_full_document_dependency_inventory():
+    """check-deps should show the full optional document dependency inventory."""
     from beyin.cli import app
     runner = CliRunner()
 
@@ -683,5 +683,5 @@ def test_check_deps_only_shows_selected_file_types():
 
     assert result.exit_code == 0
     assert "PDF (.pdf)" in result.output
-    assert "DOCX (.docx)" not in result.output
-    assert "XLSX (.xlsx)" not in result.output
+    assert "DOCX (.docx)" in result.output
+    assert "XLSX (.xlsx)" in result.output

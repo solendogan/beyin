@@ -39,13 +39,14 @@ def dependency_display_rows(
     command_exists,
     import_module,
     ytdlp_version_ok,
+    include_all: bool = False,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[str]]:
     failures: list[str] = []
     capabilities = set(settings.enabled_capabilities or [])
     selected_file_types = set(settings.enabled_local_file_types or [])
 
     runtime_rows: list[tuple[str, str]] = []
-    if capabilities.intersection({"youtube", "podcasts"}):
+    if include_all or capabilities.intersection({"youtube", "podcasts"}):
         if command_exists("ffmpeg"):
             ffmpeg_status = "found"
         else:
@@ -53,7 +54,7 @@ def dependency_display_rows(
             failures.append("ffmpeg")
         runtime_rows.append(("Audio/video", f"ffmpeg: {ffmpeg_status}"))
 
-    if "youtube" in capabilities:
+    if include_all or "youtube" in capabilities:
         ok, version = ytdlp_version_ok()
         if ok:
             ytdlp_status = f"found ({version})"
@@ -63,9 +64,9 @@ def dependency_display_rows(
         else:
             ytdlp_status = f"OUTDATED ({version} < {_YTDLP_MIN_VERSION})  →  {yt_dlp_install_hint()}"
             failures.append("yt-dlp")
-        runtime_rows.append(("YouTube", f"yt-dlp: {ytdlp_status}"))
+        runtime_rows.append(("Audio/video", f"yt-dlp: {ytdlp_status}"))
 
-    if "local_query" in capabilities:
+    if not include_all and "local_query" in capabilities:
         runtime_rows.append(("Local answers", "Ollama is user-managed  →  install and run separately"))
 
     file_type_rows: list[tuple[str, str]] = []
@@ -77,7 +78,7 @@ def dependency_display_rows(
         ("XLSX (.xlsx)", "openpyxl", "pip install openpyxl"),
     ]:
         extension = label.split("(")[1].split(")")[0].strip(".").lower()
-        if extension not in selected_file_types:
+        if not include_all and extension not in selected_file_types:
             continue
         try:
             import_module(module)

@@ -189,8 +189,9 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
     packs_root = tmp_path / "beyin"
     backend = _FakePromptBackend(
         [
-            "recommended",
-            "agent",
+            ["web", "youtube", "podcasts"],
+            "faster-whisper",
+            "small",
             True,
             KeyboardInterrupt(),
         ]
@@ -213,10 +214,11 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
     assert settings.enabled_capabilities == ["web", "youtube", "podcasts"]
     assert f"beyin v{__version__}" in first.output
     assert "Start your first setup now" in first.output
-    first_select = next(
-        kwargs for prompt_type, kwargs in backend.calls if prompt_type == "select"
+    first_checkbox = next(
+        kwargs for prompt_type, kwargs in backend.calls if prompt_type == "checkbox"
     )
-    assert "Recommended" in str(first_select.get("choices", ""))
+    assert first_checkbox["message"] == "Choose what you want to work with"
+    assert "[SPACE] Select or unselect items." in first.output
     assert first.output.count("Setup complete") == 1
     assert "Quick start" in first.output
     assert second.exit_code == 0
@@ -225,8 +227,8 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
     assert load_backend.call_count == 2
 
 
-def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypatch, tmp_path):
-    """Custom setup should expose only the valid high-level runtime choices for this machine."""
+def test_initial_setup_limits_choices_to_current_machine(monkeypatch, tmp_path):
+    """Setup should expose only the valid high-level runtime choices for this machine."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
     from beyin.interactive import run_initial_setup_flow
@@ -234,7 +236,6 @@ def test_initial_setup_custom_branch_limits_choices_to_current_machine(monkeypat
 
     backend = _FakePromptBackend(
         [
-            "custom",
             ["youtube", "local_files", "local_query"],
             ["pdf", "xlsx"],
             "faster-whisper",
@@ -283,7 +284,6 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
     runner = CliRunner()
     backend = _FakePromptBackend(
         [
-            "custom",
             ["youtube", "local_query"],
             "faster-whisper",
             "large",
@@ -319,7 +319,6 @@ def test_settings_command_whisper_menu_includes_all_models_and_help_text(monkeyp
     runner = CliRunner()
     backend = _FakePromptBackend(
         [
-            "custom",
             ["youtube"],
             "faster-whisper",
             "small",
@@ -356,12 +355,12 @@ def test_settings_command_whisper_menu_includes_all_models_and_help_text(monkeyp
         "medium.en",
         "large",
     ]
-    assert "Fastest. ~75 MB. Clean English audio only." in names["tiny"]
-    assert "English-only. ~75 MB." in names["tiny.en"]
-    assert "Fast. ~145 MB. Simple content, English podcasts." in names["base"]
-    assert "English-only. ~145 MB." in names["base.en"]
-    assert "Moderate. ~483 MB. Most use cases" in names["small"]
-    assert "English-only. ~483 MB." in names["small.en"]
+    assert "(~75 MB) Fastest. Clean English audio only." in names["tiny"]
+    assert "(~75 MB) English-only. Fastest option" in names["tiny.en"]
+    assert "(~145 MB) Fast. Simple content and English podcasts." in names["base"]
+    assert "(~145 MB) English-only. Better fit" in names["base.en"]
+    assert "(~483 MB) Moderate. Strong default" in names["small"]
+    assert "(~483 MB) English-only. Strong default" in names["small.en"]
 
 
 def test_settings_command_shows_table_in_non_tty(
@@ -423,7 +422,6 @@ def test_cancelled_initial_setup_leaves_settings_missing(monkeypatch, tmp_path):
 
     backend = _FakePromptBackend(
         [
-            "custom",
             KeyboardInterrupt(),
         ]
     )
@@ -448,7 +446,6 @@ def test_cancelled_settings_edit_preserves_previous_settings(monkeypatch, tmp_pa
     original = settings_path().read_text()
     backend = _FakePromptBackend(
         [
-            "custom",
             ["local_query"],
             "mistral",
             KeyboardInterrupt(),

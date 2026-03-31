@@ -1205,8 +1205,130 @@ def test_build_quiet_audio_shows_stage_progress_lines(tmp_path):
     output = result.output
     assert "[download] Episode 1/1: Ep 1" in output
     assert "[transcribe] Episode 1/1: Ep 1" in output
+    assert "[transcribe] Episode 1/1: Ep 1 —" in output
     assert "[embed] Episode 1/1: Ep 1" in output
     assert "[embed] Loading embedding model:" in output
+
+
+def test_transcription_progress_reporter_renders_single_line_tty_updates():
+    """TTY mode should rewrite one transcription line instead of printing stacked percentages."""
+    from beyin.cli import _TranscriptionProgressReporter
+
+    stdout = MagicMock()
+    stdout.isatty.return_value = True
+
+    with patch("beyin.cli.sys.stdout", stdout):
+        reporter = _TranscriptionProgressReporter("Episode 1/1: Ep 1", verbose=False)
+        reporter.start()
+        reporter.callback(12.0, 100.0)
+        reporter.callback(55.0, 100.0)
+        reporter.finish(183.4)
+
+    writes = "".join(call.args[0] for call in stdout.write.call_args_list)
+    assert "[transcribe] Episode 1/1: Ep 1 [----------]   0%" in writes
+    assert "[transcribe] Episode 1/1: Ep 1 [#---------]  10%" in writes
+    assert "[transcribe] Episode 1/1: Ep 1 [#####-----]  50%" in writes
+    assert "[transcribe] Episode 1/1: Ep 1 [##########] 100% in 3m 3.4s" in writes
+
+
+def test_build_quiet_audio_shows_download_and_embed_elapsed_time(tmp_path):
+    """Non-verbose audio builds should show elapsed time for download and embed stages."""
+    from beyin.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "beyin"
+    pack_dir = packs_root / "testpack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: testpack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://youtube.com/watch?v=abc\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    audio_file = tmp_path / "audio.mp3"
+    audio_file.write_bytes(b"x" * 11_000)
+
+    episode = {"url": "https://youtube.com/watch?v=1", "title": "Ep 1", "id": "1"}
+    mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
+
+    stack = ExitStack()
+    stack.enter_context(patch("beyin.cli._PACKS_DIR", packs_root))
+    stack.enter_context(patch("beyin.cli.load_config", return_value=mock_config))
+    stack.enter_context(patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}))
+    stack.enter_context(patch("beyin.cli.check_model_provenance"))
+    stack.enter_context(patch("beyin.cli.save_state"))
+    stack.enter_context(patch("beyin.cli.load_model", return_value=MagicMock()))
+    stack.enter_context(patch("beyin.cli.get_collection", return_value=MagicMock()))
+    stack.enter_context(patch("beyin.cli.detect_source_type", return_value="youtube"))
+    stack.enter_context(patch("beyin.cli._youtube_build_issue", return_value=None))
+    stack.enter_context(patch("beyin.cli._check_ffmpeg_available", return_value=True))
+    stack.enter_context(patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])))
+    stack.enter_context(patch("beyin.cli.is_audio_step_done", return_value=False))
+    stack.enter_context(patch("beyin.cli.get_audio_step", return_value={}))
+    stack.enter_context(patch("beyin.cli.download_audio", return_value=audio_file))
+    stack.enter_context(patch("beyin.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]))
+    stack.enter_context(patch("beyin.cli.embed_and_store", return_value=3))
+    stack.enter_context(patch("beyin.cli.mark_audio_step"))
+    stack.enter_context(patch("beyin.cli._canonical_audio_path", return_value=audio_file))
+    stack.enter_context(patch("beyin.cli._save_transcript_segments"))
+    stack.enter_context(patch("beyin.cli._chunk_transcript_segments", return_value=(["chunk"], [{}])))
+    stack.enter_context(patch("beyin.cli.time.perf_counter", side_effect=[0.0, 1.2, 2.0, 3.7, 4.0, 5.7]))
+
+    with stack:
+        result = runner.invoke(app, ["build", "testpack"])
+
+    output = result.output
+    assert result.exit_code == 0, output
+    assert "[download] Episode 1/1: Ep 1 — 1.2s" in output
+    assert "[embed] Episode 1/1: Ep 1 — 3 chunks in 1.7s" in output
+
+
+def test_build_quiet_audio_shows_transcription_elapsed_time(tmp_path):
+    """Non-interactive quiet output should show final transcription elapsed time."""
+    from beyin.cli import app
+    runner = CliRunner()
+
+    packs_root = tmp_path / "beyin"
+    pack_dir = packs_root / "testpack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: testpack\ndescription: test\nllm: ollama\nsources:\n"
+        "  - https://youtube.com/watch?v=abc\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    audio_file = tmp_path / "audio.mp3"
+    audio_file.write_bytes(b"x" * 11_000)
+    episode = {"url": "https://youtube.com/watch?v=1", "title": "Ep 1", "id": "1"}
+    mock_config = _make_config([SourceEntry(url="https://youtube.com/watch?v=abc")])
+
+    stack = ExitStack()
+    stack.enter_context(patch("beyin.cli._PACKS_DIR", packs_root))
+    stack.enter_context(patch("beyin.cli.load_config", return_value=mock_config))
+    stack.enter_context(patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}))
+    stack.enter_context(patch("beyin.cli.check_model_provenance"))
+    stack.enter_context(patch("beyin.cli.save_state"))
+    stack.enter_context(patch("beyin.cli.load_model", return_value=MagicMock()))
+    stack.enter_context(patch("beyin.cli.get_collection", return_value=MagicMock()))
+    stack.enter_context(patch("beyin.cli.detect_source_type", return_value="youtube"))
+    stack.enter_context(patch("beyin.cli._youtube_build_issue", return_value=None))
+    stack.enter_context(patch("beyin.cli._check_ffmpeg_available", return_value=True))
+    stack.enter_context(patch("beyin.cli.list_youtube_episodes", return_value=("Test Playlist", [episode])))
+    stack.enter_context(patch("beyin.cli.is_audio_step_done", return_value=False))
+    stack.enter_context(patch("beyin.cli.get_audio_step", return_value={}))
+    stack.enter_context(patch("beyin.cli.download_audio", return_value=audio_file))
+    stack.enter_context(patch("beyin.cli.transcribe_audio", return_value=[{"start": 0.0, "end": 1.0, "text": "hello"}]))
+    stack.enter_context(patch("beyin.cli.embed_and_store", return_value=3))
+    stack.enter_context(patch("beyin.cli.mark_audio_step"))
+    stack.enter_context(patch("beyin.cli._canonical_audio_path", return_value=audio_file))
+    stack.enter_context(patch("beyin.cli._save_transcript_segments"))
+    stack.enter_context(patch("beyin.cli._chunk_transcript_segments", return_value=(["chunk"], [{}])))
+    stack.enter_context(patch("beyin.cli.time.perf_counter", side_effect=[0.0, 1.2, 2.0, 185.4, 186.0, 187.2]))
+
+    with stack:
+        result = runner.invoke(app, ["build", "testpack"])
+
+    assert "[transcribe] Episode 1/1: Ep 1 — 3m 3.4s" in result.output
 
 
 def test_build_clean_success_exits_0_and_shows_summary(tmp_path):
@@ -1530,6 +1652,51 @@ class TestAudioBuild:
         mock_download.assert_called_once()
         mock_transcribe.assert_called_once()
 
+    def test_build_podcast_page_can_fallback_to_direct_audio(self, tmp_path):
+        """Podcast-like episode pages should fall back to page resolution when feed parsing yields no episodes."""
+        from beyin.cli import app
+
+        packs_root = tmp_path / "beyin"
+        pack_dir = packs_root / "test-pack"
+        pack_dir.mkdir(parents=True)
+        (pack_dir / "pack.yaml").write_text(
+            "name: test-pack\ndescription: Test\nllm: ollama\nsources:\n"
+            "  - https://example.com/episode\nembedding_model: all-MiniLM-L6-v2\n"
+        )
+
+        runner = CliRunner()
+        audio_file = tmp_path / "episode.mp3"
+        audio_file.write_bytes(b"x" * 20_000)
+
+        mock_config = _make_config([SourceEntry(url="https://example.com/episode")])
+        segments = [{"start": 0.0, "end": 10.0, "text": "Podcast content here"}]
+
+        with patch("beyin.cli._PACKS_DIR", packs_root), \
+             patch("beyin.cli.load_config", return_value=mock_config), \
+             patch("beyin.cli.load_state", return_value={"embedding_model": None, "processed": {}, "audio_steps": {}}), \
+             patch("beyin.cli.check_model_provenance"), \
+             patch("beyin.cli.check_transcription_provenance"), \
+             patch("beyin.cli.save_state"), \
+             patch("beyin.cli.load_model", return_value=MagicMock()), \
+             patch("beyin.cli.get_collection", return_value=MagicMock()), \
+             patch("beyin.cli.detect_source_type", return_value="podcast"), \
+             patch("beyin.cli.list_podcast_episodes", return_value=[]), \
+             patch("beyin.cli.resolve_article_ingestion", return_value={"mode": "podcast_audio", "audio_url": "https://cdn.example.com/episode.mp3", "title": "Episode 1", "metadata_url": "https://example.com/episode"}), \
+             patch("beyin.cli._check_ffmpeg_available", return_value=True), \
+             patch("beyin.cli.download_podcast_audio", return_value=audio_file) as mock_download, \
+             patch("beyin.cli.transcribe_audio", return_value=segments) as mock_transcribe, \
+             patch("beyin.cli.embed_and_store", return_value=1) as mock_embed, \
+             patch("beyin.cli.is_audio_step_done", return_value=False), \
+             patch("beyin.cli.get_audio_step", return_value={}), \
+             patch("beyin.cli.mark_audio_step"), \
+             patch("beyin.cli.mark_failed"):
+            result = runner.invoke(app, ["build", "test-pack"])
+
+        assert result.exit_code == 0, result.output
+        mock_download.assert_called_once()
+        mock_transcribe.assert_called_once()
+        mock_embed.assert_called_once()
+
     def test_build_podcast_source_uses_feed_transcript_without_audio(self, tmp_path):
         """Podcast entries with transcript text should bypass download/transcription and not require ffmpeg."""
         from beyin.cli import app
@@ -1564,6 +1731,7 @@ class TestAudioBuild:
              patch("beyin.cli._check_ffmpeg_available", return_value=False), \
              patch("beyin.cli.download_podcast_audio") as mock_download, \
              patch("beyin.cli.transcribe_audio") as mock_transcribe, \
+             patch("beyin.cli.chunk_text", return_value=["chunk1"]), \
              patch("beyin.cli.embed_and_store", return_value=1), \
              patch("beyin.cli.is_audio_step_done", return_value=False), \
              patch("beyin.cli.get_audio_step", return_value={}), \

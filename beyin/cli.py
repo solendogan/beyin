@@ -6,6 +6,7 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 import urllib.request
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -139,6 +140,60 @@ def _strip_help_option_from_help_text(help_text: str) -> str:
             output.extend(filtered)
 
     return "\n".join(output)
+
+
+def _format_elapsed(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, remainder = divmod(seconds, 60)
+    return f"{int(minutes)}m {remainder:.1f}s"
+
+
+class _TranscriptionProgressReporter:
+    """TTY-friendly transcription progress for non-verbose faster-whisper builds."""
+
+    def __init__(self, label: str, verbose: bool) -> None:
+        self.label = label
+        self.verbose = verbose
+        self._last_bucket = -1
+        self._interactive = (not verbose) and bool(getattr(sys.stdout, "isatty", lambda: False)())
+
+    def start(self) -> None:
+        if self.verbose:
+            typer.echo(f"  [transcribe] {self.label}")
+            return
+        if self._interactive:
+            self._render(0)
+            return
+        typer.echo(f"  [transcribe] {self.label}")
+
+    def callback(self, current_seconds: float, total_seconds: Optional[float]) -> None:
+        if not self._interactive or not total_seconds or total_seconds <= 0:
+            return
+        percent = max(0, min(100, int((current_seconds / total_seconds) * 100)))
+        bucket = min(100, (percent // 10) * 10)
+        if bucket <= self._last_bucket:
+            return
+        self._render(bucket)
+
+    def finish(self, elapsed_seconds: float, success: bool = True) -> None:
+        if self.verbose:
+            typer.echo(f"  [transcribe] {self.label} — {_format_elapsed(elapsed_seconds)}")
+            return
+        if self._interactive:
+            final_bucket = 100 if success else max(self._last_bucket, 0)
+            self._render(final_bucket, suffix=f" in {_format_elapsed(elapsed_seconds)}")
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            return
+        typer.echo(f"  [transcribe] {self.label} — {_format_elapsed(elapsed_seconds)}")
+
+    def _render(self, bucket: int, suffix: str = "") -> None:
+        self._last_bucket = bucket
+        filled = bucket // 10
+        bar = "#" * filled + "-" * (10 - filled)
+        sys.stdout.write(f"\r  [transcribe] {self.label} [{bar}] {bucket:>3}%{suffix}")
+        sys.stdout.flush()
 
 
 def _beyin_command_path(ctx: click.Context) -> str:
@@ -655,6 +710,18 @@ def _dependency_display_rows(settings=None) -> tuple[list[tuple[str, str]], list
         command_exists=shutil.which,
         import_module=__import__,
         ytdlp_version_ok=_ytdlp_version_ok,
+    )
+
+
+def _all_dependency_display_rows(settings=None) -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[str]]:
+    """Return the full dependency inventory regardless of current settings."""
+    current = settings or load_settings()
+    return _shared_dependency_display_rows(
+        current,
+        command_exists=shutil.which,
+        import_module=__import__,
+        ytdlp_version_ok=_ytdlp_version_ok,
+        include_all=True,
     )
 
 
@@ -1364,6 +1431,7 @@ def build(
                 save_state(pack_dir, state)
 
                 audio_url = result["audio_url"]
+                download_started_at = time.perf_counter()
                 audio_path = download_podcast_audio(audio_url, audio_dir, episode_title)
                 if audio_path is None:
                     failure_reason = "download failed after retry"
@@ -1378,13 +1446,20 @@ def build(
 
                 mark_audio_step(state, source_url, "downloaded", episode_title, source_id=source_id)
                 save_state(pack_dir, state)
-                typer.echo(f"  [transcribe] {episode_title}")
+                typer.echo(
+                    f"  [download] {episode_title} — {_format_elapsed(time.perf_counter() - download_started_at)}"
+                )
+                transcribe_progress = _TranscriptionProgressReporter(episode_title, verbose)
+                transcribe_progress.start()
+                transcribe_started_at = time.perf_counter()
                 segments = transcribe_audio(
                     audio_path,
                     model_size=model_size,
                     language=language,
                     verbose=verbose,
+                    progress_callback=transcribe_progress.callback,
                 )
+                transcribe_progress.finish(time.perf_counter() - transcribe_started_at, success=bool(segments))
                 if not segments:
                     failure_reason = "transcription returned empty"
                     typer.echo(
@@ -1423,11 +1498,14 @@ def build(
                 if not verbose:
                     typer.echo(f"  [embed] {episode_title}")
                 model_obj, collection = _get_embed_resources()
+                embed_started_at = time.perf_counter()
                 new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_id)
                 mark_audio_step(state, source_url, "embedded", episode_title, source_id=source_id)
                 save_state(pack_dir, state)
-                if verbose:
-                    typer.echo(f"  [embed] {episode_title} — {new_count} chunks")
+                typer.echo(
+                    f"  [embed] {episode_title} — {new_count} chunks in "
+                    f"{_format_elapsed(time.perf_counter() - embed_started_at)}"
+                )
                 report.record(episode_title, "done", new=new_count)
                 continue
 
@@ -1439,11 +1517,14 @@ def build(
             chunks = chunk_text(text)
             metadatas = [{"url": metadata_url, "title": title} for _ in chunks]
             model_obj, collection = _get_embed_resources()
+            embed_started_at = time.perf_counter()
             new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_url)
             mark_processed(state, source_url, title)
             save_state(pack_dir, state)
-            if verbose:
-                typer.echo(f"  [embed] {title} — {new_count} chunks")
+            typer.echo(
+                f"  [embed] {title} — {new_count} chunks in "
+                f"{_format_elapsed(time.perf_counter() - embed_started_at)}"
+            )
             report.record(title, "done", new=new_count)
 
         else:  # youtube, podcast, or local media
@@ -1465,6 +1546,30 @@ def build(
                     state.setdefault("playlist_titles", {})[source_url] = playlist_title
             elif source_type == "podcast":
                 playlist_title, episodes = None, list_podcast_episodes(source_url, effective_limit)
+                if not episodes:
+                    resolved = resolve_article_ingestion(source_url)
+                    if resolved is None:
+                        episodes = []
+                    elif resolved["mode"] in {"article", "transcript"}:
+                        episodes = [{
+                            "url": source_url,
+                            "entry_url": resolved.get("metadata_url") or source_url,
+                            "metadata_url": resolved.get("metadata_url") or source_url,
+                            "title": resolved["title"],
+                            "guid": source_url,
+                            "mode": "article",
+                            "text": resolved["text"],
+                        }]
+                    elif resolved["mode"] == "podcast_audio":
+                        episodes = [{
+                            "url": resolved["audio_url"],
+                            "entry_url": resolved.get("metadata_url") or source_url,
+                            "metadata_url": resolved.get("metadata_url") or source_url,
+                            "title": resolved.get("title") or source_url,
+                            "guid": source_url,
+                        }]
+                    else:
+                        episodes = []
             elif source_type == "podcast_audio":
                 playlist_title = None
                 episodes = [{"url": source_url, "title": source.title or source_url}]
@@ -1515,23 +1620,32 @@ def build(
                             save_state(pack_dir, state)
 
                 if episode.get("mode") == "article":
-                    typer.echo(f"  [fetch] {episode_counter}")
-                    article_result = fetch_article(episode_url)
-                    if article_result is None:
-                        typer.echo(f"  [warn] Could not extract text from {episode_url} — skipping", err=True)
-                        mark_failed(state, episode_url, "article fetch failed", source_id=source_id, title=episode_title, parent_source_url=source_url)
-                        save_state(pack_dir, state)
-                        report.record(episode_title, "failed", failure_reason="article fetch failed")
-                        continue
-                    art_text, art_title = article_result
+                    if episode.get("text"):
+                        art_text = episode["text"]
+                        art_title = episode.get("title", episode_title)
+                        metadata_url = episode.get("metadata_url") or episode.get("entry_url") or episode_url
+                    else:
+                        typer.echo(f"  [fetch] {episode_counter}")
+                        article_result = fetch_article(episode_url)
+                        if article_result is None:
+                            typer.echo(f"  [warn] Could not extract text from {episode_url} — skipping", err=True)
+                            mark_failed(state, episode_url, "article fetch failed", source_id=source_id, title=episode_title, parent_source_url=source_url)
+                            save_state(pack_dir, state)
+                            report.record(episode_title, "failed", failure_reason="article fetch failed")
+                            continue
+                        art_text, art_title = article_result
+                        metadata_url = episode_url
                     chunks = chunk_text(art_text)
-                    metadatas = [{"url": episode_url, "title": art_title} for _ in chunks]
+                    metadatas = [{"url": metadata_url, "title": art_title} for _ in chunks]
                     model_obj, collection = _get_embed_resources()
+                    embed_started_at = time.perf_counter()
                     new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=episode_url)
                     mark_audio_step(state, episode_url, "embedded", art_title, source_id=source_id, parent_source_url=source_url)
                     save_state(pack_dir, state)
-                    if verbose:
-                        typer.echo(f"  [embed] {art_title} — {new_count} chunks")
+                    typer.echo(
+                        f"  [embed] {art_title} — {new_count} chunks in "
+                        f"{_format_elapsed(time.perf_counter() - embed_started_at)}"
+                    )
                     report.record(art_title, "done", new=new_count)
                     continue
 
@@ -1573,6 +1687,7 @@ def build(
                             report.record(episode_title, "blocked", failure_reason=ffmpeg_reason)
                             continue
                         typer.echo(f"  [download] {episode_counter}")
+                        download_started_at = time.perf_counter()
                         if source_type == "youtube":
                             audio_path = download_audio(episode_url, audio_dir, episode_title, verbose=verbose)
                         else:
@@ -1590,10 +1705,7 @@ def build(
                             audio_path = download_podcast_audio(episode_url, audio_dir, episode_title)
 
                     if audio_path is None and not transcript_text:
-                        typer.echo(
-                            f"  [warn] Download failed for {episode_title} — skipping",
-                            err=True,
-                        )
+                        typer.echo(f"  [warn] Download failed for {episode_title} — skipping", err=True)
                         mark_failed(
                             state,
                             episode_url,
@@ -1617,6 +1729,10 @@ def build(
                             parent_source_url=source_url,
                         )
                         save_state(pack_dir, state)
+                        typer.echo(
+                            f"  [download] {episode_counter} — "
+                            f"{_format_elapsed(time.perf_counter() - download_started_at)}"
+                        )
 
                 # Step 2: transcribe
                 transcript_path = _transcript_path(transcripts_dir, source_id)
@@ -1642,8 +1758,20 @@ def build(
                             transcript_chunks = chunk_text(transcript_text)
                             segments = [{"text": chunk} for chunk in transcript_chunks]
                         else:
-                            typer.echo(f"  [transcribe] {episode_counter}")
-                            segments = transcribe_audio(audio_path, model_size=model_size, language=language, verbose=verbose)
+                            transcribe_progress = _TranscriptionProgressReporter(episode_counter, verbose)
+                            transcribe_progress.start()
+                            transcribe_started_at = time.perf_counter()
+                            segments = transcribe_audio(
+                                audio_path,
+                                model_size=model_size,
+                                language=language,
+                                verbose=verbose,
+                                progress_callback=transcribe_progress.callback,
+                            )
+                            transcribe_progress.finish(
+                                time.perf_counter() - transcribe_started_at,
+                                success=bool(segments),
+                            )
                         if not segments:
                             typer.echo(
                                 f"  [warn] Transcription failed for {episode_title} — skipping",
@@ -1705,12 +1833,17 @@ def build(
                     continue
                 metadatas = []
                 for chunk_range in range_metadata:
-                    metadata = {"url": episode_url, "title": episode_title, "source_id": source_id}
+                    metadata = {
+                        "url": episode.get("metadata_url") or episode.get("entry_url") or episode_url,
+                        "title": episode_title,
+                        "source_id": source_id,
+                    }
                     metadata.update(chunk_range)
                     metadatas.append(metadata)
                 if not verbose:
                     typer.echo(f"  [embed] {episode_counter}")
                 model_obj, collection = _get_embed_resources()
+                embed_started_at = time.perf_counter()
                 new_count = embed_and_store(collection, model_obj, chunks, metadatas, url=source_id)
                 mark_audio_step(
                     state,
@@ -1720,8 +1853,10 @@ def build(
                     parent_source_url=source_url,
                 )
                 save_state(pack_dir, state)
-                if verbose:
-                    typer.echo(f"  [embed] {episode_title} — {new_count} chunks")
+                typer.echo(
+                    f"  [embed] {episode_counter} — {new_count} chunks in "
+                    f"{_format_elapsed(time.perf_counter() - embed_started_at)}"
+                )
                 report.record(episode_title, "done", new=new_count)
 
     # --- Final output: always print compact summary table + verdict ---
@@ -1778,13 +1913,7 @@ def query(
 @app.command(name="check-deps", cls=BeyinCommand)
 def check_deps() -> None:
     """Check runtime dependencies: ffmpeg, yt-dlp, and optional document libs."""
-    current = load_settings()
-    runtime_rows, file_type_rows, failures = _dependency_display_rows(current)
-
-    typer.echo("Selected capabilities:")
-    for label, value in _settings_display_rows(current)[:2]:
-        typer.echo(f"{label}: {value}")
-    typer.echo("")
+    runtime_rows, file_type_rows, failures = _all_dependency_display_rows()
 
     for label, value in runtime_rows:
         typer.echo(f"{label}: {value}")

@@ -121,7 +121,10 @@ def _print_review(title: str, lines: list[str]) -> None:
 def _print_prompt_hint(text: str | None) -> None:
     if not text:
         return
-    _echo_lines(render_meta([text]))
+    lines = [line for line in text.splitlines() if line.strip()]
+    if not lines:
+        return
+    _echo_lines(render_meta(lines))
     typer.echo("")
 
 
@@ -136,12 +139,6 @@ def _machine_label() -> str:
     return f"{human} ({system.lower()} {machine.lower()})"
 
 
-def _setup_path_description(value: str) -> str:
-    if value == "recommended":
-        return "Agent-first defaults. Tune details later."
-    return "Pick transcription settings and your default local model."
-
-
 def _backend_description(value: str) -> str:
     descriptions = {
         "mlx-whisper": "Apple Silicon. Metal-accelerated transcription.",
@@ -152,15 +149,15 @@ def _backend_description(value: str) -> str:
 
 def _model_description(value: str) -> str:
     descriptions = {
-        "tiny": "Fastest. ~75 MB. Clean English audio only.",
-        "tiny.en": "English-only. ~75 MB. Fastest option when all audio is English.",
-        "base": "Fast. ~145 MB. Simple content, English podcasts.",
-        "base.en": "English-only. ~145 MB. Better fit for English podcasts and interviews.",
-        "small": "Moderate. ~483 MB. Most use cases, multilingual content.",
-        "small.en": "English-only. ~483 MB. Strong default when all speech is English.",
-        "medium": "~1.5 GB. Better accuracy for harder English, multilingual, accented, or noisy audio.",
-        "medium.en": "English-only. ~1.5 GB. Higher English accuracy for harder English audio.",
-        "large": "Best quality. ~3 GB. Needs 16 GB+ RAM, slowest.",
+        "tiny": "(~75 MB) Fastest. Clean English audio only.",
+        "tiny.en": "(~75 MB) English-only. Fastest option when all audio is English.",
+        "base": "(~145 MB) Fast. Simple content and English podcasts.",
+        "base.en": "(~145 MB) English-only. Better fit for English podcasts and interviews.",
+        "small": "(~483 MB) Moderate. Strong default for most use cases and multilingual content.",
+        "small.en": "(~483 MB) English-only. Strong default when all speech is English.",
+        "medium": "(~1.5 GB) Higher accuracy. Better for harder English, multilingual, accented, or noisy audio.",
+        "medium.en": "(~1.5 GB) English-only. Higher English accuracy for harder audio.",
+        "large": "(~3 GB) Best quality. Needs 16 GB+ RAM and is the slowest option.",
     }
     return descriptions.get(value, value)
 
@@ -172,6 +169,7 @@ def _print_setup_intro(*, first_run: bool) -> None:
         f"Detected machine: {_machine_label()}",
     ]
     footer_lines = [
+        "Recommended selections are already preselected for this machine.",
         "You can change these defaults later with `beyin settings`.",
         "Press Ctrl+C at any time to cancel without writing changes.",
     ]
@@ -322,22 +320,11 @@ def _checkbox(
         message=message,
         choices=choices,
         default=default or [],
+        transformer=lambda _: "",
         instruction="",
         hint=instruction,
     )
     return [str(value) for value in selected]
-
-
-def _select_setup_path(prompt_backend: Any, *, current: str = "recommended") -> str:
-    return _select(
-        prompt_backend,
-        "Select a setup path",
-        choices=[
-            _choice("recommended", "Recommended", help_text=_setup_path_description("recommended")),
-            _choice("custom", "Custom", help_text=_setup_path_description("custom")),
-        ],
-        default=current,
-    )
 
 
 def _capability_description(value: str) -> str:
@@ -404,30 +391,7 @@ def _stage_settings(
 ) -> BeyinSettings:
     choices = available_setup_choices()
     _print_setup_intro(first_run=first_run)
-    setup_path = _select_setup_path(prompt_backend)
-
-    if setup_path == "recommended":
-        recommended = choices["recommended"]
-        staged = BeyinSettings(
-            version=current.version,
-            setup_completed=True,
-            enabled_capabilities=list(recommended["enabled_capabilities"]),
-            enabled_local_file_types=list(recommended["enabled_local_file_types"]),
-            preferred_transcription_backend=str(
-                recommended["preferred_transcription_backend"]
-            ),
-            preferred_whisper_model=str(recommended["preferred_whisper_model"]),
-            preferred_llm_model=str(recommended["preferred_llm_model"]),
-        )
-        _print_review(
-            "Recommended defaults preview",
-            [
-                *describe_settings_summary(staged).splitlines(),
-                "",
-                *_setup_followup_lines(staged),
-            ],
-        )
-        return staged
+    recommended = choices["recommended"]
 
     enabled_capabilities = _checkbox(
         prompt_backend,
@@ -442,11 +406,11 @@ def _stage_settings(
             }[value], help_text=_capability_description(value))
             for value in choices["capabilities"]
         ],
-        default=current.enabled_capabilities or choices["recommended"]["enabled_capabilities"],
-        instruction="Use space to toggle items, then press enter to continue.",
+        default=current.enabled_capabilities or recommended["enabled_capabilities"],
+        instruction="[SPACE] Select or unselect items.\n[ENTER] Continue.",
     )
     if not enabled_capabilities:
-        enabled_capabilities = list(choices["recommended"]["enabled_capabilities"])
+        enabled_capabilities = list(recommended["enabled_capabilities"])
 
     enabled_local_file_types = list(current.enabled_local_file_types)
     if "local_files" in enabled_capabilities:
@@ -458,7 +422,7 @@ def _stage_settings(
                 for value in choices["local_file_types"]
             ],
             default=current.enabled_local_file_types,
-            instruction="Plain text and markdown are included automatically.",
+            instruction="Plain text and markdown are included automatically.\n[SPACE] Select or unselect items.\n[ENTER] Continue.",
         )
     else:
         enabled_local_file_types = []
