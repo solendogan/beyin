@@ -1,9 +1,8 @@
 """Query pipeline: embed question -> retrieve chunks -> cap context -> call LLM."""
-import os
 from typing import Any, Dict, List, Tuple
 
 _ENC = None
-OpenAI = None
+_CLIENT_CLASS = None
 DEFAULT_EVIDENCE_RESULTS = 16
 ANSWER_RESULTS = 5
 WEAK_MATCH_THRESHOLD = 7.5
@@ -23,15 +22,12 @@ def _provider_settings(provider: str) -> Tuple[str, str]:
     """Return (base_url, api_key) for the given LLM provider."""
     if provider == "ollama":
         return "http://localhost:11434/v1", "ollama"
-    elif provider == "openai":
-        api_key = os.environ.get("OPENAI_API_KEY", "")
-        return "https://api.openai.com/v1", api_key
-    elif provider == "anthropic":
+    if provider == "anthropic":
         raise NotImplementedError(
             "Anthropic is not supported in this phase. "
-            "Update pack.yaml to use llm: ollama or llm: openai."
+            "Update pack.yaml to use llm: ollama."
         )
-    raise ValueError(f"Unknown LLM provider: '{provider}'. Valid options: ollama, openai.")
+    raise ValueError(f"Unknown LLM provider: '{provider}'. Valid option: ollama.")
 
 
 def _cap_context(chunks: List[str], max_tokens: int = 3000) -> List[str]:
@@ -230,7 +226,7 @@ def run_query(
     2. Retrieve top-5 chunks from ChromaDB (QRY-06)
     3. Cap context at 3,000 tokens (QRY-05)
     4. Format a cited context prompt with [N] labels
-    5. Call LLM via openai client (QRY-03, QRY-04)
+    5. Call LLM via the client library against Ollama (QRY-03, QRY-04)
     6. Return {"answer": str, "sources": List[Dict]}
 
     Returns sources as the metadata dicts from ChromaDB — each contains at
@@ -262,13 +258,13 @@ def run_query(
 
     # Step 5: Call LLM (QRY-03, QRY-04)
     base_url, api_key = _provider_settings(llm_provider)
-    global OpenAI
-    if OpenAI is None:
+    global _CLIENT_CLASS
+    if _CLIENT_CLASS is None:
         from openai import OpenAI as _OpenAI
 
-        OpenAI = _OpenAI
+        _CLIENT_CLASS = _OpenAI
 
-    client = OpenAI(base_url=base_url, api_key=api_key)
+    client = _CLIENT_CLASS(base_url=base_url, api_key=api_key)
     response = client.chat.completions.create(
         model=llm_model,
         messages=[

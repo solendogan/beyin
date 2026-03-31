@@ -129,19 +129,12 @@ def _query_provider_error(provider: str) -> Optional[str]:
         if shutil.which("ollama"):
             return "Error: Ollama is not running.\nStart it with: ollama serve"
         return f"Error: Ollama is not installed.\nInstall it with: {ollama_install_hint()}"
-    if provider == "openai":
-        if os.environ.get("OPENAI_API_KEY"):
-            return None
-        return (
-            "Error: OPENAI_API_KEY is not set.\n"
-            "Set it in your shell environment, then retry."
-        )
     if provider == "anthropic":
         return (
             "Error: Anthropic is not supported in this phase.\n"
-            "Update pack.yaml to use llm: ollama or llm: openai."
+            "Update pack.yaml to use llm: ollama."
         )
     return (
         f"Error: Unknown LLM provider '{provider}'.\n"
-        "Valid options: ollama, openai, anthropic."
+        "Valid option: ollama."
     )

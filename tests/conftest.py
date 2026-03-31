@@ -175,6 +175,7 @@ def _mark_pack_partially_ready(
     last_build_at: str = "2026-03-21T10:00:00+00:00",
 ):
     """Persist a partial-progress build state with some ready sources and some pending."""
+    from beyin.source_ids import canonical_source_id
     from beyin.pack_state import save_state
 
     save_state(
@@ -182,7 +183,7 @@ def _mark_pack_partially_ready(
         {
             "embedding_model": "all-MiniLM-L6-v2",
             "processed": {
-                ready_url: {
+                canonical_source_id(ready_url): {
                     "status": "done",
                     "url": ready_url,
                     "title": "Ready source",
@@ -202,6 +203,7 @@ def _mark_pack_incrementally_ready(
     urls: list[str] | None = None,
 ):
     """Persist an all-sources-indexed state produced via repeated --source builds."""
+    from beyin.source_ids import canonical_source_id
     from beyin.pack_state import save_state
 
     ready_urls = urls or [
@@ -209,7 +211,7 @@ def _mark_pack_incrementally_ready(
         "https://example.com/article-2",
     ]
     processed = {
-        url: {
+        canonical_source_id(url): {
             "status": "done",
             "url": url,
             "title": f"Ready source {index}",
@@ -282,8 +284,8 @@ def mock_model():
 
 
 @pytest.fixture
-def mock_openai_client():
-    """A mock OpenAI client that returns a canned LLM response."""
+def mock_llm_client():
+    """A mock LLM client that returns a canned response."""
     client = MagicMock()
     choice = MagicMock()
     choice.message.content = "Test answer. Sources: [1] Example Article"

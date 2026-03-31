@@ -66,7 +66,7 @@ def test_inventory_summary_marks_new_pack_and_next_build(tmp_path):
     (pack_dir / "pack.yaml").write_text(
         "name: test-pack\n"
         "description: Test\n"
-        "llm: openai\n"
+        "llm: ollama\n"
         "sources:\n"
         "  - https://example.com/article\n"
     )
@@ -86,14 +86,14 @@ def test_inventory_summary_marks_blocked_pack(tmp_path):
     (pack_dir / "pack.yaml").write_text(
         "name: test-pack\n"
         "description: Test\n"
-        "llm: openai\n"
+        "llm: ollama\n"
         "sources:\n"
         "  - https://example.com/article\n"
     )
 
     summary = summarize_pack(
         pack_dir,
-        lambda _cfg: {"blockers": ["Error: OPENAI_API_KEY is not set."], "warnings": []},
+        lambda _cfg: {"blockers": ["Error: Ollama is not running."], "warnings": []},
     )
 
     assert summary["status"] == "blocked"
@@ -120,7 +120,7 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
         (pack_dir / "pack.yaml").write_text(
             f"name: {name}\n"
             "description: test\n"
-            "llm: openai\n"
+            "llm: ollama\n"
             "sources:\n"
             "  - https://example.com/article\n"
             "  - https://example.com/other\n"
@@ -140,8 +140,7 @@ def test_list_shows_compact_inventory_with_counts_and_ordering(tmp_path):
             {"type": "file", "source": f"/tmp/{name}.yaml", "added_at": "2026-03-13T09:00:00+00:00"},
         )
 
-    with patch("beyin.cli._PACKS_DIR", packs_root), \
-         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["list"])
 
     assert result.exit_code == 0, result.output
@@ -207,13 +206,13 @@ def test_list_json_stays_stable_and_prompt_free_for_installed_packs(tmp_path):
 @pytest.mark.parametrize(
     ("pack_name", "state_setup", "env_vars", "expected_status", "expected_command"),
     [
-        ("ready-pack", "ready", {"OPENAI_API_KEY": "sk-test"}, "ready", "beyin mcp-server"),
-        ("new-pack", "new", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "beyin build new-pack"),
-        ("stale-pack", "needs-build", {"OPENAI_API_KEY": "sk-test"}, "needs-build", "beyin build stale-pack"),
-        ("partially-ready-pack", "partially-ready", {"OPENAI_API_KEY": "sk-test"}, "partially-ready", "beyin build partially-ready-pack"),
-        ("incremental-ready-pack", "incremental-ready", {"OPENAI_API_KEY": "sk-test"}, "ready", "beyin mcp-server"),
-        ("error-pack", "error", {"OPENAI_API_KEY": "sk-test"}, "error", "beyin build error-pack"),
-        ("partial-pack", "partial", {"OPENAI_API_KEY": "sk-test"}, "partially-ready", "beyin build partial-pack"),
+        ("ready-pack", "ready", {}, "ready", "beyin mcp-server"),
+        ("new-pack", "new", {}, "needs-build", "beyin build new-pack"),
+        ("stale-pack", "needs-build", {}, "needs-build", "beyin build stale-pack"),
+        ("partially-ready-pack", "partially-ready", {}, "partially-ready", "beyin build partially-ready-pack"),
+        ("incremental-ready-pack", "incremental-ready", {}, "ready", "beyin mcp-server"),
+        ("error-pack", "error", {}, "error", "beyin build error-pack"),
+        ("partial-pack", "partial", {}, "partially-ready", "beyin build partial-pack"),
     ],
 )
 def test_status_uses_onboarding_guidance_across_lifecycle_states(
@@ -235,7 +234,7 @@ def test_status_uses_onboarding_guidance_across_lifecycle_states(
     (pack_dir / "pack.yaml").write_text(
         f"name: {pack_name}\n"
         "description: test\n"
-        "llm: openai\n"
+        "llm: ollama\n"
         "sources:\n"
         "  - https://example.com/article-1\n"
         "  - https://example.com/article-2\n"
@@ -341,7 +340,7 @@ def test_status_pack_without_runtime_readiness_stays_compact_without_coaching(tm
     (pack_dir / "pack.yaml").write_text(
         "name: blocked-pack\n"
         "description: Blocked\n"
-        "llm: openai\n"
+        "llm: ollama\n"
         "sources:\n"
         "  - https://example.com/article\n"
         "embedding_model: all-MiniLM-L6-v2\n"
@@ -502,12 +501,10 @@ def test_status_json_stays_stable_and_prompt_free_after_rendering_changes(tmp_pa
     from beyin.machine_output import CLI_SCHEMA_VERSION
 
     packs_root = tmp_path / "beyin"
-    _write_ready_pack(packs_root / "demo-pack", name="demo-pack", llm="openai")
+    _write_ready_pack(packs_root / "demo-pack", name="demo-pack", llm="ollama")
     runner = CliRunner()
 
-    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
-        "os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False
-    ), patch(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
         "beyin.cli.load_prompt_backend",
         side_effect=AssertionError("interactive backend must stay unloaded"),
     ):

@@ -16,6 +16,13 @@ from tests.conftest import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _default_punkt_tab_ready():
+    """Keep CLI query tests focused on query behavior, not host tokenizer-data state."""
+    with patch("beyin.cli._punkt_tab_build_issue", return_value=None):
+        yield
+
+
 def test_query_exits_0_and_prints_answer(tmp_pack_root):
     """query command exits 0 and prints the answer."""
     from beyin.cli import app
@@ -133,58 +140,32 @@ def test_query_compacts_duplicate_video_sources_by_title_and_url(tmp_pack_root):
     assert "00:40-00:52" in result.output
 
 
-def test_query_openai_pack_does_not_require_ollama(tmp_pack_root):
-    """OpenAI packs load config first and skip Ollama-specific readiness checks."""
+def test_query_unknown_provider_pack_fails_cleanly(tmp_pack_root):
+    """Unknown providers should fail cleanly in direct query mode."""
     from beyin.cli import app
     packs_root, pack_dir = tmp_pack_root
     runner = CliRunner()
     _mark_pack_ready(pack_dir)
 
-    mock_result = {"answer": "OpenAI answer", "sources": []}
     mock_config = _make_config(
         [SourceEntry(url="https://example.com/article")],
-        llm="openai",
-    )
-
-    with patch("beyin.cli._PACKS_DIR", packs_root), \
-         patch("beyin.cli.load_config", return_value=mock_config), \
-         patch("beyin.cli._query_provider_error", return_value=None), \
-         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False), \
-         patch("beyin.cli.load_model", return_value=MagicMock()), \
-         patch("beyin.cli.get_collection", return_value=MagicMock()), \
-         patch("beyin.cli.run_query", return_value=mock_result) as mock_run_query:
-
-        result = runner.invoke(app, ["query", "test-pack", "What is this?"])
-
-    assert result.exit_code == 0, f"Exit code {result.exit_code}, output: {result.output}"
-    mock_run_query.assert_called_once()
-    assert "OpenAI answer" in result.output
-
-
-def test_query_openai_without_api_key_fails_cleanly(tmp_pack_root):
-    """OpenAI packs fail on OpenAI readiness, not on unrelated Ollama checks."""
-    from beyin.cli import app
-    packs_root, _ = tmp_pack_root
-    runner = CliRunner()
-
-    mock_config = _make_config(
-        [SourceEntry(url="https://example.com/article")],
-        llm="openai",
+        llm="bogus",
     )
 
     with patch("beyin.cli._PACKS_DIR", packs_root), \
          patch("beyin.cli.load_config", return_value=mock_config), \
          patch(
              "beyin.cli._query_provider_error",
-             return_value="Error: OPENAI_API_KEY is not set.\nSet it in your shell environment, then retry.",
+             return_value="Error: Unknown LLM provider 'bogus'.\nValid option: ollama.",
          ), \
-         patch.dict("os.environ", {}, clear=True):
+         patch("beyin.cli.run_query") as mock_run_query:
 
         result = runner.invoke(app, ["query", "test-pack", "What is this?"])
 
     assert result.exit_code == 1
-    assert "OPENAI_API_KEY" in result.output
-    assert "Ollama" not in result.output
+    assert "Unknown LLM provider" in result.output
+    assert "ollama" in result.output
+    mock_run_query.assert_not_called()
 
 
 def test_query_anthropic_pack_fails_cleanly(tmp_pack_root):
@@ -207,6 +188,7 @@ def test_query_anthropic_pack_fails_cleanly(tmp_pack_root):
     assert result.exit_code == 1
     assert "Anthropic" in result.output
     assert "not supported" in result.output
+    assert "llm: ollama" in result.output
     mock_run_query.assert_not_called()
 
 

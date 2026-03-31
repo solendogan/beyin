@@ -27,7 +27,7 @@ def test_update_uses_remembered_origin_and_shows_change_summary(tmp_path):
     source_yaml.write_text(
         "name: sync-pack\n"
         "description: test\n"
-        "llm: openai\n"
+        "llm: anthropic\n"
         "sources:\n"
         "  - https://example.com/article\n"
     )
@@ -57,11 +57,11 @@ def test_update_uses_remembered_origin_and_shows_change_summary(tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "Updating pack definition:" in result.output
-    assert "provider: openai -> ollama" in result.output
+    assert "provider: anthropic -> ollama" in result.output
     assert "sources: 1 -> 2" in result.output
     mock_build.assert_called_once()
     origin = load_pack_origin(pack_dir)
-    assert "provider: openai -> ollama" in origin["last_update_summary"]
+    assert "provider: anthropic -> ollama" in origin["last_update_summary"]
 
 
 def test_update_with_remembered_origin_fetches_and_rebuilds(tmp_path):
@@ -310,11 +310,11 @@ def test_status_warns_when_pack_diverged_from_origin(tmp_path):
     pack_dir = packs_root / "diverged-pack"
     pack_dir.mkdir(parents=True)
     current_yaml = (
-        "name: diverged-pack\ndescription: local\nllm: openai\nsources:\n"
+        "name: diverged-pack\ndescription: local\nllm: ollama\nsources:\n"
         "  - https://example.com/article\n"
     )
     old_yaml = (
-        "name: diverged-pack\ndescription: upstream\nllm: openai\nsources:\n"
+        "name: diverged-pack\ndescription: upstream\nllm: ollama\nsources:\n"
         "  - https://example.com/article\n"
     )
     (pack_dir / "pack.yaml").write_text(current_yaml)
@@ -330,8 +330,7 @@ def test_status_warns_when_pack_diverged_from_origin(tmp_path):
     )
     runner = CliRunner()
 
-    with patch("beyin.cli._PACKS_DIR", packs_root), \
-         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=True):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["status", "diverged-pack"])
 
     assert result.exit_code == 0
@@ -490,13 +489,12 @@ def test_add_local_pack_stores_origin_metadata(tmp_path):
     yaml_file.write_text(
         "name: added-pack\n"
         "description: test\n"
-        "llm: openai\n"
+        "llm: ollama\n"
         "sources:\n"
         "  - https://example.com/article\n"
     )
 
-    with patch("beyin.cli._PACKS_DIR", packs_root), \
-         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["add", str(yaml_file)])
 
     assert result.exit_code == 0, result.output
@@ -517,7 +515,7 @@ def test_add_marketplace_id_uses_local_mapping(tmp_path):
     yaml_file.write_text(
         "name: mapped-pack\n"
         "description: mapped\n"
-        "llm: openai\n"
+        "llm: ollama\n"
         "sources:\n"
         "  - https://example.com/article\n"
     )
@@ -525,8 +523,7 @@ def test_add_marketplace_id_uses_local_mapping(tmp_path):
         json.dumps({"starter-pack": str(yaml_file.resolve())})
     )
 
-    with patch("beyin.cli._PACKS_DIR", packs_root), \
-         patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         result = runner.invoke(app, ["add", "starter-pack"])
 
     assert result.exit_code == 0, result.output

@@ -1,5 +1,4 @@
 """Tests for query.py — covers QRY-01, QRY-02, QRY-03, QRY-04, QRY-05, QRY-06."""
-import os
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -11,12 +10,12 @@ def test_ollama_config():
     assert api_key == "ollama"
 
 
-def test_provider_routing():
+def test_unknown_provider_raises():
     from beyin.query import _provider_settings
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
-        base_url, api_key = _provider_settings("openai")
-    assert "openai.com" in base_url
-    assert api_key == "sk-test"
+    with pytest.raises(ValueError) as exc_info:
+        _provider_settings("bogus")
+    assert "Unknown LLM provider" in str(exc_info.value)
+    assert "ollama" in str(exc_info.value)
 
 
 def test_anthropic_raises():
@@ -25,7 +24,6 @@ def test_anthropic_raises():
         _provider_settings("anthropic")
     assert "not supported" in str(exc_info.value)
     assert "ollama" in str(exc_info.value)
-    assert "openai" in str(exc_info.value)
 
 
 def test_context_cap():
@@ -108,8 +106,8 @@ def test_topk(tmp_pack_dir, mock_model):
             [{"url": f"https://example.com/{i}", "title": f"Article {i}"}],
             url=f"https://example.com/{i}",
         )
-    with patch("beyin.query.OpenAI") as MockOpenAI:
-        client = MockOpenAI.return_value
+    with patch("beyin.query._CLIENT_CLASS") as MockClientClass:
+        client = MockClientClass.return_value
         choice = MagicMock()
         choice.message.content = "Answer with citations."
         client.chat.completions.create.return_value = MagicMock(choices=[choice])
@@ -142,8 +140,8 @@ def test_run_query_caps_context_after_shared_retrieval(mock_model):
                 "distance": 0.2,
             },
         ],
-    ), patch("beyin.query.OpenAI") as MockOpenAI:
-        client = MockOpenAI.return_value
+    ), patch("beyin.query._CLIENT_CLASS") as MockClientClass:
+        client = MockClientClass.return_value
         choice = MagicMock()
         choice.message.content = "Capped answer."
         client.chat.completions.create.return_value = MagicMock(choices=[choice])
@@ -199,8 +197,8 @@ def test_run_query_prefers_answering_in_turkish_for_turkish_questions(tmp_pack_d
         url="https://example.com/a",
     )
 
-    with patch("beyin.query.OpenAI") as MockOpenAI:
-        client = MockOpenAI.return_value
+    with patch("beyin.query._CLIENT_CLASS") as MockClientClass:
+        client = MockClientClass.return_value
         choice = MagicMock()
         choice.message.content = "Turkce cevap."
         client.chat.completions.create.return_value = MagicMock(choices=[choice])
