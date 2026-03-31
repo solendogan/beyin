@@ -60,27 +60,29 @@ You can also query packs directly with a local model, no external API or agent n
 
 ## 📦 Installation
 
-Choose one:
-
-`pip install`: good if you already use Python and know which Python environment you want to install into.
-
-```bash
-pip install beyin
-```
-
-`uv tool install`: good if you want Beyin installed like a standalone app, so it does not interfere with your other Python projects.
+The recommended way to install beyin is with `uv`:
 
 ```bash
 uv tool install beyin
+uvx beyin check-deps
 ```
 
-Why this matters: Python users often have multiple environments, and `uv tool install` avoids the common "installed, but not in the environment I'm using" problem.
+Why `uv` / `uvx` is the main path:
 
-Verify your setup:
+- it installs beyin like a standalone CLI app, instead of mixing it into whatever Python environment you happen to be using
+- it avoids the common "it works in my terminal, but my MCP server can't find it" problem
+- it gives you one consistent way to run beyin in both CLI and MCP setups: `uvx beyin ...`
+
+In practice, that consistency matters a lot for agents like Codex, Claude Code, Cursor, Windsurf, and Zed, because they often launch MCP servers in a different environment from your interactive shell.
+
+If you already manage Python environments carefully and want beyin inside a specific environment, `pip install beyin` still works:
 
 ```bash
+pip install beyin
 beyin check-deps
 ```
+
+But unless you specifically need that, prefer the `uv tool install` + `uvx` route.
 
 **ffmpeg** is required for video and audio sources. Skip if you only use articles and local files:
 
@@ -99,11 +101,51 @@ No Homebrew on macOS or winget not working? Download directly from [ffmpeg.org/d
 
 ---
 
+## 🖥️ Using via CLI
+
+You can use beyin directly in your terminal without MCP:
+
+```bash
+uvx beyin
+```
+
+What happens on first run:
+
+- beyin starts a guided setup flow
+- after setup, if you do not have any packs yet, beyin shows a start screen where you can create a new pack or import an existing one
+- if setup is already complete and no packs are available, that same start screen is shown again
+- if you already have packs, you can manage and build them from the CLI as usual
+
+Useful examples:
+
+```bash
+uvx beyin
+uvx beyin list
+uvx beyin build my-pack
+uvx beyin settings
+uvx beyin check-deps
+```
+
+If you installed with `pip`, use `beyin ...` instead of `uvx beyin ...`.
+
+---
+
 ## 🔌 Connect to Your Agent
 
 You only need to do this once.
 
+If you installed beyin with `uv tool install`, use `uvx beyin mcp-server`.
+If you installed beyin with `pip install`, use `beyin mcp-server`.
+
+The `uvx` form is recommended because it makes the MCP server use the same tool-managed installation every time.
+
 #### Claude Code
+
+Recommended (`uv tool install beyin`):
+
+```bash
+claude mcp add beyin -- uvx beyin mcp-server
+```
 
 If you installed with `pip` and normally run `beyin` directly in your terminal:
 
@@ -116,27 +158,21 @@ No config file editing needed, and **no need to keep a terminal open**. Claude C
 To make it available across all your projects:
 
 ```bash
-claude mcp add --scope user beyin -- beyin mcp-server
-```
-
-If you installed with `uv tool` and want Claude Code to launch that tool-managed install:
-
-```bash
-claude mcp add beyin -- uvx beyin mcp-server
+claude mcp add --scope user beyin -- uvx beyin mcp-server
 ```
 
 #### Codex (OpenAI)
+
+Recommended (`uv tool install beyin`):
+
+```bash
+codex mcp add beyin -- uvx beyin mcp-server
+```
 
 If you installed with `pip` and normally run `beyin` directly in your terminal:
 
 ```bash
 codex mcp add beyin -- beyin mcp-server
-```
-
-If you installed with `uv tool` and want Codex to launch that tool-managed install:
-
-```bash
-codex mcp add beyin -- uvx beyin mcp-server
 ```
 
 #### Cursor
@@ -147,8 +183,8 @@ Open or create `~/.cursor/mcp.json` and add:
 {
   "mcpServers": {
     "beyin": {
-      "command": "beyin",
-      "args": ["mcp-server"]
+      "command": "uvx",
+      "args": ["beyin", "mcp-server"]
     }
   }
 }
@@ -156,7 +192,7 @@ Open or create `~/.cursor/mcp.json` and add:
 
 Or go to Command Palette → **"View: Open MCP Settings"**.
 
-If you installed with `uv tool`, use `"command": "uvx"` and `"args": ["beyin", "mcp-server"]` instead.
+If you installed with `pip`, use `"command": "beyin"` and `"args": ["mcp-server"]` instead.
 
 #### Windsurf
 
@@ -166,8 +202,8 @@ Open or create `~/.codeium/windsurf/mcp_config.json` and add:
 {
   "mcpServers": {
     "beyin": {
-      "command": "beyin",
-      "args": ["mcp-server"]
+      "command": "uvx",
+      "args": ["beyin", "mcp-server"]
     }
   }
 }
@@ -175,7 +211,7 @@ Open or create `~/.codeium/windsurf/mcp_config.json` and add:
 
 Or go to Command Palette → **"MCP: Add Server"**.
 
-If you installed with `uv tool`, use `"command": "uvx"` and `"args": ["beyin", "mcp-server"]` instead.
+If you installed with `pip`, use `"command": "beyin"` and `"args": ["mcp-server"]` instead.
 
 #### Zed
 
@@ -186,18 +222,26 @@ In `~/.config/zed/settings.json`:
   "context_servers": {
     "beyin": {
       "source": "custom",
-      "command": "beyin",
-      "args": ["mcp-server"]
+      "command": "uvx",
+      "args": ["beyin", "mcp-server"]
     }
   }
 }
 ```
 
-If you installed with `uv tool`, use `"command": "uvx"` and `"args": ["beyin", "mcp-server"]` instead.
+If you installed with `pip`, use `"command": "beyin"` and `"args": ["mcp-server"]` instead.
 
 #### Any other MCP-compatible agent
 
-The command is `beyin mcp-server`. It runs a stdio MCP server, compatible with any agent that supports the MCP protocol.
+Recommended command:
+
+```bash
+uvx beyin mcp-server
+```
+
+If you installed with `pip`, use `beyin mcp-server` instead.
+
+It runs a stdio MCP server, compatible with any agent that supports the MCP protocol.
 
 ---
 
@@ -245,41 +289,41 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 
 | Command | What it does |
 |---------|-------------|
-| `beyin create` | Create a new pack interactively |
-| `beyin add <path-or-url>` | Import an existing pack from a file or URL |
-| `beyin build <pack>` | Build or rebuild a pack |
-| `beyin build <pack> --source 1 3 5` | Build only selected sources by index or range |
-| `beyin update <pack>` | Fetch new content and rebuild incrementally |
-| `beyin remove <pack>` | Remove a pack |
-| `beyin list` | List all installed packs |
-| `beyin status <pack>` | Show pack details and readiness |
+| `uvx beyin create` | Create a new pack interactively |
+| `uvx beyin add <path-or-url>` | Import an existing pack from a file or URL |
+| `uvx beyin build <pack>` | Build or rebuild a pack |
+| `uvx beyin build <pack> --source 1 3 5` | Build only selected sources by index or range |
+| `uvx beyin update <pack>` | Fetch new content and rebuild incrementally |
+| `uvx beyin remove <pack>` | Remove a pack |
+| `uvx beyin list` | List all installed packs |
+| `uvx beyin status <pack>` | Show pack details and readiness |
 
 **Sources**
 
 | Command | What it does |
 |---------|-------------|
-| `beyin add-source <pack> <url>` | Add a new source to an installed pack |
-| `beyin remove-source <pack> 2` | Remove source by index |
-| `beyin remove-source <pack> 1 3 5` | Remove multiple sources by index |
-| `beyin remove-source <pack> 1-3` | Remove a range of sources |
-| `beyin remove-source <pack> "keyword"` | Remove a source by title/URL text match |
-| `beyin remove-source <pack> 2 --build` | Remove and rebuild immediately to clean up vector store |
+| `uvx beyin add-source <pack> <url>` | Add a new source to an installed pack |
+| `uvx beyin remove-source <pack> 2` | Remove source by index |
+| `uvx beyin remove-source <pack> 1 3 5` | Remove multiple sources by index |
+| `uvx beyin remove-source <pack> 1-3` | Remove a range of sources |
+| `uvx beyin remove-source <pack> "keyword"` | Remove a source by title/URL text match |
+| `uvx beyin remove-source <pack> 2 --build` | Remove and rebuild immediately to clean up vector store |
 
 **Query**
 
 | Command | What it does |
 |---------|-------------|
-| `beyin query <pack> "question"` | Ask a question directly (requires Ollama) |
+| `uvx beyin query <pack> "question"` | Ask a question directly (requires Ollama) |
 
 **Server & config**
 
 | Command | What it does |
 |---------|-------------|
-| `beyin mcp-server` | Start the MCP server |
-| `beyin settings` | View and configure settings |
-| `beyin check-deps` | Verify runtime dependencies |
-| `beyin about` | Version and info |
-| `beyin help` | List all commands |
+| `uvx beyin mcp-server` | Start the MCP server |
+| `uvx beyin settings` | View and configure settings |
+| `uvx beyin check-deps` | Verify runtime dependencies |
+| `uvx beyin about` | Version and info |
+| `uvx beyin help` | List all commands |
 
 ---
 
@@ -308,10 +352,10 @@ ollama serve
 4. Build a pack and query it:
 
 ```bash
-beyin query my-pack "What does this source say about X?"
+uvx beyin query my-pack "What does this source say about X?"
 ```
 
-To change the model, run `beyin settings`.
+To change the model, run `uvx beyin settings`.
 
 ---
 
@@ -320,15 +364,15 @@ To change the model, run `beyin settings`.
 ### Pack is not queryable yet
 
 ```bash
-beyin status my-pack
-beyin build my-pack
+uvx beyin status my-pack
+uvx beyin build my-pack
 ```
 
 A `partially-ready` pack is still queryable — sources that built successfully are available. Rebuilding recovers any failed sources.
 
 ### MCP is connected but retrieval is not working
 
-- Make sure the pack was built: `beyin status my-pack`
+- Make sure the pack was built: `uvx beyin status my-pack`
 - Restart your agent after adding beyin for the first time
 - Verify the server is registered: `claude mcp list`
 - Make sure the same beyin installation is used by both CLI and the MCP server
@@ -352,13 +396,13 @@ beyin uses [Whisper](https://github.com/openai/whisper) to transcribe audio and 
 The default model is `small`. To use a faster or English-only model, change it in settings:
 
 ```bash
-beyin settings
+uvx beyin settings
 ```
 
 Or pass it per build:
 
 ```bash
-beyin build my-pack --model small
+uvx beyin build my-pack --model small
 ```
 
 `small` is a good default for most content. If your audio is strictly English, `small.en` is a good faster/simpler option. Use `medium`, `medium.en`, or `large` for harder audio.
@@ -395,13 +439,13 @@ uv sync
 Run commands from the repo:
 
 ```bash
-uv run python -m beyin.cli help
+uv run beyin help
 ```
 
 MCP config for a local repo install:
 
 ```bash
-claude mcp add beyin -- uv run python -m beyin.cli mcp-server --cwd /absolute/path/to/beyin
+claude mcp add beyin -- uv run beyin mcp-server --cwd /absolute/path/to/beyin
 ```
 
 Or manually in your agent's config file:
@@ -411,7 +455,7 @@ Or manually in your agent's config file:
   "mcpServers": {
     "beyin": {
       "command": "uv",
-      "args": ["run", "python", "-m", "beyin.cli", "mcp-server"],
+      "args": ["run", "beyin", "mcp-server"],
       "cwd": "/absolute/path/to/beyin"
     }
   }
