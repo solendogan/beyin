@@ -149,14 +149,14 @@ def test_query_unknown_provider_pack_fails_cleanly(tmp_pack_root):
 
     mock_config = _make_config(
         [SourceEntry(url="https://example.com/article")],
-        llm="bogus",
+        llm="unsupported-provider",
     )
 
     with patch("beyin.cli._PACKS_DIR", packs_root), \
          patch("beyin.cli.load_config", return_value=mock_config), \
          patch(
              "beyin.cli._query_provider_error",
-             return_value="Error: Unknown LLM provider 'bogus'.\nValid option: ollama.",
+             return_value="Error: Unknown LLM provider 'unsupported-provider'.\nValid option: ollama.",
          ), \
          patch("beyin.cli.run_query") as mock_run_query:
 
@@ -168,27 +168,31 @@ def test_query_unknown_provider_pack_fails_cleanly(tmp_pack_root):
     mock_run_query.assert_not_called()
 
 
-def test_query_anthropic_pack_fails_cleanly(tmp_pack_root):
-    """Anthropic packs exit cleanly as unsupported in this phase."""
+def test_query_non_ollama_pack_fails_cleanly(tmp_pack_root):
+    """Non-ollama providers should fail cleanly in direct query mode."""
     from beyin.cli import app
     packs_root, _ = tmp_pack_root
     runner = CliRunner()
 
     mock_config = _make_config(
         [SourceEntry(url="https://example.com/article")],
-        llm="anthropic",
+        llm="unsupported-provider",
     )
 
     with patch("beyin.cli._PACKS_DIR", packs_root), \
          patch("beyin.cli.load_config", return_value=mock_config), \
+         patch(
+             "beyin.cli._query_provider_error",
+             return_value="Error: Unknown LLM provider 'unsupported-provider'.\nValid option: ollama.",
+         ), \
          patch("beyin.cli.run_query") as mock_run_query:
 
         result = runner.invoke(app, ["query", "test-pack", "What is this?"])
 
     assert result.exit_code == 1
-    assert "Anthropic" in result.output
-    assert "not supported" in result.output
-    assert "llm: ollama" in result.output
+    assert "Unknown LLM provider" in result.output
+    assert "unsupported-provider" in result.output
+    assert "ollama" in result.output
     mock_run_query.assert_not_called()
 
 

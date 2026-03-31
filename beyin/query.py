@@ -22,11 +22,6 @@ def _provider_settings(provider: str) -> Tuple[str, str]:
     """Return (base_url, api_key) for the given LLM provider."""
     if provider == "ollama":
         return "http://localhost:11434/v1", "ollama"
-    if provider == "anthropic":
-        raise NotImplementedError(
-            "Anthropic is not supported in this phase. "
-            "Update pack.yaml to use llm: ollama."
-        )
     raise ValueError(f"Unknown LLM provider: '{provider}'. Valid option: ollama.")
 
 

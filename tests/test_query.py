@@ -13,16 +13,16 @@ def test_ollama_config():
 def test_unknown_provider_raises():
     from beyin.query import _provider_settings
     with pytest.raises(ValueError) as exc_info:
-        _provider_settings("bogus")
+        _provider_settings("unsupported-provider")
     assert "Unknown LLM provider" in str(exc_info.value)
     assert "ollama" in str(exc_info.value)
 
 
-def test_anthropic_raises():
+def test_non_ollama_provider_raises():
     from beyin.query import _provider_settings
-    with pytest.raises(NotImplementedError) as exc_info:
-        _provider_settings("anthropic")
-    assert "not supported" in str(exc_info.value)
+    with pytest.raises(ValueError) as exc_info:
+        _provider_settings("unsupported-provider")
+    assert "Unknown LLM provider" in str(exc_info.value)
     assert "ollama" in str(exc_info.value)
 
 

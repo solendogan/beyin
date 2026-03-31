@@ -27,7 +27,7 @@ def test_update_uses_remembered_origin_and_shows_change_summary(tmp_path):
     source_yaml.write_text(
         "name: sync-pack\n"
         "description: test\n"
-        "llm: anthropic\n"
+        "llm: unsupported-provider\n"
         "sources:\n"
         "  - https://example.com/article\n"
     )
@@ -57,11 +57,11 @@ def test_update_uses_remembered_origin_and_shows_change_summary(tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "Updating pack definition:" in result.output
-    assert "provider: anthropic -> ollama" in result.output
+    assert "provider: unsupported-provider -> ollama" in result.output
     assert "sources: 1 -> 2" in result.output
     mock_build.assert_called_once()
     origin = load_pack_origin(pack_dir)
-    assert "provider: anthropic -> ollama" in origin["last_update_summary"]
+    assert "provider: unsupported-provider -> ollama" in origin["last_update_summary"]
 
 
 def test_update_with_remembered_origin_fetches_and_rebuilds(tmp_path):
