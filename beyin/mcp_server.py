@@ -283,7 +283,14 @@ def add_sources(
                 "Review sources with the status tool and call build when ready."
             )
         else:
-            _cli_build(pack=pack, model=model, language=language)
+            _cli_build(
+                pack=pack,
+                sources=None,
+                model=model,
+                language=language,
+                reset=False,
+                verbose=False,
+            )
 
     return _command_tool_result(command="add_sources", pack=pack, action=action)
 

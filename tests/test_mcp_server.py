@@ -3,6 +3,7 @@
 import json
 
 from beyin import __version__
+from beyin.config import load_config
 from pathlib import Path
 from unittest.mock import patch
 
@@ -315,6 +316,39 @@ async def test_mcp_retrieve_returns_structured_results_payload(mcp_app, tmp_path
         },
         "warnings": [],
     }
+
+
+@pytest.mark.anyio
+async def test_mcp_add_sources_single_url_adds_and_builds_without_optioninfo_crash(mcp_app, tmp_path):
+    packs_root = tmp_path / "beyin"
+    pack_dir = packs_root / "growth-pack"
+    _write_pack(pack_dir, name="growth-pack", llm="ollama")
+
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.mcp_server._cli_build",
+    ) as mock_build:
+        _, structured = await mcp_app.call_tool(
+            "add_sources",
+            {
+                "pack": "growth-pack",
+                "urls": ["https://example.com/new-article"],
+            },
+        )
+
+    updated = load_config(pack_dir)
+
+    assert structured["ok"] is True, structured
+    assert any(
+        source.url == "https://example.com/new-article" for source in updated.sources
+    )
+    mock_build.assert_called_once_with(
+        pack="growth-pack",
+        sources=None,
+        model=None,
+        language=None,
+        reset=False,
+        verbose=False,
+    )
 
 
 @pytest.mark.anyio
