@@ -145,7 +145,7 @@ To make it available across all your projects:
 claude mcp add --scope user beyin -- beyin mcp-server
 ```
 
-#### Codex (OpenAI)
+#### Codex
 
 ```bash
 codex mcp add beyin -- beyin mcp-server
@@ -347,7 +347,7 @@ A `partially-ready` pack is still queryable — sources that built successfully 
 
 ### Audio and video builds are slow
 
-beyin uses [Whisper](https://github.com/openai/whisper) to transcribe audio and video sources. Model size controls the trade-off between speed, memory use, and transcription quality. English-only `.en` variants through `medium.en` are useful when you know the audio is only English.
+beyin uses Whisper to transcribe audio and video sources. Model size controls the trade-off between speed, memory use, and transcription quality. English-only `.en` variants through `medium.en` are useful when you know the audio is only English.
 
 | Model | Type | Parameters | Download size | Speed | Accuracy | Best for |
 |-------|------|------------|---------------|-------|----------|----------|
@@ -393,6 +393,10 @@ Prefer one of these two patterns and stay consistent:
 - No-install workflow: run `uvx beyin ...`
 
 Do not mix them casually across CLI and MCP setup, or you may end up checking one environment and running another. `pip install beyin` is available if you explicitly want beyin inside a managed Python environment, but it is not the main path.
+
+### Windows notes
+
+The main `beyin ...` commands stay the same on Windows after installation. The examples above use Unix-like shell syntax and config paths in a few places, so if a path does not match your system, use the equivalent settings location for your MCP client on Windows. For media builds, install `ffmpeg` first, then rerun `beyin check-deps`.
 
 ---
 
