@@ -28,7 +28,7 @@ from beyin.settings import (
     save_settings,
 )
 from beyin.runtime_summary import readiness_summary_lines
-from beyin.readiness import _ytdlp_version_ok
+from beyin.readiness import _check_nltk_punkt_tab_available, _ytdlp_version_ok
 from beyin.ui import render_header, render_meta, render_review, render_status
 
 
@@ -377,6 +377,7 @@ def _setup_followup_lines(settings: BeyinSettings) -> list[str]:
             settings,
             command_exists=shutil.which,
             import_module=__import__,
+            nltk_punkt_tab_available=_check_nltk_punkt_tab_available,
             ytdlp_version_ok=_ytdlp_version_ok,
         )
     )

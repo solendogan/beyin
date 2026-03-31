@@ -5,7 +5,11 @@ import os
 import shutil
 from typing import Optional
 
-from beyin.install_hints import ollama_install_hint, yt_dlp_install_hint
+from beyin.install_hints import (
+    nltk_punkt_tab_install_hint,
+    ollama_install_hint,
+    yt_dlp_install_hint,
+)
 
 _YTDLP_MIN_VERSION = "2025.11.12"
 
@@ -38,6 +42,49 @@ def _check_ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+def _check_nltk_punkt_tab_available() -> bool:
+    """Return True when the NLTK punkt_tab tokenizer data is available."""
+    try:
+        import nltk
+    except Exception:
+        return False
+
+    try:
+        nltk.data.find("tokenizers/punkt_tab/english/")
+        return True
+    except LookupError:
+        return False
+
+
+def _download_nltk_punkt_tab() -> tuple[bool, str]:
+    """Download punkt_tab into the current Python environment if needed."""
+    try:
+        import nltk
+    except Exception as exc:
+        return False, f"nltk import failed: {exc}"
+
+    try:
+        nltk.data.find("tokenizers/punkt_tab/english/")
+        return True, "already installed"
+    except LookupError:
+        pass
+
+    try:
+        downloaded = nltk.download("punkt_tab", quiet=True)
+    except Exception as exc:
+        return False, str(exc)
+
+    if not downloaded:
+        return False, "nltk downloader reported failure"
+
+    try:
+        nltk.data.find("tokenizers/punkt_tab/english/")
+    except LookupError:
+        return False, "punkt_tab still not visible after download"
+
+    return True, "downloaded"
+
+
 def _youtube_build_issue() -> Optional[str]:
     """Return a user-facing yt-dlp issue message when YouTube ingest is blocked."""
     ok, version = _ytdlp_version_ok()
@@ -62,6 +109,16 @@ def _has_audio_sources(config) -> bool:
 def _has_youtube_sources(config) -> bool:
     from beyin.downloader import detect_source_type
     return any(detect_source_type(source.url) == "youtube" for source in config.sources)
+
+
+def _punkt_tab_build_issue() -> Optional[str]:
+    """Return a user-facing punkt_tab issue message when text chunking is blocked."""
+    if _check_nltk_punkt_tab_available():
+        return None
+    return (
+        "NLTK sentence tokenizer data 'punkt_tab' is required for builds. "
+        f"Install it with: {nltk_punkt_tab_install_hint()}"
+    )
 
 
 def _query_provider_error(provider: str) -> Optional[str]:

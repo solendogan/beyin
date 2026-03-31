@@ -16,6 +16,13 @@ from tests.conftest import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _default_punkt_tab_ready():
+    """Keep inventory/status tests focused on lifecycle behavior by default."""
+    with patch("beyin.cli._punkt_tab_build_issue", return_value=None):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Local helper: only used in inventory/status tests
 # ---------------------------------------------------------------------------
@@ -559,6 +566,7 @@ def test_check_deps_all_pass():
             },
         )(),
     ), patch("beyin.cli.shutil") as mock_shutil, \
+         patch("beyin.cli._check_nltk_punkt_tab_available", return_value=True), \
          patch("beyin.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
@@ -587,6 +595,7 @@ def test_check_deps_does_not_surface_deno():
             },
         )(),
     ), patch("beyin.cli.shutil") as mock_shutil, \
+         patch("beyin.cli._check_nltk_punkt_tab_available", return_value=True), \
          patch("beyin.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
@@ -617,6 +626,7 @@ def test_check_deps_ytdlp_outdated():
             },
         )(),
     ), patch("beyin.cli.shutil") as mock_shutil, \
+         patch("beyin.cli._check_nltk_punkt_tab_available", return_value=True), \
          patch("beyin.cli._ytdlp_version_ok", return_value=(False, "2025.10.01")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": "/usr/bin/ffmpeg",
@@ -648,6 +658,7 @@ def test_check_deps_ffmpeg_missing():
             },
         )(),
     ), patch("beyin.cli.shutil") as mock_shutil, \
+         patch("beyin.cli._check_nltk_punkt_tab_available", return_value=True), \
          patch("beyin.cli._ytdlp_version_ok", return_value=(True, "2026.03.03")):
         mock_shutil.which.side_effect = lambda name: {
             "ffmpeg": None,
@@ -678,10 +689,71 @@ def test_check_deps_shows_full_document_dependency_inventory():
                 "preferred_llm_model": "llama3.2",
             },
         )(),
-    ):
+    ), patch("beyin.cli._check_nltk_punkt_tab_available", return_value=True):
         result = runner.invoke(app, ["check-deps"])
 
     assert result.exit_code == 0
     assert "PDF (.pdf)" in result.output
     assert "DOCX (.docx)" in result.output
     assert "XLSX (.xlsx)" in result.output
+
+
+def test_check_deps_reports_missing_punkt_tab():
+    """check-deps exits 1 with a first-party fix hint when punkt_tab is missing."""
+    from beyin.cli import app
+    runner = CliRunner()
+
+    with patch(
+        "beyin.cli.load_settings",
+        return_value=type(
+            "S",
+            (),
+            {
+                "enabled_capabilities": ["web"],
+                "enabled_local_file_types": [],
+                "preferred_transcription_backend": "faster-whisper",
+                "preferred_whisper_model": "small",
+                "preferred_llm_model": "llama3.2",
+            },
+        )(),
+    ), patch("beyin.cli._check_nltk_punkt_tab_available", return_value=False):
+        result = runner.invoke(app, ["check-deps"])
+
+    assert result.exit_code == 1
+    assert "punkt_tab" in result.output
+    assert "beyin check-deps --fix" in result.output
+
+
+def test_check_deps_fix_installs_punkt_tab_when_missing():
+    """check-deps --fix should install punkt_tab in the current environment before reporting."""
+    from beyin.cli import app
+    runner = CliRunner()
+
+    statuses = iter([False, True])
+
+    with patch(
+        "beyin.cli.load_settings",
+        return_value=type(
+            "S",
+            (),
+            {
+                "enabled_capabilities": ["web"],
+                "enabled_local_file_types": [],
+                "preferred_transcription_backend": "faster-whisper",
+                "preferred_whisper_model": "small",
+                "preferred_llm_model": "llama3.2",
+            },
+        )(),
+    ), patch(
+        "beyin.cli._check_nltk_punkt_tab_available",
+        side_effect=lambda: next(statuses),
+    ), patch(
+        "beyin.cli._download_nltk_punkt_tab",
+        return_value=(True, "downloaded"),
+    ) as download_mock:
+        result = runner.invoke(app, ["check-deps", "--fix"])
+
+    assert result.exit_code == 0
+    assert "installed (downloaded)" in result.output
+    assert "punkt_tab: found" in result.output
+    download_mock.assert_called_once_with()

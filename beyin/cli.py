@@ -77,9 +77,12 @@ from beyin.payloads import (
 from beyin.paths import packs_dir
 from beyin.readiness import (
     _check_ffmpeg_available,
+    _check_nltk_punkt_tab_available,
     _check_ollama_reachable,
+    _download_nltk_punkt_tab,
     _has_audio_sources,
     _has_youtube_sources,
+    _punkt_tab_build_issue,
     _query_provider_error,
     _youtube_build_issue,
     _ytdlp_version_ok,
@@ -709,6 +712,7 @@ def _dependency_display_rows(settings=None) -> tuple[list[tuple[str, str]], list
         current,
         command_exists=shutil.which,
         import_module=__import__,
+        nltk_punkt_tab_available=_check_nltk_punkt_tab_available,
         ytdlp_version_ok=_ytdlp_version_ok,
     )
 
@@ -720,6 +724,7 @@ def _all_dependency_display_rows(settings=None) -> tuple[list[tuple[str, str]], 
         current,
         command_exists=shutil.which,
         import_module=__import__,
+        nltk_punkt_tab_available=_check_nltk_punkt_tab_available,
         ytdlp_version_ok=_ytdlp_version_ok,
         include_all=True,
     )
@@ -918,6 +923,10 @@ def _pack_readiness_details(config) -> dict[str, list[str]]:
     """Return build-time blocker/warning details for one installed pack."""
     blockers: list[str] = []
     warnings: list[str] = []
+
+    punkt_tab_issue = _punkt_tab_build_issue()
+    if punkt_tab_issue is not None:
+        blockers.append(punkt_tab_issue)
 
     if _has_youtube_sources(config):
         youtube_issue = _youtube_build_issue()
@@ -1249,6 +1258,10 @@ def build(
     if reset:
         reset_pack_runtime(pack_dir)
     config = load_config(pack_dir)
+    punkt_tab_issue = _punkt_tab_build_issue()
+    if punkt_tab_issue is not None:
+        typer.echo(f"Error: {punkt_tab_issue}", err=True)
+        raise typer.Exit(code=1)
     state = load_state(pack_dir)
     current_pack_hash = pack_config_hash(pack_dir)
     full_config = config
@@ -1911,8 +1924,21 @@ def query(
 
 
 @app.command(name="check-deps", cls=BeyinCommand)
-def check_deps() -> None:
-    """Check runtime dependencies: ffmpeg, yt-dlp, and optional document libs."""
+def check_deps(
+    fix: bool = typer.Option(
+        False,
+        "--fix",
+        help="Download missing NLTK punkt_tab tokenizer data into the current Python environment.",
+    ),
+) -> None:
+    """Check runtime dependencies: punkt_tab, ffmpeg, yt-dlp, and optional document libs."""
+    if fix and not _check_nltk_punkt_tab_available():
+        ok, detail = _download_nltk_punkt_tab()
+        if ok:
+            typer.echo(f"Text processing: punkt_tab: installed ({detail})")
+        else:
+            typer.echo(f"Text processing: punkt_tab: install failed ({detail})")
+
     runtime_rows, file_type_rows, failures = _all_dependency_display_rows()
 
     for label, value in runtime_rows:

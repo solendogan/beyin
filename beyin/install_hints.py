@@ -24,6 +24,10 @@ def yt_dlp_install_hint() -> str:
     return "pip install --upgrade yt-dlp"
 
 
+def nltk_punkt_tab_install_hint() -> str:
+    return "beyin check-deps --fix"
+
+
 def ollama_install_hint() -> str:
     system = _system_name()
     if system == "darwin":

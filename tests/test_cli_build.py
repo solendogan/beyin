@@ -14,6 +14,17 @@ from beyin.config import SourceEntry, load_config
 from tests.conftest import _make_config, _save_global_settings
 
 
+@pytest.fixture(autouse=True)
+def _default_punkt_tab_ready():
+    """Keep build tests focused on build flow unless a test overrides punkt_tab readiness."""
+    def _sent_tokenize(text: str):
+        return [line.strip() for line in text.splitlines() if line.strip()]
+
+    with patch("beyin.cli._punkt_tab_build_issue", return_value=None), \
+         patch("beyin.chunker.nltk.sent_tokenize", side_effect=_sent_tokenize):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Local helper: only used in build tests
 # ---------------------------------------------------------------------------
@@ -138,6 +149,27 @@ def test_build_help_shows_source_selector_flag():
 
     assert result.exit_code == 0
     assert "--source" in result.output
+
+
+def test_build_exits_cleanly_when_punkt_tab_is_missing(tmp_pack_root):
+    """build should stop with a clear dependency message instead of an NLTK traceback."""
+    from beyin.cli import app
+
+    packs_root, _ = tmp_pack_root
+    runner = CliRunner()
+    mock_config = _make_config([SourceEntry(url="https://example.com/article")])
+
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_config", return_value=mock_config), \
+         patch(
+             "beyin.cli._punkt_tab_build_issue",
+             return_value="NLTK sentence tokenizer data 'punkt_tab' is required for builds. Install it with: beyin check-deps --fix",
+         ):
+        result = runner.invoke(app, ["build", "test-pack"])
+
+    assert result.exit_code == 1
+    assert "punkt_tab" in result.output
+    assert "beyin check-deps --fix" in result.output
 
 
 def test_build_exits_0(tmp_pack_root):

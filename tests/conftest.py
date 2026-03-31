@@ -1,8 +1,4 @@
-"""Shared test fixtures for beyin tests.
-
-Note: punkt_tab NLTK data must be downloaded once before running tests.
-Run: uv run python -c "import nltk; nltk.download('punkt_tab', quiet=True)"
-"""
+"""Shared test fixtures for beyin tests."""
 import json
 import pytest
 from pathlib import Path

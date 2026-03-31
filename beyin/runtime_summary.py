@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from beyin.install_hints import ffmpeg_install_hint, yt_dlp_install_hint
+from beyin.install_hints import (
+    ffmpeg_install_hint,
+    nltk_punkt_tab_install_hint,
+    yt_dlp_install_hint,
+)
 from beyin.readiness import _YTDLP_MIN_VERSION
 
 
@@ -38,6 +42,7 @@ def dependency_display_rows(
     *,
     command_exists,
     import_module,
+    nltk_punkt_tab_available,
     ytdlp_version_ok,
     include_all: bool = False,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[str]]:
@@ -46,6 +51,13 @@ def dependency_display_rows(
     selected_file_types = set(settings.enabled_local_file_types or [])
 
     runtime_rows: list[tuple[str, str]] = []
+    if nltk_punkt_tab_available():
+        punkt_tab_status = "found"
+    else:
+        punkt_tab_status = f"NOT FOUND  →  {nltk_punkt_tab_install_hint()}"
+        failures.append("punkt_tab")
+    runtime_rows.append(("Text processing", f"punkt_tab: {punkt_tab_status}"))
+
     if include_all or capabilities.intersection({"youtube", "podcasts"}):
         if command_exists("ffmpeg"):
             ffmpeg_status = "found"
@@ -90,11 +102,19 @@ def dependency_display_rows(
     return runtime_rows, file_type_rows, failures
 
 
-def readiness_summary_lines(settings: Any, *, command_exists, import_module, ytdlp_version_ok) -> list[str]:
+def readiness_summary_lines(
+    settings: Any,
+    *,
+    command_exists,
+    import_module,
+    nltk_punkt_tab_available,
+    ytdlp_version_ok,
+) -> list[str]:
     runtime_rows, file_type_rows, failures = dependency_display_rows(
         settings,
         command_exists=command_exists,
         import_module=import_module,
+        nltk_punkt_tab_available=nltk_punkt_tab_available,
         ytdlp_version_ok=ytdlp_version_ok,
     )
     lines: list[str] = []

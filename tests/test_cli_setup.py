@@ -14,6 +14,15 @@ from tests.conftest import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _default_punkt_tab_ready():
+    """Keep setup/home tests independent from host NLTK data state."""
+    with patch("beyin.cli._punkt_tab_build_issue", return_value=None), \
+         patch("beyin.cli._check_nltk_punkt_tab_available", return_value=True), \
+         patch("beyin.interactive._check_nltk_punkt_tab_available", return_value=True):
+        yield
+
+
 def test_no_arg_home_screen_guides_first_run(tmp_path):
     """No-arg invocation on a fresh machine shows a guided home screen."""
     from beyin.cli import app
