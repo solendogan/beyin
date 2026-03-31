@@ -354,7 +354,12 @@ def _list_payload(
     from beyin import cli as _cli
     packs = list_packs(_cli._PACKS_DIR, _cli._pack_readiness_details)
     if machine:
-        return {"packs": [serialize_pack_summary(summary) for summary in packs]}
+        machine_packs = []
+        for summary in packs:
+            payload = serialize_pack_summary(summary)
+            payload.pop("provider", None)
+            machine_packs.append(payload)
+        return {"packs": machine_packs}
     return {"packs": packs}
 
 

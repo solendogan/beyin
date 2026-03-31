@@ -9,11 +9,22 @@ from unittest.mock import patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _default_punkt_tab_ready():
+    """Keep MCP surface tests independent from host tokenizer-data state."""
+    def _sent_tokenize(text: str):
+        return [line.strip() for line in text.splitlines() if line.strip()] or [text.strip()]
+
+    with patch("beyin.cli._punkt_tab_build_issue", return_value=None), \
+         patch("beyin.chunker.nltk.sent_tokenize", side_effect=_sent_tokenize):
+        yield
+
+
 def _write_pack(
     pack_dir: Path,
     *,
     name: str,
-    llm: str = "openai",
+    llm: str = "ollama",
     sources: list[str] | None = None,
 ) -> None:
     urls = sources or ["https://example.com/article"]
@@ -177,11 +188,7 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
     _write_pack(alpha_pack, name="alpha-pack")
     _mark_pack_built(alpha_pack, last_build_at="2026-03-13T10:00:00+00:00")
 
-    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
-        "os.environ",
-        {"OPENAI_API_KEY": "sk-test"},
-        clear=False,
-    ):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         _, structured = await mcp_app.call_tool("packs", {})
 
     assert structured == {
@@ -198,7 +205,6 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
                     "id": "alpha-pack",
                     "name": "alpha-pack",
                     "status": "ready",
-                    "provider": "openai",
                     "source_count": 1,
                     "recent_summary": "build 2026-03-13",
                     "next_action": 'beyin query alpha-pack "question"',
@@ -221,7 +227,7 @@ async def test_mcp_status_exposes_pack_id_and_indexed_sources(mcp_app, tmp_path)
         "id: mobile-marketing-pack\n"
         "name: Mobile Marketing\n"
         "description: Test pack\n"
-        "llm: openai\n"
+        "llm: ollama\n"
         "sources:\n"
         "  - url: https://example.com/article\n"
         "    title: Great Article\n"
@@ -230,11 +236,7 @@ async def test_mcp_status_exposes_pack_id_and_indexed_sources(mcp_app, tmp_path)
         "embedding_model: all-MiniLM-L6-v2\n"
     )
 
-    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
-        "os.environ",
-        {"OPENAI_API_KEY": "sk-test"},
-        clear=False,
-    ):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         _, structured = await mcp_app.call_tool("status", {"pack": "mobile-marketing"})
 
     assert structured["ok"] is True
@@ -254,7 +256,7 @@ async def test_mcp_status_exposes_pack_id_and_indexed_sources(mcp_app, tmp_path)
 async def test_mcp_retrieve_returns_structured_results_payload(mcp_app, tmp_path):
     packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "retrieve-pack"
-    _write_pack(pack_dir, name="retrieve-pack", llm="openai")
+    _write_pack(pack_dir, name="retrieve-pack", llm="ollama")
     _mark_pack_built(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
 
     mock_results = [
@@ -377,7 +379,7 @@ async def test_mcp_retrieve_blocks_on_pack_state_preconditions(
         _write_pack(
             pack_dir,
             name="state-pack",
-            llm="openai",
+            llm="ollama",
             sources=["https://example.com/article-1", "https://example.com/article-2"],
         )
         if state_setup == "partially-ready":
@@ -409,16 +411,12 @@ async def test_mcp_retrieve_allows_partially_ready_pack_with_warning(mcp_app, tm
     _write_pack(
         pack_dir,
         name="state-pack",
-        llm="openai",
+        llm="ollama",
         sources=["https://example.com/article-1", "https://example.com/article-2"],
     )
     _mark_pack_partially_ready(pack_dir, last_build_at="2026-03-13T10:00:00+00:00")
 
-    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
-        "os.environ",
-        {"OPENAI_API_KEY": "sk-test"},
-        clear=False,
-    ), patch(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
         "beyin.cli.load_model",
         return_value=object(),
     ), patch(
@@ -444,7 +442,7 @@ async def test_mcp_retrieve_allows_partially_ready_pack_with_warning(mcp_app, tm
 async def test_mcp_retrieve_allows_mixed_result_pack_with_successful_build(mcp_app, tmp_path):
     packs_root = tmp_path / "beyin"
     pack_dir = packs_root / "mixed-pack"
-    _write_pack(pack_dir, name="mixed-pack", llm="openai")
+    _write_pack(pack_dir, name="mixed-pack", llm="ollama")
     _mark_pack_mixed_result(pack_dir, last_build_at="2026-03-21T10:00:00+00:00")
 
     with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
@@ -663,16 +661,12 @@ async def test_mcp_status_marks_incrementally_built_pack_ready(mcp_app, tmp_path
     _write_pack(
         pack_dir,
         name="incremental-pack",
-        llm="openai",
+        llm="ollama",
         sources=["https://example.com/article-1", "https://example.com/article-2"],
     )
     _mark_pack_incrementally_ready(pack_dir)
 
-    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
-        "os.environ",
-        {"OPENAI_API_KEY": "sk-test"},
-        clear=False,
-    ):
+    with patch("beyin.cli._PACKS_DIR", packs_root):
         _, structured = await mcp_app.call_tool("status", {"pack": "incremental-pack"})
 
     assert structured["ok"] is True
@@ -686,16 +680,12 @@ async def test_mcp_retrieve_allows_incrementally_ready_pack(mcp_app, tmp_path):
     _write_pack(
         pack_dir,
         name="incremental-pack",
-        llm="openai",
+        llm="ollama",
         sources=["https://example.com/article-1", "https://example.com/article-2"],
     )
     _mark_pack_incrementally_ready(pack_dir)
 
-    with patch("beyin.cli._PACKS_DIR", packs_root), patch.dict(
-        "os.environ",
-        {"OPENAI_API_KEY": "sk-test"},
-        clear=False,
-    ), patch(
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
         "beyin.cli.load_model",
         return_value=object(),
     ), patch(
