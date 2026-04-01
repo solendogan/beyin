@@ -5,7 +5,8 @@
 
 *also means “brain” in Turkish.*
 
-**Build local, queryable packs from videos, articles, podcasts, and local files. Query them through MCP with your AI agent, or explore them directly with a local model.**
+**Build local, queryable packs from videos, articles, podcasts, and local files. <br>
+Query them through MCP with your AI agent, or explore them directly with a local model.**
 
 [![PyPI](https://img.shields.io/pypi/v/beyin?style=for-the-badge)](https://pypi.org/project/beyin/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
@@ -26,21 +27,19 @@
 - ⚡ **Plug and play:** one command to connect via MCP, then manage everything by just talking to your agent
 - 🎯 **Multi-query expansion:** generates query variants automatically for better retrieval
 
----
-
 ## ⚙️ How it works
 
 The recommended way to use beyin is through MCP with the AI agent you already use.
 
 1. Install beyin and connect it to your agent once
-2. Build a pack from your sources
-3. Ask questions naturally. Your agent handles retrieval automatically.
+2. Tell your agent to create a pack, add your sources, and build it
+3. Ask questions naturally and let your agent handle retrieval
 
-Once set up, you can ask your agent to create, build, and manage packs, add sources, check status, and retrieve relevant results, all in plain language. See [Example Usage with MCP](#-example-usage-with-mcp).
+It becomes part of your agent’s natural workflow, bringing in the right context exactly when you need it while keeping you focused
+
+See [Example Usage with MCP](#-example-usage-with-mcp) for real prompts and workflows.
 
 You can also query packs directly with a local model, no external API or agent needed. See [Query with a Local Model](#-query-with-a-local-model).
-
----
 
 ## 📂 Supported Sources
 
@@ -56,22 +55,27 @@ You can also query packs directly with a local model, no external API or agent n
 
 > beyin is built for local processing on your own machine. Use it with content you are allowed to process, preferably public, permitted sources or material you own or have rights to use. Avoid copied, paywalled, private, restricted, or illegally shared content.
 
----
-
 ## 📦 Installation
+
+We recommend `uv` because it keeps the CLI install isolated and gives you a plain `beyin` command on your `PATH`.
+
+If you do not have `uv` yet, install it first:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Package manager alternatives also work, for example `brew install uv` on macOS or `winget install --id=astral-sh.uv -e` on Windows. See the official `uv` installation guide for more options: [docs.astral.sh/uv/getting-started/installation](https://docs.astral.sh/uv/getting-started/installation/).
 
 The recommended way to install beyin is with `uv`:
 
 ```bash
 uv tool install beyin
 ```
-
-Why `uv` is the main path:
-
-- `uv tool install` installs beyin as a standalone CLI app instead of dropping it into whatever Python environment happens to be active
-- you get a plain `beyin` command on your `PATH`, so day-to-day usage stays simple
-- the install is isolated, which avoids environment drift and version clashes from unrelated Python projects
-- it is easier to keep CLI usage and agent/MCP usage aligned when beyin is installed as one managed tool
 
 If you already manage a dedicated Python environment and explicitly want beyin inside it, `pip install beyin` still works, but it is a fallback path rather than the recommended default.
 
@@ -90,7 +94,9 @@ winget install ffmpeg
 
 No Homebrew on macOS or winget not working? Download directly from [ffmpeg.org/download.html](https://ffmpeg.org/download.html).
 
----
+### Windows note
+
+If you are on Windows and plan to use beyin through Codex MCP, prefer WSL over native Windows. See [Windows notes](#windows-notes) for the recommended setup and details.
 
 ## 🖥️ Using via CLI
 
@@ -117,6 +123,7 @@ Useful examples:
 
 ```bash
 beyin
+beyin help
 beyin list
 beyin build my-pack
 beyin settings
@@ -124,8 +131,6 @@ beyin check-deps
 ```
 
 If you do not want a persistent install, you can run the same commands with `uvx beyin ...` instead.
-
----
 
 ## 🔌 Connect to Your Agent
 
@@ -209,9 +214,7 @@ Recommended command:
 beyin mcp-server
 ```
 
-It runs a stdio MCP server, compatible with any agent that supports the MCP protocol.
-
----
+ Use this as the MCP server command in any client that supports the MCP protocol. Your client will launch and manage it for you, so you do not need to run it manually in a separate terminal.
 
 ## 💬 Example Usage with MCP
 
@@ -221,17 +224,15 @@ Once beyin is connected through MCP, you can talk to your agent naturally. You d
 
 | What you want | What to say |
 |---------------|-------------|
-| Build a new pack | `create a pack called "yt-research", add this YouTube playlist: https://youtube.com/playlist?list=..., and build it` |
-| Add a source | `I have a PDF about growth strategy in my Downloads folder, add it to my "mobile-marketing" pack and rebuild` |
-| Add more sources | `add these to my "product-ideas" pack and rebuild: https://example.com/article-1, https://example.com/article-2, https://example.com/article-3` |
-| Ask a question | `any useful info about onboarding screens in my "mobile marketing" pack?` |
+| Build a new pack | `create a pack called yt-research, add this YouTube playlist: https://youtube.com/playlist?list=..., and build it` |
+| Add a source | `I have a PDF about growth strategy in my Downloads folder, add it to my mobile-marketing pack and rebuild` |
+| Add more sources | `add these to my product ideas pack and rebuild: https://example.com/article-1, https://example.com/article-2, https://example.com/article-3` |
+| Ask a question | `any useful info about onboarding screens in my mobile marketing pack?` |
 | Control the response | `ask yt-research pack about building an audience from scratch, include sources and timestamps` |
 | Check your packs | `list my packs and show me their status` |
-| Ask about a pack | `whats the status of mobile marketing pack? and also its sources?` |
+| Ask about a pack | `whats the status of mobile marketing pack? and what about its sources?` |
 | Remove a source | `remove sources 2 and 3 from mobile marketing pack` |
 | Remove a pack | `remove that pack about tech podcast` |
-
----
 
 ## 🛠️ MCP Tools Reference
 
@@ -249,8 +250,6 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 | `remove` | Remove an installed pack (moves to trash) |
 | `registry` | Browse the beyin community registry by topic, tag, or keyword |
 
----
-
 ## 📋 All Commands
 
 **Pack lifecycle**
@@ -260,7 +259,6 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 | `beyin create` | Create a new pack interactively |
 | `beyin add <path-or-url>` | Import an existing pack from a file or URL |
 | `beyin build <pack>` | Build or rebuild a pack |
-| `beyin build <pack> --source 1 3 5` | Build only selected sources by index or range |
 | `beyin update <pack>` | Fetch new content and rebuild incrementally |
 | `beyin remove <pack>` | Remove a pack |
 | `beyin list` | List all installed packs |
@@ -271,11 +269,7 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 | Command | What it does |
 |---------|-------------|
 | `beyin add-source <pack> <url>` | Add a new source to an installed pack |
-| `beyin remove-source <pack> 2` | Remove source by index |
-| `beyin remove-source <pack> 1 3 5` | Remove multiple sources by index |
-| `beyin remove-source <pack> 1-3` | Remove a range of sources |
-| `beyin remove-source <pack> "keyword"` | Remove a source by title/URL text match |
-| `beyin remove-source <pack> 2 --build` | Remove and rebuild immediately to clean up vector store |
+| `beyin remove-source <pack> <selector>` | Remove a source by index, range, or text match |
 
 **Query**
 
@@ -293,7 +287,37 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 | `beyin about` | Version and info |
 | `beyin help` | List all commands |
 
----
+### Common Examples
+
+#### Build
+
+| Command | What it does |
+|---------|-------------|
+| `beyin build <pack>` | Build all current pack sources |
+| `beyin build <pack> --source 2` | Build one selected source by index |
+| `beyin build <pack> --source 1-3` | Build a selected source range |
+| `beyin build <pack> --source "keyword"` | Build selected sources by visible text match |
+| `beyin build <pack> --model tiny --language tr` | Override Whisper model and language for this build |
+| `beyin build <pack> --reset` | Clear runtime artifacts and rebuild from scratch |
+
+#### Add Sources
+
+| Command | What it does |
+|---------|-------------|
+| `beyin add-source <pack> <url>` | Add one source |
+| `beyin add-source <pack> <url-1> <url-2>` | Add multiple sources in one command |
+| `beyin add-source <pack> ./notes.md` | Add a supported local file path as a source |
+| `beyin add-source <pack> <url> --build` | Add source(s) and build immediately |
+
+#### Remove Sources
+
+| Command | What it does |
+|---------|-------------|
+| `beyin remove-source <pack> 2` | Remove source by index |
+| `beyin remove-source <pack> 1 3 5` | Remove multiple sources by index |
+| `beyin remove-source <pack> 1-3` | Remove a range of sources |
+| `beyin remove-source <pack> "keyword"` | Remove a source by title or URL text match |
+| `beyin remove-source <pack> 2 --build` | Remove and rebuild immediately to clean up vector store |
 
 ## 🤖 Query with a Local Model
 
@@ -307,11 +331,12 @@ You can query your packs with a local model using Ollama, without sending anythi
 2. Pull a model:
 
 ```bash
+# Example models
 ollama pull llama3.2     # 2 GB, fast, good for most queries
 ollama pull qwen2.5:7b   # 4.7 GB, stronger reasoning
 ```
 
-3. Start Ollama:
+3. Start Ollama in separate terminal window:
 
 ```bash
 ollama serve
@@ -325,9 +350,15 @@ beyin query my-pack "What does this source say about X?"
 
 To change the model, run `beyin settings`.
 
----
-
 ## 🔧 Troubleshooting
+
+- [Pack is not queryable yet](#pack-is-not-queryable-yet)
+- [MCP is connected but retrieval is not working](#mcp-is-connected-but-retrieval-is-not-working)
+- [Audio and video builds are slow](#audio-and-video-builds-are-slow)
+- [Video or audio builds fail](#video-or-audio-builds-fail)
+- [Pack name with spaces is not recognized](#pack-name-with-spaces-is-not-recognized)
+- [Which install path should I use?](#which-install-path-should-i-use)
+- [Windows notes](#windows-notes)
 
 ### Pack is not queryable yet
 
@@ -392,13 +423,27 @@ Prefer one of these two patterns and stay consistent:
 - Installed workflow: `uv tool install beyin`, then run `beyin ...`
 - No-install workflow: run `uvx beyin ...`
 
+Why `uv` is the main path:
+
+- `uv tool install` installs beyin as a standalone CLI app instead of dropping it into whatever Python environment happens to be active
+- you get a plain `beyin` command on your `PATH`, so day-to-day usage stays simple
+- the install is isolated, which avoids environment drift and version clashes from unrelated Python projects
+- it is easier to keep CLI usage and agent/MCP usage aligned when beyin is installed as one managed tool
+
 Do not mix them casually across CLI and MCP setup, or you may end up checking one environment and running another. `pip install beyin` is available if you explicitly want beyin inside a managed Python environment, but it is not the main path.
 
 ### Windows notes
 
 The main `beyin ...` commands stay the same on Windows after installation. The examples above use Unix-like shell syntax and config paths in a few places, so if a path does not match your system, use the equivalent settings location for your MCP client on Windows. For media builds, install `ffmpeg` first, then rerun `beyin check-deps`.
 
----
+If you are using Codex through MCP on Windows, prefer WSL over native Windows. In testing, native Windows CLI installs could work, but Codex MCP calls were noticeably less reliable there, with long cold starts or repeated stuck first calls when using both `beyin mcp-server` and `uvx beyin mcp-server`. WSL was much more consistent.
+
+Recommended Windows setup for Codex:
+
+1. Install WSL and open your Linux distro terminal.
+2. Install `uv` inside WSL.
+3. Install beyin inside WSL with `uv tool install beyin`.
+4. Add the MCP server from the same WSL environment with `codex mcp add beyin -- beyin mcp-server`.
 
 ## 🧑‍💻 Development
 
@@ -440,8 +485,6 @@ Run tests:
 uv run pytest tests/test_cli.py tests/test_mcp_server.py
 ```
 
----
-
 ## 🔍 Behind the Scenes
 
 1. beyin fetches or loads your source content
@@ -450,11 +493,9 @@ uv run pytest tests/test_cli.py tests/test_mcp_server.py
 4. It embeds those chunks into a local vector store
 5. At query time, it retrieves the best-matching chunks using multi-query expansion
 
-beyin uses a multilingual embedding model by default, so it works well across 50+ languages, not just English.
+beyin uses a multilingual embedding model by default, so it works well across 50+ languages.
 
 > **Privacy note:** Steps 1–4 are entirely local. At step 5, only the retrieved chunks reach your LLM. For full privacy, use beyin with Ollama so nothing leaves your machine.
-
----
 
 ## 🤝 Contributing
 
@@ -462,15 +503,11 @@ Issues and pull requests are welcome at [github.com/buralog/beyin](https://githu
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for pack submissions, pack policy, and code contribution guidelines.
 
----
-
 ## ⚖️ Legal
 
 beyin does not host, publish, or redistribute third-party content. Any retrieval, transcription, indexing, or embedding of source material happens locally on the end user's own machine.
 
 Users are responsible for ensuring that their use of beyin complies with applicable laws, copyright rules, and the terms of service of the source platforms.
-
----
 
 ## 📄 License
 
