@@ -270,6 +270,63 @@ def test_build_skips_already_processed_urls(tmp_pack_root):
     assert "skip" in result.output
 
 
+def test_build_retries_previously_failed_source_in_state(tmp_path):
+    """build should retry sources with cached failed state instead of skipping them."""
+    from beyin.cli import app
+    from beyin.pack_state import save_state
+    from beyin.source_ids import canonical_source_id
+
+    packs_root = tmp_path / "beyin"
+    pack_dir = packs_root / "test-pack"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\n"
+        "description: Test pack\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - https://example.com/article\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": None,
+            "processed": {
+                canonical_source_id("https://example.com/article"): {
+                    "status": "failed",
+                    "url": "https://example.com/article",
+                    "reason": "missing dependency",
+                }
+            },
+            "audio_steps": {},
+        },
+    )
+
+    runner = CliRunner()
+    with patch("beyin.cli._PACKS_DIR", packs_root), \
+         patch("beyin.cli.load_model", return_value=MagicMock()), \
+         patch("beyin.cli.get_collection", return_value=MagicMock()), \
+         patch("beyin.cli.check_model_provenance"), \
+         patch("beyin.cli.detect_source_type", return_value="article"), \
+         patch(
+             "beyin.cli.resolve_article_ingestion",
+             return_value={
+                 "mode": "article",
+                 "text": "Article text",
+                 "title": "Article title",
+                 "metadata_url": "https://example.com/article",
+             },
+         ) as mock_resolve, \
+         patch("beyin.cli.chunk_text", return_value=["chunk"]), \
+         patch("beyin.cli.embed_and_store", return_value=1) as mock_embed:
+        result = runner.invoke(app, ["build", "test-pack"], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    mock_resolve.assert_called_once_with("https://example.com/article")
+    mock_embed.assert_called_once()
+    assert "[skip]" not in result.output
+
+
 def test_build_warns_and_marks_failed_when_fetch_returns_none(tmp_pack_root):
     """build logs warning and calls mark_failed when fetch_article returns None."""
     from beyin.cli import app

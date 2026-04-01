@@ -110,7 +110,8 @@ def save_state(pack_dir: Path, state: Dict[str, Any]) -> None:
 def is_processed(state: Dict[str, Any], source: Any, source_id: str | None = None) -> bool:
     """Return True if the source has already been successfully processed."""
     sid = _record_source_id(source, source_id=source_id)
-    return sid in state.get("processed", {})
+    entry = state.get("processed", {}).get(sid)
+    return isinstance(entry, dict) and entry.get("status") == "done"
 
 
 def mark_processed(

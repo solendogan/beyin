@@ -21,6 +21,28 @@ def _default_punkt_tab_ready():
         yield
 
 
+def test_is_processed_only_counts_done_entries():
+    from beyin.pack_state import is_processed
+    from beyin.source_ids import canonical_source_id
+
+    source_url = "https://example.com/article"
+    source_id = canonical_source_id(source_url)
+    state = {
+        "processed": {
+            source_id: {
+                "status": "failed",
+                "url": source_url,
+                "reason": "missing dependency",
+            }
+        }
+    }
+
+    assert is_processed(state, source_url) is False
+
+    state["processed"][source_id]["status"] = "done"
+    assert is_processed(state, source_url) is True
+
+
 def _write_pack(
     pack_dir: Path,
     *,
