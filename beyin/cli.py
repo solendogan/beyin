@@ -2083,7 +2083,7 @@ def status_command(
     processed_state = state.get("processed", {})
     audio_steps = state.get("audio_steps", {})
     playlist_titles_state = state.get("playlist_titles", {})
-    _PLAYLIST_LABEL = {"youtube": "YouTube Playlist", "podcast": "Podcast Feed"}
+    _PLAYLIST_LABEL = {"youtube": "Video Playlist", "podcast": "Podcast Feed"}
 
     source_count = summary["source_count"]
     typer.echo()

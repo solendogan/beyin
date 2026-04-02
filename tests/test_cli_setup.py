@@ -323,7 +323,10 @@ def test_render_review_uses_stacked_layout_without_wide_label_padding():
     lines = render_review(
         "Review setup",
         [
-            ("Enabled", "Web pages, YouTube/video, Podcasts/RSS"),
+            ("Enabled", ""),
+            ("", "- Web pages"),
+            ("", "- Videos"),
+            ("", "- Podcasts"),
             ("Transcription", "mlx-whisper / small"),
             ("Local model", "llama3.2 via Ollama"),
         ],
@@ -332,7 +335,9 @@ def test_render_review_uses_stacked_layout_without_wide_label_padding():
     assert lines[0].strip() == "Review setup"
     assert "─" in lines[1]
     assert any(line.strip() == "Enabled" for line in lines)
-    assert any(line.strip() == "Web pages, YouTube/video, Podcasts/RSS" for line in lines)
+    assert any(line.strip() == "- Web pages" for line in lines)
+    assert any(line.strip() == "- Videos" for line in lines)
+    assert any(line.strip() == "- Podcasts" for line in lines)
     assert not any("Enabled      " in line for line in lines)
 
 

@@ -76,7 +76,7 @@ def _choice(
     label = name or value
     if help_text:
         short = help_text if len(help_text) <= 52 else help_text[:51] + "…"
-        return {"value": value, "name": f"{label:<22}  {short}"}
+        return {"value": value, "name": f"{label:<16}  |  {short}"}
     return {"value": value, "name": label}
 
 
@@ -401,10 +401,10 @@ def _checkbox(
 
 def _capability_description(value: str) -> str:
     descriptions = {
-        "web": "Blog posts, web pages, and readable articles.",
-        "youtube": "YouTube videos, playlists, and other audio/video sources.",
+        "web": "Articles, blog posts, and readable web pages.",
+        "youtube": "Videos and playlists (e.g. YouTube).",
         "podcasts": "Podcasts and RSS or feed-based sources.",
-        "local_files": "Local text files and optional document formats.",
+        "local_files": "Text files, PDF, DOCX, PPTX, EPUB, and XLSX.",
         "local_query": "Ask questions locally through Ollama.",
     }
     return descriptions.get(value, value)
@@ -471,11 +471,11 @@ def _stage_settings(
         "Choose what you want to work with",
         choices=[
             _choice(value, {
-                "web": "Web pages and blog posts",
-                "youtube": "YouTube videos and playlists",
-                "podcasts": "Podcasts and RSS feeds",
+                "web": "Web pages",
+                "youtube": "Videos",
+                "podcasts": "Podcasts",
                 "local_files": "Local files",
-                "local_query": "Ask questions locally with Ollama",
+                "local_query": "Local answers",
             }[value], help_text=_capability_description(value))
             for value in choices["capabilities"]
         ],

@@ -161,8 +161,8 @@ def describe_settings_summary(settings: BeyinSettings) -> str:
     if settings.enabled_capabilities:
         capability_map = {
             "web": "Web pages",
-            "youtube": "YouTube/video",
-            "podcasts": "Podcasts/RSS",
+            "youtube": "Videos",
+            "podcasts": "Podcasts",
             "local_files": "Local files",
             "local_query": "Local answers",
         }
@@ -170,7 +170,8 @@ def describe_settings_summary(settings: BeyinSettings) -> str:
             capability_map.get(value, value)
             for value in settings.enabled_capabilities
         ]
-        lines.append(f"Enabled: {', '.join(labels)}")
+        lines.append("Enabled:")
+        lines.extend(f"- {label}" for label in labels)
     if settings.enabled_local_file_types:
         lines.append(
             "Local files: "

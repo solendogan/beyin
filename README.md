@@ -342,7 +342,7 @@ ollama pull qwen2.5:7b   # 4.7 GB, stronger reasoning
 ollama serve
 ```
 
-4. Build a pack and query it:
+4. Query with beyin in another terminal:
 
 ```bash
 beyin query my-pack "What does this source say about X?"

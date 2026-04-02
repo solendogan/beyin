@@ -15,8 +15,8 @@ from beyin.readiness import _YTDLP_MIN_VERSION
 def settings_display_rows(settings: Any) -> list[tuple[str, str]]:
     capability_map = {
         "web": "Web",
-        "youtube": "YouTube/video",
-        "podcasts": "Podcasts/RSS",
+        "youtube": "Videos",
+        "podcasts": "Podcasts",
         "local_files": "Local files",
         "local_query": "Local answers",
     }
