@@ -100,6 +100,58 @@ def test_inventory_summary_marks_blocked_pack(tmp_path):
     assert summary["next_action"] == "beyin status test-pack"
 
 
+def test_inventory_summary_ignores_removed_failed_sources_after_rebuild(tmp_path):
+    """Removed sources should not keep a rebuilt pack stuck in partially-ready."""
+    from beyin.inventory import pack_config_hash, summarize_pack
+    from beyin.pack_state import save_state
+
+    pack_dir = tmp_path / "test-pack"
+    pack_dir.mkdir()
+    (pack_dir / "pack.yaml").write_text(
+        "name: test-pack\n"
+        "description: Test\n"
+        "llm: ollama\n"
+        "sources:\n"
+        "  - /Users/example/Downloads/berlinkafasi5.mp3\n"
+        "embedding_model: all-MiniLM-L6-v2\n"
+    )
+
+    save_state(
+        pack_dir,
+        {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "processed": {
+                "url:old-missing": {
+                    "source_id": "url:old-missing",
+                    "url": "~/Downloads/berinkafasi5.mp3",
+                    "status": "failed",
+                    "reason": "file not found",
+                },
+                "url:current": {
+                    "source_id": "url:current",
+                    "url": "/Users/example/Downloads/berlinkafasi5.mp3",
+                    "status": "done",
+                    "title": "Berlinkafasi 5",
+                },
+            },
+            "audio_steps": {
+                "url:current": {
+                    "source_id": "url:current",
+                    "url": "/Users/example/Downloads/berlinkafasi5.mp3",
+                    "stages": {"downloaded": True, "transcribed": True, "embedded": True},
+                },
+            },
+            "last_build_at": "2026-04-02T10:00:00+00:00",
+            "last_built_pack_hash": pack_config_hash(pack_dir),
+            "last_build_result": "success",
+        },
+    )
+
+    summary = summarize_pack(pack_dir, lambda _cfg: {"blockers": [], "warnings": []})
+
+    assert summary["status"] == "ready"
+
+
 # ---------------------------------------------------------------------------
 # list command
 # ---------------------------------------------------------------------------
@@ -693,6 +745,8 @@ def test_check_deps_shows_full_document_dependency_inventory():
     assert "PDF (.pdf)" in result.output
     assert "DOCX (.docx)" in result.output
     assert "XLSX (.xlsx)" in result.output
+    assert "Install missing Python packages in the same environment." in result.output
+    assert "Example: uv tool install --with pdfplumber beyin" in result.output
 
 
 def test_check_deps_reports_missing_punkt_tab():

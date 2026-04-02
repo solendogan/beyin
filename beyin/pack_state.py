@@ -223,6 +223,39 @@ def is_audio_step_done(
     return state.get("audio_steps", {}).get(sid, {}).get("stages", {}).get(step, False)
 
 
+def prune_removed_sources_from_state(
+    state: Dict[str, Any],
+    *,
+    active_urls: set[str],
+) -> Dict[str, int]:
+    """Drop processed/audio-step entries that no longer belong to active configured sources."""
+    removed = {"processed": 0, "audio_steps": 0}
+
+    processed = state.setdefault("processed", {})
+    for sid, entry in list(processed.items()):
+        if not isinstance(entry, dict):
+            continue
+        url = str(entry.get("url") or "")
+        parent = str(entry.get("parent_source_url") or "")
+        if url in active_urls or parent in active_urls:
+            continue
+        processed.pop(sid, None)
+        removed["processed"] += 1
+
+    audio_steps = state.setdefault("audio_steps", {})
+    for sid, entry in list(audio_steps.items()):
+        if not isinstance(entry, dict):
+            continue
+        url = str(entry.get("url") or "")
+        parent = str(entry.get("parent_source_url") or "")
+        if url in active_urls or parent in active_urls:
+            continue
+        audio_steps.pop(sid, None)
+        removed["audio_steps"] += 1
+
+    return removed
+
+
 def check_model_provenance(
     state: Dict[str, Any], current_model: str, pack_name: str
 ) -> None:

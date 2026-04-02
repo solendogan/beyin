@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 import re
 from typing import Any
 
@@ -24,6 +25,8 @@ def infer_source_intent(source_input: str) -> dict[str, str]:
     if not source:
         raise ValueError("Source input cannot be empty.")
 
+    _validate_local_source_input(source)
+
     source_type = detect_source_type(source)
     if source_type == "pack":
         return {"kind": "import", "source_type": "pack"}
@@ -35,6 +38,34 @@ def infer_source_intent(source_input: str) -> dict[str, str]:
     return {"kind": "content", "source_type": normalized_type}
 
 
+def _looks_like_local_path(source: str) -> bool:
+    candidate = Path(source).expanduser()
+    if candidate.is_absolute() or source.startswith(("~/", "./", "../")):
+        return True
+    if "/" in source or "\\" in source:
+        return True
+    suffix = candidate.suffix.lower()
+    return bool(suffix)
+
+
+def _validate_local_source_input(source: str) -> None:
+    if source.startswith(("http://", "https://")):
+        return
+    if not _looks_like_local_path(source):
+        return
+
+    candidate = Path(source).expanduser()
+    source_type = detect_source_type(source)
+    if source_type not in {"local_text", "local_document", "local_audio", "local_video", "local_file"}:
+        return
+    if candidate.exists() and candidate.is_file():
+        return
+
+    raise ValueError(
+        f"Local path not found: {source}. Check the path and try again."
+    )
+
+
 def build_new_pack_config(
     *,
     name: str,
@@ -43,7 +74,7 @@ def build_new_pack_config(
     llm: str = "ollama",
 ) -> PackConfig:
     """Build a new pack config from one or more authored sources."""
-    sources = _normalize_authored_sources(source_input)
+    sources = _normalize_authored_sources(source_input) if source_input.strip() else []
     return PackConfig(
         id=name,
         name=name,
@@ -64,6 +95,16 @@ def add_source_to_pack(config: PackConfig, source_input: str) -> PackConfig:
     if not new_entries:
         return config
     return replace(config, sources=[*config.sources, *new_entries])
+
+
+def validate_authored_sources(source_input: str) -> None:
+    """Validate authored sources early without needing pack metadata yet."""
+    for source in split_source_inputs(source_input):
+        intent = infer_source_intent(source)
+        if intent["kind"] != "content":
+            raise ValueError(
+                "Existing pack imports belong on `beyin add <path-or-url-or-id>`, not `beyin create`."
+            )
 
 
 def _normalize_authored_sources(

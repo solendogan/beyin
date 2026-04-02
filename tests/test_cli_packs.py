@@ -22,7 +22,7 @@ def test_create_writes_public_pack_yaml_shape(tmp_path):
         result = runner.invoke(
             app,
             ["create"],
-            input="https://example.com/article\nmy-pack\nA clean manifest\n",
+            input="my-pack\nA clean manifest\nhttps://example.com/article\n",
         )
 
     assert result.exit_code == 0, result.output
@@ -37,8 +37,8 @@ def test_create_writes_public_pack_yaml_shape(tmp_path):
     assert "episode_limit:" not in raw
 
 
-def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp_path):
-    """create should start from a source URL/path prompt and persist local text paths as sources."""
+def test_create_command_asks_name_first_and_writes_local_text_source(tmp_path):
+    """create should start from pack metadata and persist local text paths as sources."""
     from beyin.cli import app
 
     runner = CliRunner()
@@ -47,9 +47,9 @@ def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp
     local_source.write_text("# Notes\n")
     backend = _FakePromptBackend(
         [
-            str(local_source),
             "creator-pack",
             "Creator notes",
+            str(local_source),
             True,
         ]
     )
@@ -87,7 +87,11 @@ def test_create_command_asks_source_input_first_and_writes_local_text_source(tmp
         for prompt_type, kwargs in backend.calls
         if prompt_type == "text"
     ]
-    assert text_prompts[0] == "Source URL(s) or local path(s)"
+    assert text_prompts == [
+        "Pack name",
+        "Short description (optional)",
+        "Source URL(s) or local path(s) (optional)",
+    ]
     assert "Source type" not in " ".join(text_prompts)
 
 
@@ -99,9 +103,9 @@ def test_create_command_splits_multiline_source_paste_into_multiple_sources(tmp_
     packs_root = tmp_path / "beyin"
     backend = _FakePromptBackend(
         [
-            "https://lexfridman.com/peter-steinberger\nhttps://berlinkafasi.fireside.fm/8",
             "creator-pack",
             "Creator notes",
+            "https://lexfridman.com/peter-steinberger\nhttps://berlinkafasi.fireside.fm/8",
             True,
         ]
     )
@@ -135,9 +139,9 @@ def test_create_command_accepts_local_media_source(tmp_path):
     local_source.write_bytes(b"x" * 20_000)
     backend = _FakePromptBackend(
         [
-            str(local_source),
             "media-pack",
             "Creator clip",
+            str(local_source),
             True,
         ]
     )
@@ -154,6 +158,113 @@ def test_create_command_accepts_local_media_source(tmp_path):
     assert result.exit_code == 0
     config = load_config(packs_root / "media-pack")
     assert config.sources == [SourceEntry(url=str(local_source))]
+
+
+def test_create_command_rejects_missing_local_path_early(tmp_path):
+    """Interactive create should reject a missing local file path before build time."""
+    from beyin.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "beyin"
+    missing = "~/Downloads/berinkafasi5.mp3"
+    backend = _FakePromptBackend(
+        [
+            "media-pack",
+            "Creator clip",
+            missing,
+        ]
+    )
+
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli.is_interactive_session",
+        return_value=True,
+    ), patch(
+        "beyin.cli.load_prompt_backend",
+        return_value=backend,
+    ):
+        result = runner.invoke(app, ["create"])
+
+    assert result.exit_code == 1
+    assert f"Local path not found: {missing}" in result.output
+    assert not (packs_root / "media-pack").exists()
+    text_prompts = [
+        kwargs["message"]
+        for prompt_type, kwargs in backend.calls
+        if prompt_type == "text"
+    ]
+    assert text_prompts == [
+        "Pack name",
+        "Short description (optional)",
+        "Source URL(s) or local path(s) (optional)",
+    ]
+
+
+def test_create_command_allows_empty_pack(tmp_path):
+    """Interactive create should allow creating an empty pack and guide the next step."""
+    from beyin.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "beyin"
+    backend = _FakePromptBackend(
+        [
+            "empty-pack",
+            "Created before adding sources",
+            "",
+            True,
+        ]
+    )
+
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli.is_interactive_session",
+        return_value=True,
+    ), patch(
+        "beyin.cli.load_prompt_backend",
+        return_value=backend,
+    ):
+        result = runner.invoke(app, ["create"])
+
+    config = load_config(packs_root / "empty-pack")
+
+    assert result.exit_code == 0, result.output
+    assert config.sources == []
+    assert "Sources saved: 0" in result.output
+    assert "Next step: beyin add-source empty-pack <path-or-url>" in result.output
+
+
+def test_create_command_reprompts_until_pack_name_is_present(tmp_path):
+    """Interactive create should retry the name prompt instead of aborting on blank input."""
+    from beyin.cli import app
+
+    runner = CliRunner()
+    packs_root = tmp_path / "beyin"
+    backend = _FakePromptBackend(
+        [
+            "",
+            "valid-pack",
+            "A test pack",
+            "",
+            True,
+        ]
+    )
+
+    with patch("beyin.cli._PACKS_DIR", packs_root), patch(
+        "beyin.cli.is_interactive_session",
+        return_value=True,
+    ), patch(
+        "beyin.cli.load_prompt_backend",
+        return_value=backend,
+    ):
+        result = runner.invoke(app, ["create"])
+
+    text_prompts = [
+        kwargs["message"]
+        for prompt_type, kwargs in backend.calls
+        if prompt_type == "text"
+    ]
+
+    assert result.exit_code == 0, result.output
+    assert "Error: Pack name is required." in result.output
+    assert text_prompts[:2] == ["Pack name", "Pack name"]
 
 
 def test_add_rejects_local_text_path_as_pack_import(tmp_path):
@@ -324,6 +435,36 @@ def test_add_source_command_splits_multiline_argument_and_labels_fireside_as_pod
     ]
 
 
+def test_add_source_command_rejects_missing_local_path_early(tmp_path):
+    """add-source should reject a missing local file path before mutating the pack."""
+    from beyin.cli import app
+    from beyin.config import PackConfig, write_config
+
+    packs_root = tmp_path / "beyin"
+    pack_dir = packs_root / "test-pack"
+    write_config(
+        PackConfig(
+            id="test-pack",
+            name="test-pack",
+            description="Test pack",
+            llm="ollama",
+            sources=[],
+        ),
+        pack_dir / "pack.yaml",
+    )
+
+    missing = "~/Downloads/berinkafasi5.mp3"
+    runner = CliRunner()
+    with patch("beyin.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["add-source", "test-pack", missing])
+
+    config = load_config(pack_dir)
+
+    assert result.exit_code != 0
+    assert f"Local path not found: {missing}" in result.output
+    assert config.sources == []
+
+
 def test_remove_source_command_removes_by_text_match(tmp_path):
     """remove-source should allow matching a source by visible title text."""
     from beyin.cli import app
@@ -355,3 +496,51 @@ def test_remove_source_command_removes_by_text_match(tmp_path):
     assert [source.url for source in config.sources] == [
         "https://example.com/article-1",
     ]
+
+
+def test_remove_source_prunes_stale_runtime_state_for_removed_source(tmp_path):
+    """remove-source should clear stale runtime failure state for sources no longer in the pack."""
+    from beyin.cli import app
+    from beyin.config import PackConfig, write_config
+    from beyin.pack_state import load_state, save_state
+
+    packs_root = tmp_path / "beyin"
+    pack_dir = packs_root / "test-pack"
+    keep_url = str(tmp_path / "berlinkafasi5.mp3")
+    remove_url = "~/Downloads/berinkafasi5.mp3"
+    write_config(
+        PackConfig(
+            id="test-pack",
+            name="test-pack",
+            description="Test pack",
+            llm="ollama",
+            sources=[
+                SourceEntry(url=remove_url, title="Wrong path"),
+                SourceEntry(url=keep_url, title="Correct path"),
+            ],
+        ),
+        pack_dir / "pack.yaml",
+    )
+    save_state(
+        pack_dir,
+        {
+            "processed": {
+                "wrong": {"source_id": "wrong", "url": remove_url, "status": "failed", "reason": "not found"},
+                "correct": {"source_id": "correct", "url": keep_url, "status": "done", "title": "Correct path"},
+            },
+            "audio_steps": {
+                "wrong": {"source_id": "wrong", "url": remove_url, "stages": {"downloaded": True}},
+                "correct": {"source_id": "correct", "url": keep_url, "stages": {"downloaded": True, "transcribed": True, "embedded": True}},
+            },
+        },
+    )
+
+    runner = CliRunner()
+    with patch("beyin.cli._PACKS_DIR", packs_root):
+        result = runner.invoke(app, ["remove-source", "test-pack", "1"])
+
+    state = load_state(pack_dir)
+
+    assert result.exit_code == 0, result.output
+    assert remove_url not in [entry.get("url") for entry in state["processed"].values()]
+    assert remove_url not in [entry.get("url") for entry in state["audio_steps"].values()]

@@ -139,10 +139,23 @@ def _has_failed_sources(state: Dict[str, Any]) -> bool:
     return any(item.get("status") == "failed" for item in state.get("processed", {}).values())
 
 
-def _has_nonready_sources(state: Dict[str, Any]) -> bool:
+def _has_nonready_sources(state: Dict[str, Any], config: PackConfig) -> bool:
+    active_urls = {source.url for source in config.sources}
+    processed = state.get("processed", {})
+    active_scoped_entries = [
+        item
+        for item in processed.values()
+        if isinstance(item, dict)
+        and (
+            str(item.get("url") or "") in active_urls
+            or str(item.get("parent_source_url") or "") in active_urls
+        )
+    ]
+    candidates = active_scoped_entries or [item for item in processed.values() if isinstance(item, dict)]
     return any(
-        item.get("status") in {"failed", "empty"}
-        for item in state.get("processed", {}).values()
+        isinstance(item, dict)
+        and item.get("status") in {"failed", "empty"}
+        for item in candidates
     )
 
 
@@ -302,7 +315,7 @@ def summarize_pack(
         and not complete_index
     )
     is_new = not has_build
-    has_error = _has_nonready_sources(state)
+    has_error = _has_nonready_sources(state, config)
     observed_source_state = bool(state.get("processed") or state.get("audio_steps"))
     source_progress = _pack_source_progress(config, state) if observed_source_state else {
         "total": len(config.sources),
