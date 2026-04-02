@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
+import textwrap
 from collections.abc import Iterable
 from typing import Optional
 
@@ -65,8 +67,16 @@ def render_rows(rows: Iterable[tuple[str, str]]) -> list[str]:
 
 
 def render_review(title: str, rows: Iterable[tuple[str, str]]) -> list[str]:
-    lines = [f"  {bold(title)}"]
-    lines.extend(render_rows(rows))
+    width = max(36, min(shutil.get_terminal_size((80, 24)).columns - 6, 88))
+    lines = [f"  {bold(title)}", f"  {dim('─' * min(width, 38))}"]
+    for label, value in rows:
+        if label:
+            lines.append(f"  {cyan(label)}")
+            wrapped = textwrap.wrap(value, width=width) or [value]
+            lines.extend(f"    {line}" for line in wrapped)
+        else:
+            wrapped = textwrap.wrap(value, width=width + 2) or [value]
+            lines.extend(f"  {line}" for line in wrapped)
     return lines
 
 

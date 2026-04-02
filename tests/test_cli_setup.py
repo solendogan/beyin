@@ -38,7 +38,7 @@ def test_no_arg_home_screen_guides_first_run(tmp_path):
     assert "No packs installed yet" in result.output
     assert "Settings" in result.output
     assert "Dependencies" in result.output
-    assert "Local model" in result.output
+    assert "Local model" not in result.output
     assert "beyin create" in result.output
     assert "beyin settings" in result.output
 
@@ -61,7 +61,7 @@ def test_no_arg_home_screen_orients_around_existing_inventory(tmp_pack_root):
     assert "test-pack" in result.output
     assert "needs-build" in result.output
     assert "Settings" in result.output
-    assert "Local model" in result.output
+    assert "Local model" not in result.output
 
 
 def test_no_arg_home_screen_is_not_plain_help_text(tmp_pack_root):
@@ -229,7 +229,9 @@ def test_first_interactive_run_completes_recommended_setup_once_and_persists_set
     assert first_checkbox["message"] == "Choose what you want to work with"
     assert "[SPACE] Select or unselect items." in first.output
     assert first.output.count("Setup complete") == 1
-    assert "Quick start" in first.output
+    assert "Connect beyin over MCP" in first.output
+    assert "beyin mcp-server --help" in first.output
+    assert "codex mcp add beyin -- beyin mcp-server" in first.output
     assert second.exit_code == 0
     assert "Setup complete" not in second.output
     assert "What would you like to do?" in second.output
@@ -278,6 +280,62 @@ def test_initial_setup_limits_choices_to_current_machine(monkeypatch, tmp_path):
     assert "mlx-whisper" not in backend_names
 
 
+def test_initial_setup_shows_dependency_progress_and_caches_readiness_checks(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    """Setup should surface dependency checking work and avoid repeating readiness probes."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from beyin import interactive
+
+    interactive._cached_nltk_punkt_tab_available.cache_clear()
+    interactive._cached_ytdlp_version_ok.cache_clear()
+
+    backend = _FakePromptBackend(
+        [
+            ["youtube"],
+            "faster-whisper",
+            "small",
+            True,
+        ]
+    )
+
+    with patch("beyin.interactive._check_nltk_punkt_tab_available", return_value=True) as punkt_mock, patch(
+        "beyin.interactive._ytdlp_version_ok",
+        return_value=(True, "2026.01.01"),
+    ) as ytdlp_mock:
+        completed = interactive.run_initial_setup_flow(prompt_backend=backend)
+
+    output = capsys.readouterr().out
+
+    assert completed is True
+    assert "Checking selected dependencies" in output
+    assert punkt_mock.call_count == 1
+    assert ytdlp_mock.call_count == 1
+
+
+def test_render_review_uses_stacked_layout_without_wide_label_padding():
+    """Review blocks should render as a compact stacked summary, not a loose two-column table."""
+    from beyin.ui import render_review
+
+    lines = render_review(
+        "Review setup",
+        [
+            ("Enabled", "Web pages, YouTube/video, Podcasts/RSS"),
+            ("Transcription", "mlx-whisper / small"),
+            ("Local model", "llama3.2 via Ollama"),
+        ],
+    )
+
+    assert lines[0].strip() == "Review setup"
+    assert "─" in lines[1]
+    assert any(line.strip() == "Enabled" for line in lines)
+    assert any(line.strip() == "Web pages, YouTube/video, Podcasts/RSS" for line in lines)
+    assert not any("Enabled      " in line for line in lines)
+
+
 def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch, tmp_path):
     """beyin settings should reuse the guided setup flow and persist saved changes."""
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -293,6 +351,7 @@ def test_settings_command_applies_custom_changes_and_prints_summary(monkeypatch,
     runner = CliRunner()
     backend = _FakePromptBackend(
         [
+            "edit",
             ["youtube", "local_query"],
             "faster-whisper",
             "large",
@@ -328,6 +387,7 @@ def test_settings_command_whisper_menu_includes_all_models_and_help_text(monkeyp
     runner = CliRunner()
     backend = _FakePromptBackend(
         [
+            "edit",
             ["youtube"],
             "faster-whisper",
             "small",
@@ -402,6 +462,94 @@ def test_settings_command_shows_table_in_non_tty(
     assert "beyin settings" in result.output
 
 
+def test_settings_summary_hides_local_model_when_local_answers_disabled(monkeypatch, tmp_path):
+    """Settings surfaces should not imply local answers are enabled when local_query is off."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from beyin.cli import app
+    from beyin.settings import describe_settings_summary, load_settings
+
+    _save_global_settings(
+        tmp_path,
+        enabled_capabilities=["web", "youtube"],
+        preferred_llm_model="llama3.2",
+    )
+    runner = CliRunner()
+
+    with patch("beyin.cli.is_interactive_session", return_value=False):
+        result = runner.invoke(app, ["settings"])
+
+    settings = load_settings()
+
+    assert result.exit_code == 0
+    assert "Local model" not in result.output
+    assert "Local model:" not in describe_settings_summary(settings)
+
+
+def test_settings_command_interactive_starts_from_settings_landing_then_opens_editor(
+    monkeypatch,
+    tmp_path,
+):
+    """Interactive settings should show current config first, then enter the editor on demand."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from beyin.cli import app
+
+    _save_global_settings(
+        tmp_path,
+        enabled_capabilities=["youtube", "local_query"],
+        preferred_whisper_model="small",
+        preferred_llm_model="llama3.2",
+    )
+    runner = CliRunner()
+    backend = _FakePromptBackend(
+        [
+            "edit",
+            ["youtube", "local_query"],
+            "faster-whisper",
+            "small",
+            "llama3.2",
+            True,
+        ]
+    )
+
+    with patch("beyin.cli.is_interactive_session", return_value=True), patch(
+        "beyin.cli.load_prompt_backend",
+        return_value=backend,
+    ):
+        result = runner.invoke(app, ["settings"])
+
+    assert result.exit_code == 0
+    assert "beyin Settings" in result.output
+    assert "Select Edit settings to reopen the guided setup flow." in result.output
+    assert "Run `beyin check-deps` if you want a full dependency report." in result.output
+    assert "Update beyin settings" in result.output
+    assert "Current settings:" in result.output
+    assert "Local model: llama3.2 via Ollama" in result.output
+
+
+def test_settings_landing_skips_dependency_report_in_interactive_mode(monkeypatch, tmp_path):
+    """Interactive settings landing should stay fast and avoid dependency probing until requested."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from beyin import interactive
+
+    _save_global_settings(
+        tmp_path,
+        enabled_capabilities=["youtube"],
+        preferred_whisper_model="small",
+    )
+    backend = _FakePromptBackend(["back"])
+
+    with patch(
+        "beyin.interactive.readiness_summary_lines",
+        side_effect=AssertionError("interactive settings landing should not build dependency report"),
+    ):
+        completed = interactive.run_settings_landing(prompt_backend=backend)
+
+    assert completed is False
+
+
 def test_saved_local_preference_shown_in_home_settings_section(
     monkeypatch,
     tmp_path,
@@ -411,7 +559,7 @@ def test_saved_local_preference_shown_in_home_settings_section(
 
     from beyin.cli import app
 
-    _save_global_settings(tmp_path)
+    _save_global_settings(tmp_path, enabled_capabilities=["local_query"])
     runner = CliRunner()
     packs_root = tmp_path / "beyin"
 

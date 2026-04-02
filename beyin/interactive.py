@@ -8,6 +8,7 @@ import re
 import shutil
 import sys
 from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from beyin.authoring import (
     add_source_to_pack,
     build_new_pack_config,
     update_pack_metadata,
+    validate_authored_sources,
 )
 from beyin.config import load_config, write_config, write_public_config
 from beyin.settings import (
@@ -118,6 +120,41 @@ def _print_review(title: str, lines: list[str]) -> None:
     typer.echo("")
 
 
+def _print_progress_note(title: str, detail: str) -> None:
+    _echo_lines(render_status(title, [detail], tone="info"))
+    typer.echo("")
+
+
+@lru_cache(maxsize=1)
+def _cached_nltk_punkt_tab_available() -> bool:
+    return _check_nltk_punkt_tab_available()
+
+
+@lru_cache(maxsize=1)
+def _cached_ytdlp_version_ok() -> tuple:
+    return _ytdlp_version_ok()
+
+
+@lru_cache(maxsize=8)
+def _cached_command_exists(command: str) -> bool:
+    return shutil.which(command) is not None
+
+
+@lru_cache(maxsize=16)
+def _cached_optional_module_available(module: str) -> bool:
+    try:
+        importlib.import_module(module)
+        return True
+    except ImportError:
+        return False
+
+
+def _import_available(module: str) -> Any:
+    if not _cached_optional_module_available(module):
+        raise ImportError(module)
+    return importlib.import_module(module)
+
+
 def _print_prompt_hint(text: str | None) -> None:
     if not text:
         return
@@ -162,12 +199,20 @@ def _model_description(value: str) -> str:
     return descriptions.get(value, value)
 
 
-def _print_setup_intro(*, first_run: bool) -> None:
+def _print_setup_intro(*, first_run: bool, current: BeyinSettings | None = None) -> None:
     title = "Start your first setup now" if first_run else "Update beyin settings"
     intro_lines = [
         "Turn your favorite content into local queryable packs.",
         f"Detected machine: {_machine_label()}",
     ]
+    if not first_run and current is not None:
+        intro_lines.extend(
+            [
+                "",
+                "Current settings:",
+                *describe_settings_summary(current).splitlines(),
+            ]
+        )
     footer_lines = [
         "Recommended selections are already preselected for this machine.",
         "You can change these defaults later with `beyin settings`.",
@@ -287,6 +332,33 @@ def _text(
     ).strip()
 
 
+def _required_text(
+    prompt_backend: Any,
+    message: str,
+    *,
+    default: str | None = None,
+    instruction: str | None = None,
+    empty_error: str,
+    validator: Callable[[str], str | None] | None = None,
+) -> str:
+    while True:
+        value = _text(
+            prompt_backend,
+            message,
+            default=default,
+            instruction=instruction,
+        )
+        if not value:
+            typer.echo(f"Error: {empty_error}", err=True)
+            continue
+        if validator is not None:
+            error = validator(value)
+            if error:
+                typer.echo(f"Error: {error}", err=True)
+                continue
+        return value
+
+
 def _confirm(
     prompt_backend: Any,
     message: str,
@@ -375,10 +447,10 @@ def _setup_followup_lines(settings: BeyinSettings) -> list[str]:
     lines.extend(
         readiness_summary_lines(
             settings,
-            command_exists=shutil.which,
-            import_module=__import__,
-            nltk_punkt_tab_available=_check_nltk_punkt_tab_available,
-            ytdlp_version_ok=_ytdlp_version_ok,
+            command_exists=_cached_command_exists,
+            import_module=_import_available,
+            nltk_punkt_tab_available=_cached_nltk_punkt_tab_available,
+            ytdlp_version_ok=_cached_ytdlp_version_ok,
         )
     )
     return lines
@@ -391,7 +463,7 @@ def _stage_settings(
     first_run: bool,
 ) -> BeyinSettings:
     choices = available_setup_choices()
-    _print_setup_intro(first_run=first_run)
+    _print_setup_intro(first_run=first_run, current=current)
     recommended = choices["recommended"]
 
     enabled_capabilities = _checkbox(
@@ -468,6 +540,10 @@ def _stage_settings(
         preferred_whisper_model=whisper_model,
         preferred_llm_model=llm_model or current.preferred_llm_model,
     )
+    _print_progress_note(
+        "Checking selected dependencies",
+        "Reviewing the tools and Python modules needed for the workflows you selected.",
+    )
     _print_review(
         "Review setup",
         [
@@ -484,10 +560,15 @@ def _print_applied_summary(settings: BeyinSettings) -> None:
         "These changes apply to future commands.",
         "If you want existing packs to use new transcription or file support settings, run `beyin build <pack>` again.",
         "",
-        "Quick start for agent mode:",
-        "  1. beyin mcp-server  \u2190 add this to your agent's MCP config",
-        "  2. beyin create       \u2190 create your first pack",
-        "  3. beyin build <pack>",
+        "Connect beyin over MCP:",
+        "  1. beyin mcp-server --help",
+        "     See agent-specific MCP setup examples and connection help.",
+        "  2. Codex:  codex mcp add beyin -- beyin mcp-server",
+        "  3. Claude: claude mcp add beyin -- beyin mcp-server",
+        "",
+        "Then create and build your first pack:",
+        "  4. beyin create",
+        "  5. beyin build <pack>",
     ]
     _echo_lines(
         render_status(
@@ -544,6 +625,51 @@ def _run_settings_flow(
         )
         typer.echo("")
         active = staged
+
+
+def run_settings_landing(*, prompt_backend: Any | None = None) -> bool:
+    """Show current settings first, then route to interactive editing on demand."""
+    backend = prompt_backend
+    if backend is None:
+        require_interactive_session()
+        backend = load_prompt_backend()
+
+    current = load_settings()
+    _print_screen(
+        "beyin Settings",
+        [
+            *describe_settings_summary(current).splitlines(),
+        ],
+        show_brand=True,
+        footer_lines=[
+            "Select Edit settings to reopen the guided setup flow.",
+            "Run `beyin check-deps` if you want a full dependency report.",
+        ],
+    )
+
+    try:
+        selection = _select(
+            backend,
+            "Choose an action",
+            choices=[
+                _choice("edit", "Edit settings", help_text="Reopen the guided setup flow with current values."),
+                _choice("back", "Back", help_text="Leave settings without making changes."),
+            ],
+            default="edit",
+        )
+    except InteractiveAbort:
+        typer.echo("Settings view cancelled.")
+        return False
+
+    if selection != "edit":
+        return False
+
+    return _run_settings_flow(
+        current=current,
+        prompt_backend=backend,
+        cancel_message="Settings update cancelled. Settings unchanged.",
+        first_run=False,
+    )
 
 
 def run_authoring_menu(
@@ -613,41 +739,50 @@ def run_create_flow(
 
     _print_create_intro()
     try:
+        name = _required_text(
+            backend,
+            "Pack name",
+            empty_error="Pack name is required.",
+            validator=lambda value: None
+            if re.match(r"^[\w.-]+$", value)
+            else (
+                f"Pack name '{value}' contains invalid characters. "
+                "Only alphanumerics, hyphens, underscores, and dots are allowed."
+            ),
+        )
+        description = _text(
+            backend,
+            "Short description (optional)",
+            instruction="Leave blank if you do not want to add a description now.",
+        )
         source_input = _text(
             backend,
-            "Source URL(s) or local path(s)",
-            instruction="Use URLs, feeds, YouTube links, or local text-like paths. Paste multiple entries on separate lines.",
+            "Source URL(s) or local path(s) (optional)",
+            instruction="Optional. Leave blank to create an empty pack now, or paste multiple sources on separate lines.",
         )
-        name = _text(backend, "Pack name")
-        description = _text(backend, "Short description")
+        if source_input:
+            validate_authored_sources(source_input)
         config = build_new_pack_config(
             name=name,
             description=description,
             source_input=source_input,
         )
-        _print_review(
-            "Review pack",
-            [
-                f"Name: {config.name}",
-                f"Description: {config.description}",
-                f"Source count: {len(config.sources)}",
-                f"First source: {config.sources[0].url}",
-            ],
-        )
+        review_lines = [
+            f"Name: {config.name}",
+            f"Description: {config.description or '-'}",
+            f"Source count: {len(config.sources)}",
+        ]
+        if config.sources:
+            review_lines.append(f"First source: {config.sources[0].url}")
+        else:
+            review_lines.append("First source: none yet")
+        _print_review("Review pack", review_lines)
         confirmed = _confirm(backend, "Create this pack", default=True)
     except InteractiveAbort:
         typer.echo("Pack creation cancelled. No files were written.")
         return False
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
-        return False
-
-    if not name or not re.match(r"^[\w.-]+$", name):
-        typer.echo(
-            f"Error: Pack name '{name}' contains invalid characters. "
-            "Only alphanumerics, hyphens, underscores, and dots are allowed.",
-            err=True,
-        )
         return False
 
     pack_dir = packs_dir / config.id
@@ -670,8 +805,16 @@ def run_create_flow(
             [
                 f"Sources saved: {len(config.sources)}",
                 "",
-                f"Next step: beyin build {config.id}",
-                "Build indexes the source into local expert memory.",
+                (
+                    f"Next step: beyin build {config.id}"
+                    if config.sources
+                    else f"Next step: beyin add-source {config.id} <path-or-url>"
+                ),
+                (
+                    "Build indexes the source into local expert memory."
+                    if config.sources
+                    else "Add one or more sources before building this pack."
+                ),
             ],
             tone="success",
         )

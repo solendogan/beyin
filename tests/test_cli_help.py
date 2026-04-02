@@ -2,6 +2,8 @@
 import pytest
 from typer.testing import CliRunner
 
+from beyin import __version__
+
 
 def test_help_frames_agent_and_local_modes():
     """beyin --help should frame the product around agent and local-model use."""
@@ -25,7 +27,7 @@ def test_help_command_alias_shows_top_level_framing():
     result = runner.invoke(app, ["help"])
 
     assert result.exit_code == 0
-    assert "beyin v0.1.0" in result.output
+    assert f"beyin v{__version__}" in result.output
     assert "append --help to any command" in result.output
     assert "agent" in result.output.lower()
     assert "Pack lifecycle:" in result.output
@@ -61,6 +63,9 @@ def test_local_mode_command_help_and_agent_server_help_use_new_positioning():
     assert mcp_help.exit_code == 0
     assert "agent" in mcp_help.output.lower()
     assert "stdio" in mcp_help.output.lower()
+    assert "codex mcp add beyin -- beyin mcp-server" in mcp_help.output
+    assert 'args `["mcp-server"]`' in mcp_help.output
+    assert "README" in mcp_help.output
 
 
 @pytest.mark.parametrize(
@@ -124,7 +129,7 @@ def test_missing_required_arguments_show_help_without_help_option(argv, missing_
     result = runner.invoke(app, argv)
 
     assert result.exit_code == 2
-    assert "beyin v0.1.0" in result.output
+    assert f"beyin v{__version__}" in result.output
     assert f"Missing required argument: {missing_label}" in result.output
     assert "Usage:" in result.output
     assert help_needle in result.output

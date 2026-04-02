@@ -157,6 +157,7 @@ def resolve_build_defaults(
 def describe_settings_summary(settings: BeyinSettings) -> str:
     """Return a compact human summary of the active settings."""
     lines = []
+    enabled = set(settings.enabled_capabilities or [])
     if settings.enabled_capabilities:
         capability_map = {
             "web": "Web pages",
@@ -179,5 +180,6 @@ def describe_settings_summary(settings: BeyinSettings) -> str:
         "Transcription: "
         f"{settings.preferred_transcription_backend} / {settings.preferred_whisper_model}"
     )
-    lines.append(f"Local model: {settings.preferred_llm_model} via Ollama")
+    if "local_query" in enabled:
+        lines.append(f"Local model: {settings.preferred_llm_model} via Ollama")
     return "\n".join(lines)

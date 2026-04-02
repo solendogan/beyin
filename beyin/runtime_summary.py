@@ -22,7 +22,7 @@ def settings_display_rows(settings: Any) -> list[tuple[str, str]]:
     }
     enabled = settings.enabled_capabilities or []
     local_files = settings.enabled_local_file_types or []
-    return [
+    rows = [
         (
             "Enabled",
             ", ".join(capability_map.get(value, value) for value in enabled) or "none",
@@ -33,8 +33,10 @@ def settings_display_rows(settings: Any) -> list[tuple[str, str]]:
         ),
         ("Transcription", settings.preferred_transcription_backend),
         ("Whisper model", settings.preferred_whisper_model),
-        ("Local model", settings.preferred_llm_model),
     ]
+    if "local_query" in enabled:
+        rows.append(("Local model", settings.preferred_llm_model))
+    return rows
 
 
 def dependency_display_rows(
@@ -82,12 +84,12 @@ def dependency_display_rows(
         runtime_rows.append(("Local answers", "Ollama is user-managed  →  install and run separately"))
 
     file_type_rows: list[tuple[str, str]] = []
-    for label, module, hint in [
-        ("PDF (.pdf)", "pdfplumber", "pip install pdfplumber"),
-        ("DOCX (.docx)", "docx", "pip install python-docx"),
-        ("PPTX (.pptx)", "pptx", "pip install python-pptx"),
-        ("EPUB (.epub)", "ebooklib", "pip install ebooklib"),
-        ("XLSX (.xlsx)", "openpyxl", "pip install openpyxl"),
+    for label, module in [
+        ("PDF (.pdf)", "pdfplumber"),
+        ("DOCX (.docx)", "docx"),
+        ("PPTX (.pptx)", "pptx"),
+        ("EPUB (.epub)", "ebooklib"),
+        ("XLSX (.xlsx)", "openpyxl"),
     ]:
         extension = label.split("(")[1].split(")")[0].strip(".").lower()
         if not include_all and extension not in selected_file_types:
@@ -96,7 +98,7 @@ def dependency_display_rows(
             import_module(module)
             status = f"{module}: found"
         except ImportError:
-            status = f"{module}: not installed  →  {hint}"
+            status = f"{module}: not installed"
         file_type_rows.append((label, status))
 
     return runtime_rows, file_type_rows, failures

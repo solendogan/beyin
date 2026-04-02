@@ -55,6 +55,7 @@ from beyin.pack_state import (
     mark_empty,
     mark_failed,
     mark_processed,
+    prune_removed_sources_from_state,
     save_state,
 )
 from beyin.lifecycle import remove_installed_pack, reset_pack_runtime
@@ -322,6 +323,32 @@ class BeyinCommand(TyperCommand):
             raise click.exceptions.Exit(2)
 
 
+def _render_mcp_server_help() -> str:
+    lines = [
+        f"{bold('beyin')} {dim(f'v{__version__}')}",
+        "",
+        "Run beyin as a local stdio MCP server for agents on the same machine.",
+        "",
+        f"{bold('One-line setup')}",
+        "  Codex   codex mcp add beyin -- beyin mcp-server",
+        "  Claude  claude mcp add beyin -- beyin mcp-server",
+        "",
+        f"{bold('Manual MCP config')}",
+        "  Use command `beyin` with args `[\"mcp-server\"]` in clients like Cursor, Windsurf, or Zed.",
+        "",
+        f"{bold('Notes')}",
+        "  Your MCP client launches and manages this server for you.",
+        "  You do not need to keep `beyin mcp-server` running in a separate terminal.",
+        "  See the README for client-specific examples: https://github.com/buralog/beyin#-connect-to-your-agent",
+    ]
+    return "\n".join(lines)
+
+
+class MCPServerCommand(BeyinCommand):
+    def get_help(self, ctx: click.Context) -> str:
+        return _render_mcp_server_help()
+
+
 app = typer.Typer(
     help=(
         "beyin — use with an agent for evidence retrieval, or run query in local model mode"
@@ -379,6 +406,12 @@ def build_new_pack_config(*args, **kwargs):
     from beyin.authoring import build_new_pack_config as _build_new_pack_config
 
     return _build_new_pack_config(*args, **kwargs)
+
+
+def validate_authored_sources(*args, **kwargs):
+    from beyin.authoring import validate_authored_sources as _validate_authored_sources
+
+    return _validate_authored_sources(*args, **kwargs)
 
 
 def remove_sources_from_pack(*args, **kwargs):
@@ -613,11 +646,7 @@ def _render_home_screen() -> None:
     # Settings section
     typer.echo(f"  {bold('Settings')}")
     typer.echo(f"  {dim('─' * 38)}")
-    settings_rows = [
-        ("Transcription", settings.preferred_transcription_backend),
-        ("Whisper model", settings.preferred_whisper_model),
-        ("Local model", settings.preferred_llm_model),
-    ]
+    settings_rows = _settings_display_rows(settings)[2:]
     for line in render_rows(settings_rows):
         typer.echo(line)
     typer.echo("")
@@ -748,6 +777,12 @@ def settings_command() -> None:
     """Show current settings and edit them interactively in a terminal."""
     current = load_settings()
 
+    if is_interactive_session():
+        from beyin.interactive import run_settings_landing as interactive_run_settings_landing
+
+        interactive_run_settings_landing(prompt_backend=load_prompt_backend())
+        return
+
     # Always show current settings as a table
     for line in render_header(version=__version__, step="beyin Settings"):
         typer.echo(line)
@@ -759,14 +794,8 @@ def settings_command() -> None:
         typer.echo(line)
     typer.echo("")
 
-    if not is_interactive_session():
-        _hint = dim("Run 'beyin settings' in a terminal to edit.")
-        typer.echo(f"  {_hint}")
-        return
-
-    from beyin.interactive import run_settings_flow as interactive_run_settings_flow
-
-    interactive_run_settings_flow(prompt_backend=load_prompt_backend())
+    _hint = dim("Run 'beyin settings' in a terminal to edit.")
+    typer.echo(f"  {_hint}")
 
 
 @app.command(cls=BeyinCommand)
@@ -1095,18 +1124,24 @@ def _select_episodes_for_download(
 
 def _prompt_create_config() -> PackConfig:
     """Collect the non-TTY fallback guided creation inputs."""
-    source_input = typer.prompt("Source URL or local path").strip()
-    name = typer.prompt("Pack name").strip()
-    if not re.match(r"^[\w.-]+$", name):
-        typer.echo(
-            f"Error: Pack name '{name}' contains invalid characters. "
-            "Only alphanumerics, hyphens, underscores, and dots are allowed.",
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    description = typer.prompt("Short description").strip()
+    while True:
+        name = typer.prompt("Pack name").strip()
+        if not name:
+            typer.echo("Error: Pack name is required.", err=True)
+            continue
+        if not re.match(r"^[\w.-]+$", name):
+            typer.echo(
+                f"Error: Pack name '{name}' contains invalid characters. "
+                "Only alphanumerics, hyphens, underscores, and dots are allowed.",
+                err=True,
+            )
+            continue
+        break
+    description = typer.prompt("Short description (optional)", default="").strip()
+    source_input = typer.prompt("Source URL or local path (optional)", default="").strip()
     try:
+        if source_input:
+            validate_authored_sources(source_input)
         return build_new_pack_config(
             name=name,
             description=description,
@@ -1949,6 +1984,9 @@ def check_deps(
         typer.echo("Document sources:")
         for label, value in file_type_rows:
             typer.echo(f"  {label}: {value}")
+        typer.echo("")
+        typer.echo("Install missing Python packages in the same environment.")
+        typer.echo("Example: uv tool install --with pdfplumber beyin")
 
     if failures:
         raise typer.Exit(code=1)
@@ -2405,8 +2443,12 @@ def add_source_command(
     previous = load_config(pack_dir)
 
     updated_config = previous
-    for url in urls:
-        updated_config = _add_source(updated_config, url)
+    try:
+        for url in urls:
+            updated_config = _add_source(updated_config, url)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
 
     new_count = len(updated_config.sources) - len(previous.sources)
     if new_count == 0:
@@ -2471,6 +2513,10 @@ def remove_source_command(
         raise typer.Exit(code=1)
 
     write_config(updated_config, pack_dir / "pack.yaml", previous=previous)
+    active_urls = {source.url for source in updated_config.sources}
+    removed_state = prune_removed_sources_from_state(state, active_urls=active_urls)
+    if removed_state["processed"] or removed_state["audio_steps"]:
+        save_state(pack_dir, state)
 
     typer.echo(f"Removed {len(removed_rows)} source(s) from '{pack}':")
     for row in removed_rows:
@@ -2539,7 +2585,7 @@ def remove_command(
     typer.echo(f"Pack '{pack}' removed.")
 
 
-@app.command(name="mcp-server", cls=BeyinCommand)
+@app.command(name="mcp-server", cls=MCPServerCommand)
 def mcp_server_command() -> None:
     """Run beyin as a local stdio server for agents on the same machine."""
     from beyin.mcp_server import run_stdio_server
