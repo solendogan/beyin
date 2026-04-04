@@ -20,6 +20,7 @@ Query them through MCP with your AI agent, or explore them directly with a local
 ## ✨ Features
 
 - 🔗 **MCP compatible:** works with Claude Code, Codex, Cursor, Windsurf, Zed and more
+- 🔄 **Cross-agent packs:** build once, then use the same local packs from any MCP-compatible agent or the CLI
 - 📦 **Local-first pipeline:** processing, embedding, and storage all happen on your machine
 - 🎬 **Rich source support:** YouTube videos and playlists, podcasts, PDFs, articles, local files
 - 🌍 **50+ languages:** multilingual embedding model out of the box
@@ -30,6 +31,8 @@ Query them through MCP with your AI agent, or explore them directly with a local
 ## ⚙️ How it works
 
 The recommended way to use beyin is through MCP with the AI agent you already use.
+
+Your packs are local to your machine, not tied to one agent session or vendor. Connect beyin to Codex, Claude Code, Cursor, or another MCP client and access the same packs from whichever one you want.
 
 1. Install beyin and connect it to your agent once
 2. Tell your agent to create a pack, add your sources, and build it
@@ -219,6 +222,8 @@ beyin mcp-server
 ## 💬 Example Usage with MCP
 
 Once beyin is connected through MCP, you can talk to your agent naturally. You do not need to memorize commands or even say "beyin" every time. Just ask for what you want.
+
+You also do not need to stay inside one agent forever. The packs live locally, so after setup you can switch between MCP clients and keep using the same packs.
 
 > Some prompts that mention local files or folders may require your AI agent to have read access to those locations first.
 
