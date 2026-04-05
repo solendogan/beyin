@@ -38,7 +38,7 @@ Your packs are local to your machine, not tied to one agent session or vendor. C
 2. Tell your agent to create a pack, add your sources, and build it
 3. Ask questions naturally and let your agent handle retrieval
 
-It becomes part of your agent’s natural workflow, bringing in the right context exactly when you need it while keeping you focused
+It becomes part of your agent’s natural workflow, bringing in the right context exactly when you need it while keeping you focused.
 
 See [Example Usage with MCP](#-example-usage-with-mcp) for real prompts and workflows.
 
@@ -217,7 +217,7 @@ Recommended command:
 beyin mcp-server
 ```
 
- Use this as the MCP server command in any client that supports the MCP protocol. Your client will launch and manage it for you, so you do not need to run it manually in a separate terminal.
+Use this as the MCP server command in any client that supports the MCP protocol. Your client will launch and manage it for you, so you do not need to run it manually in a separate terminal.
 
 ## 💬 Example Usage with MCP
 
@@ -341,7 +341,7 @@ ollama pull llama3.2     # 2 GB, fast, good for most queries
 ollama pull qwen2.5:7b   # 4.7 GB, stronger reasoning
 ```
 
-3. Start Ollama in separate terminal window:
+3. Start Ollama in a separate terminal window:
 
 ```bash
 ollama serve
@@ -378,7 +378,7 @@ A `partially-ready` pack is still queryable — sources that built successfully 
 
 - Make sure the pack was built: `beyin status my-pack`
 - Restart your agent after adding beyin for the first time
-- Verify the server is registered: `claude mcp list`
+- Verify that beyin is registered in your MCP client
 - Make sure the same beyin installation is used by both CLI and the MCP server
 
 ### Audio and video builds are slow
