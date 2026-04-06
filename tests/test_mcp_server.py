@@ -194,6 +194,7 @@ async def test_mcp_server_lists_expected_tools(mcp_app):
     assert [tool.name for tool in tools] == [
         "packs",
         "status",
+        "dependencies",
         "retrieve",
         "build",
         "add",
@@ -239,6 +240,62 @@ async def test_mcp_list_packs_returns_machine_safe_envelope(mcp_app, tmp_path):
         },
         "warnings": [],
     }
+
+
+@pytest.mark.anyio
+async def test_mcp_dependencies_reports_runtime_and_document_support(mcp_app):
+    fake_settings = type(
+        "S",
+        (),
+        {
+            "enabled_capabilities": ["local_files", "youtube", "local_query"],
+            "enabled_local_file_types": ["pdf", "xlsx"],
+            "preferred_transcription_backend": "faster-whisper",
+            "preferred_whisper_model": "small",
+            "preferred_llm_model": "llama3.2",
+        },
+    )()
+
+    def _fake_import(name: str):
+        if name in {"pdfplumber", "openpyxl"}:
+            return object()
+        raise ImportError(name)
+
+    with patch("beyin.mcp_server.load_settings", return_value=fake_settings), patch(
+        "beyin.mcp_server._check_nltk_punkt_tab_available",
+        return_value=False,
+    ), patch(
+        "beyin.mcp_server._ytdlp_version_ok",
+        return_value=(False, "2024.01.01"),
+    ), patch(
+        "beyin.mcp_server.shutil.which",
+        side_effect=lambda cmd: "/usr/bin/ffmpeg" if cmd == "ffmpeg" else None,
+    ), patch(
+        "beyin.mcp_server.import_module",
+        side_effect=_fake_import,
+    ):
+        _, structured = await mcp_app.call_tool("dependencies", {})
+
+    assert structured["ok"] is True
+    assert structured["meta"]["command"] == "dependencies"
+    assert structured["data"]["enabled_capabilities"] == ["local_files", "youtube", "local_query"]
+    assert structured["data"]["enabled_local_file_types"] == ["pdf", "xlsx"]
+    assert structured["data"]["failures"] == ["punkt_tab", "yt-dlp"]
+
+    runtime = {entry["id"]: entry for entry in structured["data"]["runtime"]}
+    assert runtime["punkt_tab"]["status"] == "not_found"
+    assert runtime["punkt_tab"]["install_hint"] == "beyin check-deps --fix"
+    assert runtime["ffmpeg"]["status"] == "found"
+    assert runtime["yt-dlp"]["status"] == "outdated"
+    assert runtime["yt-dlp"]["minimum_version"] is not None
+
+    document_sources = {entry["id"]: entry for entry in structured["data"]["document_sources"]}
+    assert document_sources["pdf"]["status"] == "found"
+    assert document_sources["pdf"]["selected"] is True
+    assert document_sources["xlsx"]["status"] == "found"
+    assert document_sources["xlsx"]["selected"] is True
+    assert document_sources["docx"]["status"] == "not_installed"
+    assert document_sources["docx"]["selected"] is False
 
 
 @pytest.mark.anyio

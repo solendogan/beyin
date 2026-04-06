@@ -1,8 +1,10 @@
 """beyin MCP server exposing machine-safe inventory and retrieval tools."""
 
 import json
+import shutil
 import urllib.request
 from contextlib import redirect_stderr, redirect_stdout
+from importlib import import_module
 from io import StringIO
 from pathlib import Path
 from typing import Annotated, Any
@@ -29,6 +31,9 @@ from beyin.paths import packs_dir
 from beyin.config import _parse_config_from_raw, PackConfig, load_config, write_config
 from beyin.inventory import serialize_pack_sources
 from beyin.pack_state import load_state
+from beyin.readiness import _check_nltk_punkt_tab_available, _ytdlp_version_ok
+from beyin.runtime_summary import dependency_snapshot
+from beyin.settings import load_settings
 from beyin.machine_output import (
     build_error_envelope,
     build_success_envelope,
@@ -173,6 +178,32 @@ def status(pack: Annotated[str, Field(description="Pack name to inspect.")]) -> 
         command="status",
         pack=pack,
         action=lambda: _status_payload(pack, machine=True),
+    )
+
+
+@app.tool()
+def dependencies() -> dict[str, Any]:
+    """Inspect runtime dependencies and optional document-source support for this beyin install."""
+    settings = load_settings()
+    snapshot = dependency_snapshot(
+        settings,
+        command_exists=shutil.which,
+        import_module=import_module,
+        nltk_punkt_tab_available=_check_nltk_punkt_tab_available,
+        ytdlp_version_ok=_ytdlp_version_ok,
+        include_all=True,
+    )
+    return build_success_envelope(
+        command="dependencies",
+        data={
+            "enabled_capabilities": settings.enabled_capabilities or [],
+            "enabled_local_file_types": settings.enabled_local_file_types or [],
+            "preferred_transcription_backend": settings.preferred_transcription_backend,
+            "preferred_whisper_model": settings.preferred_whisper_model,
+            "preferred_llm_model": settings.preferred_llm_model,
+            **snapshot,
+        },
+        meta={"surface": "mcp", "server_version": __version__},
     )
 
 
