@@ -61,6 +61,14 @@ _MIN_AUDIO_BYTES = 10_000  # 10KB minimum for valid audio file
 
 
 _REMOTE_AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".ogg", ".aac", ".flac"}
+_PODCAST_PATH_HINTS = (
+    "/episode",
+    "/episodes",
+    "/podcast",
+    "/podcasts",
+    "/show",
+    "/shows",
+)
 
 
 def detect_source_type(url: str) -> str:
@@ -78,7 +86,12 @@ def detect_source_type(url: str) -> str:
         path = parsed.path.lower()
         hostname = (parsed.hostname or "").lower()
         if any(hostname == hint or hostname.endswith(f".{hint}") for hint in _PODCAST_HOST_HINTS):
-            return "podcast"
+            if (
+                _RSS_HINTS_RE.search(path)
+                or any(segment in path for segment in _PODCAST_PATH_HINTS)
+                or re.fullmatch(r"/\d+/?", path)
+            ):
+                return "podcast"
         # Remote audio file (e.g. direct podcast CDN links)
         if any(path.endswith(ext) for ext in _REMOTE_AUDIO_EXTENSIONS):
             return "podcast_audio"

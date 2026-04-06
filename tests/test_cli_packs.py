@@ -11,6 +11,23 @@ from beyin.config import SourceEntry, load_config
 from tests.conftest import _FakePromptBackend
 
 
+def test_detect_source_type_treats_podcast_host_episode_page_as_podcast():
+    from beyin.downloader import detect_source_type
+
+    assert detect_source_type("https://berlinkafasi.fireside.fm/8") == "podcast"
+
+
+def test_detect_source_type_does_not_treat_regular_blog_page_on_podcast_host_as_podcast():
+    from beyin.downloader import detect_source_type
+
+    assert (
+        detect_source_type(
+            "https://www.revenuecat.com/blog/growth/google-play-billing-error-churn-how-to-fix/"
+        )
+        == "article"
+    )
+
+
 def test_create_writes_public_pack_yaml_shape(tmp_path):
     """create should write the cleaner public manifest shape for new packs."""
     from beyin.cli import app
