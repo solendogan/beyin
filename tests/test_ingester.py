@@ -137,3 +137,32 @@ def test_resolve_article_ingestion_keeps_normal_articles_as_articles():
     assert plan is not None
     assert plan["mode"] == "article"
     assert plan["metadata_url"] == "https://example.com/regular-article"
+
+
+def test_resolve_article_ingestion_keeps_articles_that_mention_podcast_episodes_as_articles():
+    from beyin.ingester import resolve_article_ingestion
+
+    html = (
+        "<html><body><h1>Billing Errors and Churn</h1><p>"
+        + ("Useful article text. " * 120)
+        + "As discussed on the Sub Club podcast episode covering this report, teams should monitor billing recovery carefully."
+        + "</p></body></html>"
+    )
+
+    def _extract(_downloaded: str, output_format=None, **_kwargs):
+        if output_format == "json":
+            return '{"title":"Billing Errors and Churn"}'
+        return (
+            ("Useful article text. " * 120)
+            + "As discussed on the Sub Club podcast episode covering this report, teams should monitor billing recovery carefully."
+        )
+
+    with patch("beyin.ingester.fetch_url", return_value=html), patch(
+        "beyin.ingester.extract",
+        side_effect=_extract,
+    ):
+        plan = resolve_article_ingestion("https://example.com/blog/growth/billing-errors")
+
+    assert plan is not None
+    assert plan["mode"] == "article"
+    assert plan["metadata_url"] == "https://example.com/blog/growth/billing-errors"

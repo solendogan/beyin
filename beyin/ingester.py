@@ -40,13 +40,18 @@ _AUDIO_EXTENSIONS = (".mp3", ".m4a", ".wav", ".ogg", ".aac", ".flac")
 _INLINE_TRANSCRIPT_MIN_CHARS = 1_500
 _TRANSCRIPT_TEXT_HINTS = (" transcript", "transcript ", "full transcript")
 _PODCAST_TEXT_HINTS = (
-    " podcast",
-    "episode ",
     "show notes",
     "listen on",
     "apple podcasts",
     "spotify",
     "overcast",
+)
+_PODCAST_TITLE_OR_PATH_HINTS = (
+    "podcast",
+    "episode",
+    "episodes",
+    "show",
+    "shows",
 )
 _JSONLD_PODCAST_RE = re.compile(
     r'"@type"\s*:\s*"(?:PodcastEpisode|PodcastSeries|Podcast|AudioObject)"',
@@ -154,14 +159,24 @@ def _looks_like_inline_transcript(downloaded: str, text: str) -> bool:
     )
 
 
-def _looks_like_podcast_page(downloaded: str, title: str, text: str) -> bool:
+def _looks_like_podcast_page(url: str, downloaded: str, title: str, text: str) -> bool:
     """Return True for likely episode landing pages that should avoid article fallback."""
     normalized_html = downloaded.lower()
-    combined_text = f" {title.lower()} {text.lower()} "
-    hint_count = sum(1 for hint in _PODCAST_TEXT_HINTS if hint in normalized_html or hint in combined_text)
+    normalized_title = title.lower()
+    normalized_url = url.lower()
+    combined_text = f" {normalized_title} {text.lower()} "
+    title_or_path_hint = any(
+        hint in normalized_title or hint in normalized_url
+        for hint in _PODCAST_TITLE_OR_PATH_HINTS
+    )
+    landing_hint_count = sum(
+        1 for hint in _PODCAST_TEXT_HINTS if hint in normalized_html or hint in combined_text
+    )
     if _JSONLD_PODCAST_RE.search(downloaded):
         return True
-    return hint_count >= 2
+    if title_or_path_hint and landing_hint_count >= 1:
+        return True
+    return landing_hint_count >= 2
 
 
 def resolve_article_ingestion(url: str) -> Optional[dict]:
@@ -204,7 +219,7 @@ def resolve_article_ingestion(url: str) -> Optional[dict]:
         }
 
     audio_url = _find_audio_link(downloaded, parser, url)
-    podcast_like = _looks_like_podcast_page(downloaded, title, text)
+    podcast_like = _looks_like_podcast_page(url, downloaded, title, text)
     if audio_url and podcast_like:
         return {
             "mode": "podcast_audio",
