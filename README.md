@@ -10,8 +10,8 @@ Query them through MCP with your AI agent, or explore them directly with a local
 
 [![PyPI](https://img.shields.io/pypi/v/beyin?style=flat-square&color=3775A9)](https://pypi.org/project/beyin/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![MCP](https://img.shields.io/badge/MCP-compatible-4C7A5A?style=flat-square)](https://modelcontextprotocol.io)
-[![Ollama](https://img.shields.io/badge/Ollama-supported-0F766E?style=flat-square)](https://ollama.com)
+[![MCP](https://img.shields.io/badge/MCP-compatible-2E8B57?style=flat-square)](https://modelcontextprotocol.io)
+[![Ollama](https://img.shields.io/badge/Ollama-supported-2E8B57?style=flat-square)](https://ollama.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2E8B57?style=flat-square)](LICENSE)
 
 </div>
