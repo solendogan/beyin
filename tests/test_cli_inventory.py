@@ -77,6 +77,21 @@ def test_inventory_summary_marks_new_pack_and_next_build(tmp_path):
     assert summary["next_action"] == "beyin build test-pack"
 
 
+def test_pack_readiness_details_ignore_runtime_blockers_for_empty_pack():
+    """Empty packs should not surface build-time dependency blockers yet."""
+    from beyin.cli import _pack_readiness_details
+
+    empty_config = type("C", (), {"sources": []})()
+
+    with patch(
+        "beyin.cli._punkt_tab_build_issue",
+        return_value="NLTK sentence tokenizer data 'punkt_tab' is required for builds.",
+    ):
+        readiness = _pack_readiness_details(empty_config)
+
+    assert readiness == {"blockers": [], "warnings": []}
+
+
 def test_inventory_summary_marks_blocked_pack(tmp_path):
     """Inventory summary promotes readiness blockers into the main blocked status."""
     from beyin.inventory import summarize_pack
@@ -745,8 +760,9 @@ def test_check_deps_shows_full_document_dependency_inventory():
     assert "PDF (.pdf)" in result.output
     assert "DOCX (.docx)" in result.output
     assert "XLSX (.xlsx)" in result.output
-    assert "Install missing Python packages in the same environment." in result.output
-    assert "Example: uv tool install --with pdfplumber beyin" in result.output
+    assert "Install missing Python packages in the same environment as beyin." in result.output
+    assert "If you use `uv tool install`, reinstall beyin with all desired extras in one command." in result.output
+    assert "Example: uv tool install --reinstall --with pdfplumber --with openpyxl beyin" in result.output
 
 
 def test_check_deps_reports_missing_punkt_tab():

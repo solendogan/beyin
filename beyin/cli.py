@@ -952,6 +952,8 @@ def _pack_readiness_details(config) -> dict[str, list[str]]:
     """Return build-time blocker/warning details for one installed pack."""
     blockers: list[str] = []
     warnings: list[str] = []
+    if not config.sources:
+        return {"blockers": blockers, "warnings": warnings}
 
     punkt_tab_issue = _punkt_tab_build_issue()
     if punkt_tab_issue is not None:
@@ -1985,8 +1987,9 @@ def check_deps(
         for label, value in file_type_rows:
             typer.echo(f"  {label}: {value}")
         typer.echo("")
-        typer.echo("Install missing Python packages in the same environment.")
-        typer.echo("Example: uv tool install --with pdfplumber beyin")
+        typer.echo("Install missing Python packages in the same environment as beyin.")
+        typer.echo("If you use `uv tool install`, reinstall beyin with all desired extras in one command.")
+        typer.echo("Example: uv tool install --reinstall --with pdfplumber --with openpyxl beyin")
 
     if failures:
         raise typer.Exit(code=1)

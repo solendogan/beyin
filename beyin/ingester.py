@@ -27,13 +27,13 @@ _DOCUMENT_SUFFIXES = {
     ".csv",
 }
 
-_DOCUMENT_DEP_HINTS: dict[str, tuple[str, str]] = {
-    ".pdf": ("pdfplumber", "pip install pdfplumber"),
-    ".docx": ("docx", "pip install python-docx"),
-    ".pptx": ("pptx", "pip install python-pptx"),
-    ".epub": ("ebooklib", "pip install ebooklib"),
-    ".xlsx": ("openpyxl", "pip install openpyxl"),
-    ".csv": (None, None),  # stdlib only
+_DOCUMENT_DEP_HINTS: dict[str, str | None] = {
+    ".pdf": "pdfplumber",
+    ".docx": "docx",
+    ".pptx": "pptx",
+    ".epub": "ebooklib",
+    ".xlsx": "openpyxl",
+    ".csv": None,  # stdlib only
 }
 
 _AUDIO_EXTENSIONS = (".mp3", ".m4a", ".wav", ".ogg", ".aac", ".flac")
@@ -290,14 +290,15 @@ def load_document_source(path_like: str | Path) -> Tuple[str, str]:
     if suffix not in _DOCUMENT_SUFFIXES:
         raise ValueError(f"Unsupported document type: {path}")
 
-    module_name, install_hint = _DOCUMENT_DEP_HINTS.get(suffix, (None, None))
+    module_name = _DOCUMENT_DEP_HINTS.get(suffix)
     if module_name is not None:
         try:
             __import__(module_name)
         except ImportError:
             raise ImportError(
                 f"{suffix} support requires '{module_name.split('.')[0]}'. "
-                f"Install it with: {install_hint}"
+                "Install the matching Python package in the same environment as beyin, "
+                "then rerun the build. Run `beyin check-deps` for details."
             )
 
     text = ""

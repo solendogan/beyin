@@ -522,7 +522,7 @@ def test_build_local_document_missing_parser_points_to_selected_support(tmp_path
          patch(
              "beyin.cli.load_document_source",
              side_effect=ImportError(
-                 ".pdf support requires 'pdfplumber'. Install it with: pip install pdfplumber"
+                 ".pdf support requires 'pdfplumber'. Install the matching Python package in the same environment as beyin, then rerun the build. Run `beyin check-deps` for details."
              ),
          ), \
          patch("beyin.cli.load_model", return_value=MagicMock()), \
@@ -535,7 +535,8 @@ def test_build_local_document_missing_parser_points_to_selected_support(tmp_path
     mock_mark.assert_not_called()
     mock_fail.assert_called_once()
     assert "pdf support is selected in your beyin settings" in result.output.lower()
-    assert "install it with: pip install pdfplumber" in result.output.lower()
+    assert "same environment as beyin" in result.output.lower()
+    assert "beyin check-deps" in result.output
     assert "beyin build pdf-pack" in result.output
 
 
