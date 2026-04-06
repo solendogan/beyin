@@ -8,10 +8,11 @@
 **Build local, queryable packs from videos, articles, podcasts, and local files. <br>
 Query them through MCP with your AI agent, or explore them directly with a local model.**
 
-[![PyPI](https://img.shields.io/pypi/v/beyin?style=for-the-badge)](https://pypi.org/project/beyin/)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![MCP](https://img.shields.io/badge/MCP-compatible-6f42c1?style=for-the-badge)](https://modelcontextprotocol.io)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/beyin?style=flat-square&color=3775A9)](https://pypi.org/project/beyin/)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![MCP](https://img.shields.io/badge/MCP-compatible-4C7A5A?style=flat-square)](https://modelcontextprotocol.io)
+[![Ollama](https://img.shields.io/badge/Ollama-supported-0F766E?style=flat-square)](https://ollama.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2E8B57?style=flat-square)](LICENSE)
 
 </div>
 
