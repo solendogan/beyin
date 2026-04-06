@@ -80,6 +80,12 @@ The recommended way to install beyin is with `uv`:
 uv tool install beyin
 ```
 
+If you later want optional document support such as `.pdf`, `.docx`, or `.xlsx`, install those Python packages in the same environment as beyin. For `uv tool install` users, rerun the install with all desired extras in one command, for example:
+
+```bash
+uv tool install --reinstall --with pdfplumber --with openpyxl beyin
+```
+
 If you already manage a dedicated Python environment and explicitly want beyin inside it, `pip install beyin` still works, but it is a fallback path rather than the recommended default.
 
 **ffmpeg** is required for video and audio sources. Skip if you only use articles and local files:
@@ -115,6 +121,14 @@ If you want to verify runtime dependencies before building anything:
 beyin check-deps
 ```
 
+If this is a fresh install, your first text build may ask for the NLTK `punkt_tab` tokenizer data. That is expected. Install it into the current beyin environment with:
+
+```bash
+beyin check-deps --fix
+```
+
+After that, rerun your `beyin build ...` command.
+
 What happens on first run:
 
 - beyin starts a guided setup flow
@@ -140,6 +154,8 @@ If you do not want a persistent install, you can run the same commands with `uvx
 You only need to do this once.
 
 `beyin` runs as a stdio MCP server. After registration, your MCP client launches and manages the server for you, so you do not need to keep a separate terminal open. If the tool does not appear immediately, restart the client.
+
+Permission note: MCP clients often ask for approvals on first use while the agent explores the repo, reads local files, checks your environment, or installs missing tools. That is normal. There is no single cross-client MCP permission command for this; approval controls are client-specific. If you trust the current workspace and want a smoother setup, prefer your client's broader allow/auto-run option for recurring local actions instead of approving each small step one by one.
 
 #### Claude Code
 
@@ -236,6 +252,7 @@ You also do not need to stay inside one agent forever. The packs live locally, s
 | Control the response | `ask yt-research pack about building an audience from scratch, include sources and timestamps` |
 | Check your packs | `list my packs and show me their status` |
 | Ask about a pack | `whats the status of mobile marketing pack? and what about its sources?` |
+| Check runtime support | `what dependencies are available for beyin on this machine? do we support pdf, xlsx, youtube, and local query right now?` |
 | Remove a source | `remove sources 2 and 3 from mobile marketing pack` |
 | Remove a pack | `remove that pack about tech podcast` |
 
@@ -247,13 +264,14 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 |------|-------------|
 | `packs` | List all installed packs |
 | `status` | Show details and readiness for a pack |
+| `dependencies` | Inspect runtime dependencies and optional document-source support for the current beyin install |
 | `retrieve` | Return relevant results for one or more queries |
 | `build` | Build or update a pack. Pass `sources` to build only selected sources by index or range. Automatically purges chunks of removed sources. |
-| `add` | Add a pack from a path, URL, or YAML |
+| `add` | Add a pack from a path, URL, or YAML (`in progress`) |
 | `add_sources` | Add new sources to a pack. Rebuilds automatically for single sources; playlists/feeds are expanded for review first. |
 | `remove_sources` | Remove sources by index, range, or text match. Removed chunks stay in the vector store until you rebuild. |
 | `remove` | Remove an installed pack (moves to trash) |
-| `registry` | Browse the beyin community registry by topic, tag, or keyword |
+| `registry` | Browse the beyin community registry by topic, tag, or keyword (`in progress`) |
 
 ## 📋 All Commands
 
@@ -314,6 +332,12 @@ These are the tools beyin exposes to your agent. Your agent uses them automatica
 | `beyin add-source <pack> ./notes.md` | Add a supported local file path as a source |
 | `beyin add-source <pack> <url> --build` | Add source(s) and build immediately |
 
+If a URL contains shell-sensitive characters such as `?` or `&`, quote it first. This is especially important in shells like `fish`.
+
+```bash
+beyin add-source my-pack "https://www.youtube.com/watch?v=vd14EElCRvs"
+```
+
 #### Remove Sources
 
 | Command | What it does |
@@ -341,17 +365,38 @@ ollama pull llama3.2     # 2 GB, fast, good for most queries
 ollama pull qwen2.5:7b   # 4.7 GB, stronger reasoning
 ```
 
-3. Start Ollama in a separate terminal window:
+3. Check that Ollama is reachable and that your model is installed:
+
+```bash
+ollama list
+```
+
+`ollama list` shows the models installed in your local Ollama instance. It is also a quick connectivity check: if it returns a normal table, beyin can usually reach the Ollama daemon too.
+
+Important distinction:
+
+- `ollama pull ...` downloads a model into your local Ollama instance
+- `ollama list` shows the models currently installed locally
+- `ollama serve` starts the local Ollama API server if it is not already running
+
+Platform note:
+
+- On Linux, Ollama is often already running as a background service after installation, so `ollama list` may work immediately and you may not need to run `ollama serve` yourself.
+- On macOS, depending on how Ollama was started, you may need to launch the Ollama app or run `ollama serve` manually before local queries work.
+
+If `ollama list` fails, start Ollama and try again:
 
 ```bash
 ollama serve
 ```
 
-4. Query with beyin in another terminal:
+4. Query with beyin:
 
 ```bash
 beyin query my-pack "What does this source say about X?"
 ```
+
+If beyin says a model was not found, compare the exact model tag in `beyin settings` with the output of `ollama list`.
 
 To change the model, run `beyin settings`.
 
