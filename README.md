@@ -16,56 +16,31 @@ Query them through MCP with your AI agent, or explore them directly with a local
 
 </div>
 
-## 🎥 Demo
-
-<table width="100%">
-  <tr>
-    <td colspan="2">
-      https://github.com/user-attachments/assets/44f1ab68-a745-42ae-aaab-1d585fe6bf22
-    </td>
-  </tr>
-</table>
-
-<div align="center">
-  Ask questions through MCP and retrieve answers from your local packs without leaving your normal workflow.
-</div>
-
-## ✨ Features
-
-- 🔗 **MCP compatible:** works with Claude Code, Codex, Cursor, Windsurf, Zed and more
-- 🔄 **Cross-agent packs:** build once, then use the same local packs from any MCP-compatible agent or the CLI
-- 📦 **Local-first pipeline:** processing, embedding, and storage all happen on your machine
-- 🎬 **Rich source support:** YouTube videos and playlists, podcasts, PDFs, articles, local files
-- 🌍 **50+ languages:** multilingual embedding model out of the box
-- 🤖 **Ollama support:** run fully offline with a local model
-- ⚡ **Plug and play:** one command to connect via MCP, then manage everything by just talking to your agent
-- 🎯 **Multi-query expansion:** generates query variants automatically for better retrieval
-
-## ⚙️ How it works
-
-The recommended way to use beyin is through MCP with the AI agent you already use.
-
-Your packs are local to your machine, not tied to one agent session or vendor. Connect beyin to Codex, Claude Code, Cursor, or another MCP client and access the same packs from whichever one you want.
-
-1. Install beyin and connect it to your agent once
-2. Tell your agent to create a pack, add your sources, and build it
-3. Ask questions naturally and let your agent handle retrieval
-
-It becomes part of your agent’s natural workflow, bringing in the right context exactly when you need it while keeping you focused.
-
-See [Example Usage with MCP](#-example-usage-with-mcp) for real prompts and workflows.
-
-You can also query packs directly with a local model, no external API or agent needed. See [Query with a Local Model](#-query-with-a-local-model).
+beyin is a local-first engine for building reusable knowledge packs from the
+  sources you already use. Your packs stay local and reusable across MCP clients, the
+  CLI, and fully local workflows with Ollama, so your context is not trapped inside a
+  single tool or session.
 
 ## 🎥 Demos
 
 <table>
 <tr>
+<td colspan="2">
+
+**Quick Demo**
+
+Ask questions through MCP and retrieve answers from your local packs without leaving your normal workflow.
+
+https://github.com/user-attachments/assets/44f1ab68-a745-42ae-aaab-1d585fe6bf22
+
+</td>
+</tr>
+<tr>
 <td width="50%">
 
 **Setup via CLI**
 
-Choose the source types you want to support, enable local Ollama and local file workflows, and pick the Whisper model that fits your transcription needs.
+Choose the source types, enable local Ollama and local file workflows, and pick the Whisper model that fits your transcription needs.
 
 https://github.com/user-attachments/assets/ecbaa24a-a6f7-497b-8148-53edb18cad29
 
@@ -86,6 +61,34 @@ https://github.com/user-attachments/assets/39afef00-d126-429f-b4f4-f4489ae8c1b2
   Demo source note: some source videos used in these demos are from Adam Lyttle's <a href="https://www.youtube.com/playlist?list=PLuumy--3ITvZFSytSRLr7SFAiMmE_dQMV">YouTube playlist</a> and are licensed under CC BY.
 </div>
 
+## ✨ Features
+
+- 🔗 **MCP compatible:** works with Claude Code, Codex, Cursor, Windsurf, Zed and more
+- 🔄 **Cross-agent packs:** build once, then use the same local packs from any MCP-compatible agent or the CLI
+- 📦 **Local-first pipeline:** processing, embedding, and storage all happen on your machine
+- 🎬 **Rich source support:** YouTube videos and playlists, podcasts, PDFs, articles, local files
+- 🌍 **50+ languages:** multilingual embedding model out of the box
+- 🤖 **Ollama support:** run fully offline with a local model
+- ⚡ **Plug and play:** one command to connect via MCP, then manage everything by just talking to your agent
+- 🎯 **Multi-query expansion:** generates query variants automatically for better retrieval
+
+## ⚙️ How it works
+
+The recommended way to use beyin is through MCP with the AI agent you already use.
+
+Your packs are local to your machine, not tied to one agent session or vendor. Connect beyin to Codex, Claude Code, Cursor, or another MCP client and access the same packs from whichever one you want.
+
+For audio and video sources, beyin transcribes the content before chunking and embedding the resulting text for retrieval.
+
+1. Install beyin and connect it to your agent once
+2. Tell your agent to create a pack, add your sources, and build it
+3. Ask questions naturally and let your agent handle retrieval
+
+It becomes part of your agent’s natural workflow, bringing in the right context exactly when you need it while keeping you focused.
+
+See [Example Usage with MCP](#-example-usage-with-mcp) for real prompts and workflows.
+
+You can also query packs directly with a local model, no external API or agent needed. See [Query with a Local Model](#-query-with-a-local-model).
 
 ## 📂 Supported Sources
 
