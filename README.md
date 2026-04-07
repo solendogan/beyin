@@ -57,7 +57,7 @@ https://github.com/user-attachments/assets/39afef00-d126-429f-b4f4-f4489ae8c1b2
 </tr>
 </table>
 
-> Note: Some source material used in these demos is from Adam Lyttle’s [YouTube playlist](https://www.youtube.com/playlist?list=PLuumy--3ITvZFSytSRLr7SFAiMmE_dQMV) and is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+> Note: Some source material used in these demos is from Adam Lyttle’s [YouTube playlist](https://www.youtube.com/playlist?list=PLuumy--3ITvZFSytSRLr7SFAiMmE_dQMV), processed as demo input, and is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 ## ✨ Features
 
@@ -553,13 +553,7 @@ Run commands from the repo:
 uv run beyin help
 ```
 
-MCP config for a local repo install:
-
-```bash
-claude mcp add beyin -- uv run beyin mcp-server --cwd /absolute/path/to/beyin
-```
-
-Or manually in your agent's config file:
+MCP config for a local repo install, add it manually to your agent's config file:
 
 ```json
 {
