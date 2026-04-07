@@ -1,6 +1,6 @@
 [project]
 name = "beyin"
-version = "0.3.6"
+version = "0.3.7"
 description = "Build local, queryable packs from videos, articles, podcasts, and files for MCP and local LLM use."
 readme = { file = "README.pypi.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
