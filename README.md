@@ -16,7 +16,19 @@ Query them through MCP with your AI agent, or explore them directly with a local
 
 </div>
 
-<!-- add demo video here  -->
+## 🎥 Demo
+
+<table width="100%">
+  <tr>
+    <td colspan="2">
+      https://github.com/user-attachments/assets/44f1ab68-a745-42ae-aaab-1d585fe6bf22
+    </td>
+  </tr>
+</table>
+
+<div align="center">
+  Ask questions through MCP and retrieve answers from your local packs without leaving your normal workflow.
+</div>
 
 ## ✨ Features
 
@@ -44,6 +56,36 @@ It becomes part of your agent’s natural workflow, bringing in the right contex
 See [Example Usage with MCP](#-example-usage-with-mcp) for real prompts and workflows.
 
 You can also query packs directly with a local model, no external API or agent needed. See [Query with a Local Model](#-query-with-a-local-model).
+
+## 🎥 Demos
+
+<table>
+<tr>
+<td width="50%">
+
+**Setup via CLI**
+
+Choose the source types you want to support, enable local Ollama and local file workflows, and pick the Whisper model that fits your transcription needs.
+
+https://github.com/user-attachments/assets/ecbaa24a-a6f7-497b-8148-53edb18cad29
+
+</td>
+<td width="50%">
+
+**End-to-End workflow**
+
+Create a pack in the CLI, build it, connect it to your MCP agent, and query it naturally during your normal workflow.
+
+https://github.com/user-attachments/assets/39afef00-d126-429f-b4f4-f4489ae8c1b2
+
+</td>
+</tr>
+</table>
+
+<div align="center">
+  Demo source note: some source videos used in these demos are from Adam Lyttle's <a href="https://www.youtube.com/playlist?list=PLuumy--3ITvZFSytSRLr7SFAiMmE_dQMV">YouTube playlist</a> and are licensed under CC BY.
+</div>
+
 
 ## 📂 Supported Sources
 

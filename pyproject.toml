@@ -2,7 +2,7 @@
 name = "beyin"
 version = "0.3.6"
 description = "Build local, queryable packs from videos, articles, podcasts, and files for MCP and local LLM use."
-readme = "README.md"
+readme = { file = "README.pypi.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 dependencies = [
     "typer>=0.24.1",
@@ -25,7 +25,11 @@ dependencies = [
 [project.scripts]
 beyin = "beyin.cli:app"
 
+[tool.hatch.build]
+skip-excluded-dirs = true
+
 [tool.hatch.build.targets.wheel]
+only-packages = true
 exclude = [
   "/packs",
   "/benchmarks",
@@ -33,6 +37,18 @@ exclude = [
   "/scripts",
   "/notes",
   "/.planning",
+  "/docs/demos",
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/packs",
+  "/benchmarks",
+  "/tests",
+  "/scripts",
+  "/notes",
+  "/.planning",
+  "/docs/demos",
 ]
 
 [build-system]
