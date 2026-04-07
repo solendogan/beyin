@@ -42,7 +42,7 @@ https://github.com/user-attachments/assets/44f1ab68-a745-42ae-aaab-1d585fe6bf22
 
 Choose the source types, enable local Ollama and local file workflows, and pick the Whisper model that fits your transcription needs.
 
-https://github.com/user-attachments/assets/ecbaa24a-a6f7-497b-8148-53edb18cad29
+https://github.com/user-attachments/assets/d1ee3467-7891-4d50-92ec-5166432455b4
 
 </td>
 <td width="50%">
@@ -57,9 +57,7 @@ https://github.com/user-attachments/assets/39afef00-d126-429f-b4f4-f4489ae8c1b2
 </tr>
 </table>
 
-<div align="center">
-  Demo source note: some source videos used in these demos are from Adam Lyttle's <a href="https://www.youtube.com/playlist?list=PLuumy--3ITvZFSytSRLr7SFAiMmE_dQMV">YouTube playlist</a> and are licensed under CC BY.
-</div>
+> Note: Some source material used in these demos is from Adam Lyttle’s [YouTube playlist](https://www.youtube.com/playlist?list=PLuumy--3ITvZFSytSRLr7SFAiMmE_dQMV) and is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 ## ✨ Features
 
