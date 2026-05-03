@@ -20,6 +20,10 @@ beyin is a local-first engine for building reusable knowledge packs from the
   sources you already use. Your packs stay local and reusable across MCP clients, the
   CLI, and fully local workflows with Ollama, so your context is not trapped inside a
   single tool or session.
+  
+## 📦 What is a pack?
+
+A **pack** is a local knowledge base you build yourself from the sources you choose: YouTube videos, podcasts, articles, or local files. You pick the sources, beyin processes them (transcribing audio/video, chunking, embedding) and stores everything on your machine. Build it once, then query it from any MCP-connected agent or directly from the CLI, across sessions and tools.
 
 ## 🎥 Demos
 
