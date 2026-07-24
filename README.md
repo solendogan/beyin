@@ -10,6 +10,7 @@ Query them through MCP with your AI agent, or explore them directly with a local
 
 [![PyPI](https://img.shields.io/pypi/v/beyin?style=flat-square&color=3775A9)](https://pypi.org/project/beyin/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/beyin?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/beyin)
 [![MCP](https://img.shields.io/badge/MCP-compatible-2E8B57?style=flat-square)](https://modelcontextprotocol.io)
 [![Ollama](https://img.shields.io/badge/Ollama-supported-2E8B57?style=flat-square)](https://ollama.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2E8B57?style=flat-square)](LICENSE)
